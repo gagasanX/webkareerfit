@@ -1,0 +1,31 @@
+// app/api/assessment/verify/[id]/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/lib/db';
+
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const assessmentId = params.id;
+    console.log('Verifying assessment ID:', assessmentId);
+    
+    const assessment = await prisma.assessment.findUnique({
+      where: { id: assessmentId },
+      select: { id: true, type: true, status: true }
+    });
+    
+    if (!assessment) {
+      return NextResponse.json({ exists: false }, { status: 404 });
+    }
+    
+    return NextResponse.json({
+      exists: true,
+      type: assessment.type,
+      status: assessment.status
+    });
+  } catch (error) {
+    console.error('Error verifying assessment:', error);
+    return NextResponse.json({ error: 'Server error' }, { status: 500 });
+  }
+}
