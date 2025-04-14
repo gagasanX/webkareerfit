@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useSession } from 'next-auth/react';
+import { useSession, signOut } from 'next-auth/react';
 import Link from 'next/link';
 import { User, Assessment, assessmentTypes } from '@/app/types';
 
@@ -160,10 +160,14 @@ const UserMenu = ({ user, isOpen, onClose }: UserMenuProps) => (
       </Link>
     )}
     
-    <Link href="/api/auth/signout" className="flex items-center px-4 py-2 text-sm text-red-600 hover:bg-gray-100">
+    {/* PERUBAHAN DI SINI: Tukar dari Link kepada button dengan fungsi signOut() */}
+    <button 
+      onClick={() => signOut({ callbackUrl: '/login' })} 
+      className="flex items-center px-4 py-2 text-sm text-red-600 hover:bg-gray-100 w-full text-left"
+    >
       <LogoutIcon />
       <span className="ml-2">Sign Out</span>
-    </Link>
+    </button>
   </div>
 );
 

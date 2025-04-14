@@ -1,5 +1,3 @@
-// prisma/schema.prisma
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -9,73 +7,62 @@ datasource db {
   url      = "file:./dev.db"
 }
 
-// User model with profile fields
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String    @unique
-  password      String
-  image         String?
-  bio           String?   // Added profile field
-  skills        String?   // Added profile field
-  education     String?   // Added profile field
-  experience    String?   // Added profile field
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  isAdmin       Boolean   @default(false)
-  isAffiliate   Boolean   @default(false)
-  phone         String?
-  affiliateCode String?   @unique
-  referredBy    String?
-  
-  // Relations
-  assessments         Assessment[]
-  affiliateStats      AffiliateStats?
-  payments            Payment[]
+  id                    String                 @id @default(cuid())
+  name                  String?
+  email                 String                 @unique
+  password              String
+  image                 String?
+  bio                   String?
+  skills                String?
+  education             String?
+  experience            String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  role                  String                 @default("USER")
+  isAdmin               Boolean                @default(false)
+  isAffiliate           Boolean                @default(false)
+  phone                 String?
+  affiliateCode         String?                @unique
+  referredBy            String?
+  affiliateApplications AffiliateApplication[]
+  affiliateStats        AffiliateStats?
   affiliateTransactions AffiliateTransaction[]
-  
-  // New relations for affiliate system
-  referrals              Referral[]
-  affiliateApplications  AffiliateApplication[]
+  assessments           Assessment[]
+  payments              Payment[]
+  referrals             Referral[]
 }
 
-// Updated Assessment model with package tier
 model Assessment {
-  id        String   @id @default(cuid())
-  type      String   // fjrl, ijrl, cdrl, ccrl, ctrl, rrl, irl
-  tier      String   @default("basic") // basic, standard, premium
-  status    String   @default("pending") // pending, completed
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id        String     @id @default(cuid())
+  type      String
+  tier      String     @default("basic")
+  status    String     @default("pending")
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
   data      Json?
-  price     Float    @default(0)
-  
-  // Relations
+  price     Float      @default(0)
   userId    String
-  user      User     @relation(fields: [userId], references: [id])
+  user      User       @relation(fields: [userId], references: [id])
   payment   Payment?
-  
-  // New relation for referrals
   referrals Referral[]
 }
 
 model Payment {
-  id               String   @id @default(cuid())
-  amount           Float
-  method           String  // card, bank_transfer, etc.
-  status           String   @default("pending") // pending, completed, failed
-  gatewayPaymentId String?  // ID from payment gateway
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  
-  // Relations
-  userId            String
-  user              User       @relation(fields: [userId], references: [id])
-  assessmentId      String     @unique
-  assessment        Assessment @relation(fields: [assessmentId], references: [id])
-  couponId          String?
-  coupon            Coupon?    @relation(fields: [couponId], references: [id])
+  id                    String                 @id @default(cuid())
+  amount                Float
+  method                String
+  status                String                 @default("pending")
+  gatewayPaymentId      String?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  userId                String
+  assessmentId          String                 @unique
+  couponId              String?
   affiliateTransactions AffiliateTransaction[]
+  coupon                Coupon?                @relation(fields: [couponId], references: [id])
+  assessment            Assessment             @relation(fields: [assessmentId], references: [id])
+  user                  User                   @relation(fields: [userId], references: [id])
 }
 
 model Coupon {
@@ -84,19 +71,11 @@ model Coupon {
   discountPercentage Float     @default(0)
   maxDiscount        Float?
   expiresAt          DateTime
-  // Removed fields
-  // isUsed             Boolean   @default(false)
-  // usedAt             DateTime?
-  
-  // Added new fields
-  maxUses            Int       @default(100)  // Maximum number of times the coupon can be used
-  currentUses        Int       @default(0)    // Current usage count
-  
+  maxUses            Int       @default(100)
+  currentUses        Int       @default(0)
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
-  
-  // Relations
-  payments Payment[]
+  payments           Payment[]
 }
 
 model AffiliateStats {
@@ -106,51 +85,37 @@ model AffiliateStats {
   totalPaid      Float    @default(0)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
-  
-  // Relations
   userId         String   @unique
   user           User     @relation(fields: [userId], references: [id])
 }
 
 model AffiliateTransaction {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   amount    Float
-  status    String   @default("pending") // pending, paid
+  status    String    @default("pending")
   paidAt    DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  
-  // Relations
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
   userId    String
-  user      User     @relation(fields: [userId], references: [id])
   paymentId String
-  payment   Payment  @relation(fields: [paymentId], references: [id])
+  payment   Payment   @relation(fields: [paymentId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
 }
 
-// New models for affiliate system
-
 model Referral {
-  id           String   @id @default(cuid())
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  
-  // Affiliate who made the referral
-  affiliateId  String
-  affiliate    User     @relation(fields: [affiliateId], references: [id])
-  
-  // Referred user details
-  userName     String?
-  email        String?
-  
-  // Assessment details
-  assessmentId String?
-  assessment   Assessment? @relation(fields: [assessmentId], references: [id])
+  id             String      @id @default(cuid())
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  affiliateId    String
+  userName       String?
+  email          String?
+  assessmentId   String?
   assessmentType String?
-  
-  // Status and financial details
-  status       String   // "pending", "completed", "cancelled"
-  commission   Float    @default(0)
-  paidOut      Boolean  @default(false)
+  status         String
+  commission     Float       @default(0)
+  paidOut        Boolean     @default(false)
+  assessment     Assessment? @relation(fields: [assessmentId], references: [id])
+  affiliate      User        @relation(fields: [affiliateId], references: [id])
 
   @@index([affiliateId])
   @@index([assessmentId])
@@ -160,22 +125,16 @@ model AffiliateApplication {
   id          String   @id @default(cuid())
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  
-  // User who applied
   userId      String
-  user        User     @relation(fields: [userId], references: [id])
-  
-  // Application details
   fullName    String
   email       String
   phone       String
   website     String?
   socialMedia String?
   howPromote  String
-  status      String   // "pending", "approved", "rejected"
-  
-  // Admin notes
+  status      String
   notes       String?
+  user        User     @relation(fields: [userId], references: [id])
 
   @@index([userId])
 }

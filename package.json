@@ -12,6 +12,7 @@
     "prisma:studio": "prisma studio"
   },
   "dependencies": {
+    "@react-pdf/renderer": "^4.3.0",
     "@reduxjs/toolkit": "^2.6.1",
     "@sendgrid/mail": "^8.1.4",
     "@types/formidable": "^3.4.5",
@@ -35,6 +36,7 @@
     "react-dom": "^19.0.0",
     "react-hook-form": "^7.54.2",
     "react-redux": "^9.2.0",
+    "recharts": "^2.15.2",
     "redis": "^4.7.0",
     "stripe": "^17.7.0",
     "yup": "^1.6.1"

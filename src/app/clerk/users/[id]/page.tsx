@@ -1,0 +1,468 @@
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { format } from 'date-fns';
+import { ArrowLeftIcon, CheckCircleIcon, UserIcon, MailIcon, PhoneIcon, GraduationCapIcon, BriefcaseIcon } from 'lucide-react';
+
+interface UserData {
+  id: string;
+  name: string | null;
+  email: string;
+  phone: string | null;
+  bio: string | null;
+  skills: string | null;
+  education: string | null;
+  experience: string | null;
+  createdAt: string;
+  updatedAt: string;
+  assessments: Array<{
+    id: string;
+    type: string;
+    status: string;
+    tier: string;
+    price: number;
+    createdAt: string;
+    payment: {
+      status: string;
+      amount: number;
+    } | null;
+  }>;
+}
+
+export default function UserDetailPage({ params }: { params: { id: string } }) {
+  const router = useRouter();
+  const [user, setUser] = useState<UserData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [updating, setUpdating] = useState(false);
+  const [updateSuccess, setUpdateSuccess] = useState(false);
+  
+  // Form state
+  const [formData, setFormData] = useState({
+    name: '',
+    phone: '',
+    bio: '',
+    skills: '',
+    education: '',
+    experience: ''
+  });
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        setLoading(true);
+        const response = await fetch(`/api/clerk/users/${params.id}`);
+        
+        if (!response.ok) {
+          throw new Error('Failed to load user');
+        }
+        
+        const data = await response.json();
+        setUser(data.user);
+        
+        // Initialize form data
+        setFormData({
+          name: data.user.name || '',
+          phone: data.user.phone || '',
+          bio: data.user.bio || '',
+          skills: data.user.skills || '',
+          education: data.user.education || '',
+          experience: data.user.experience || ''
+        });
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'An error occurred');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchUser();
+  }, [params.id]);
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = e.target;
+    setFormData({
+      ...formData,
+      [name]: value
+    });
+  };
+
+  const updateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    try {
+      setUpdating(true);
+      setUpdateSuccess(false);
+      
+      const response = await fetch(`/api/clerk/users/${params.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData),
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to update user');
+      }
+      
+      const data = await response.json();
+      
+      // Update local state with new values
+      setUser(prev => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          ...data.user
+        };
+      });
+      
+      setUpdateSuccess(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
+    } finally {
+      setUpdating(false);
+    }
+  };
+
+  // Function to get a readable assessment type name
+  const getAssessmentTypeName = (type: string) => {
+    const types: Record<string, string> = {
+      'fjrl': 'First Job Readiness',
+      'ijrl': 'Ideal Job Readiness',
+      'cdrl': 'Career Development',
+      'ccrl': 'Career Comeback',
+      'ctrl': 'Career Transition',
+      'rrl': 'Retirement Readiness',
+      'irl': 'Internship Readiness',
+    };
+    
+    return types[type] || type.toUpperCase();
+  };
+  
+  // Function to get status badge class
+  const getStatusBadgeClass = (status: string) => {
+    switch(status) {
+      case 'completed':
+        return 'bg-green-100 text-green-800';
+      case 'pending':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'cancelled':
+        return 'bg-red-100 text-red-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+  
+  // Function to get payment status badge class
+  const getPaymentStatusBadgeClass = (status: string | undefined) => {
+    if (!status) return 'bg-gray-100 text-gray-800';
+    
+    switch(status) {
+      case 'completed':
+        return 'bg-green-100 text-green-800';
+      case 'pending':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'failed':
+        return 'bg-red-100 text-red-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+  
+  // Function to format price
+  const formatPrice = (price: number) => {
+    return new Intl.NumberFormat('en-MY', {
+      style: 'currency',
+      currency: 'MYR',
+    }).format(price);
+  };
+
+  return (
+    <div>
+      <div className="flex items-center mb-6">
+        <button
+          onClick={() => router.back()}
+          className="mr-4 p-2 rounded-full hover:bg-gray-100"
+        >
+          <ArrowLeftIcon className="w-5 h-5" />
+        </button>
+        <h2 className="text-xl font-semibold">User Profile</h2>
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center p-12">
+          <div className="w-12 h-12 border-4 border-t-transparent border-indigo-600 rounded-full animate-spin"></div>
+        </div>
+      ) : error ? (
+        <div className="bg-red-50 p-4 rounded-lg text-red-700 mb-6">
+          {error}
+        </div>
+      ) : user ? (
+        <div className="space-y-6">
+          {/* Success message */}
+          {updateSuccess && (
+            <div className="bg-green-50 p-4 rounded-lg text-green-700 flex items-center">
+              <CheckCircleIcon className="w-5 h-5 mr-2" />
+              User profile updated successfully
+            </div>
+          )}
+          
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Left column - User Info */}
+            <div className="lg:col-span-1 space-y-6">
+              {/* Basic User Information */}
+              <div className="bg-white rounded-lg shadow overflow-hidden">
+                <div className="px-6 py-4 border-b">
+                  <h3 className="text-lg font-medium text-gray-900">User Information</h3>
+                </div>
+                <div className="p-6">
+                  <div className="flex flex-col items-center text-center mb-6">
+                    <div className="bg-indigo-100 p-4 rounded-full mb-4">
+                      <UserIcon className="w-12 h-12 text-indigo-600" />
+                    </div>
+                    <h4 className="text-xl font-medium text-gray-900">{user.name || 'User'}</h4>
+                    <p className="text-gray-500">{user.email}</p>
+                  </div>
+                  
+                  <div className="space-y-4">
+                    <div className="flex items-center">
+                      <MailIcon className="w-5 h-5 text-gray-400 mr-2" />
+                      <span>{user.email}</span>
+                    </div>
+                    {user.phone && (
+                      <div className="flex items-center">
+                        <PhoneIcon className="w-5 h-5 text-gray-400 mr-2" />
+                        <span>{user.phone}</span>
+                      </div>
+                    )}
+                    {user.education && (
+                      <div className="flex items-start">
+                        <GraduationCapIcon className="w-5 h-5 text-gray-400 mr-2 mt-1" />
+                        <span>{user.education}</span>
+                      </div>
+                    )}
+                    {user.experience && (
+                      <div className="flex items-start">
+                        <BriefcaseIcon className="w-5 h-5 text-gray-400 mr-2 mt-1" />
+                        <span>{user.experience}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="px-6 py-4 bg-gray-50 text-xs text-gray-500">
+                  <p>Registered on {format(new Date(user.createdAt), 'MMMM d, yyyy')}</p>
+                  <p>Last updated on {format(new Date(user.updatedAt), 'MMMM d, yyyy')}</p>
+                </div>
+              </div>
+            </div>
+            
+            {/* Right column - Edit form & Assessments */}
+            <div className="lg:col-span-2 space-y-6">
+              {/* Edit User Form */}
+              <div className="bg-white rounded-lg shadow overflow-hidden">
+                <div className="px-6 py-4 border-b">
+                  <h3 className="text-lg font-medium text-gray-900">Edit User Profile</h3>
+                </div>
+                <div className="p-6">
+                  <form onSubmit={updateUser}>
+                    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                      <div className="col-span-2 sm:col-span-1">
+                        <label htmlFor="name" className="block text-sm font-medium text-gray-700">
+                          Name
+                        </label>
+                        <input
+                          type="text"
+                          name="name"
+                          id="name"
+                          value={formData.name}
+                          onChange={handleInputChange}
+                          className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                        />
+                      </div>
+                      
+                      <div className="col-span-2 sm:col-span-1">
+                        <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
+                          Phone
+                        </label>
+                        <input
+                          type="text"
+                          name="phone"
+                          id="phone"
+                          value={formData.phone}
+                          onChange={handleInputChange}
+                          className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                        />
+                      </div>
+                      
+                      <div className="col-span-2">
+                        <label htmlFor="bio" className="block text-sm font-medium text-gray-700">
+                          Bio
+                        </label>
+                        <textarea
+                          name="bio"
+                          id="bio"
+                          rows={3}
+                          value={formData.bio}
+                          onChange={handleInputChange}
+                          className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                        />
+                      </div>
+                      
+                      <div className="col-span-2">
+                        <label htmlFor="skills" className="block text-sm font-medium text-gray-700">
+                          Skills
+                        </label>
+                        <textarea
+                          name="skills"
+                          id="skills"
+                          rows={3}
+                          value={formData.skills}
+                          onChange={handleInputChange}
+                          className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                        />
+                      </div>
+                      
+                      <div className="col-span-2">
+                        <label htmlFor="education" className="block text-sm font-medium text-gray-700">
+                          Education
+                        </label>
+                        <textarea
+                          name="education"
+                          id="education"
+                          rows={3}
+                          value={formData.education}
+                          onChange={handleInputChange}
+                          className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                        />
+                      </div>
+                      
+                      <div className="col-span-2">
+                        <label htmlFor="experience" className="block text-sm font-medium text-gray-700">
+                          Experience
+                        </label>
+                        <textarea
+                          name="experience"
+                          id="experience"
+                          rows={3}
+                          value={formData.experience}
+                          onChange={handleInputChange}
+                          className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                        />
+                      </div>
+                    </div>
+                    
+                    <div className="mt-6">
+                      <button
+                        type="submit"
+                        disabled={updating}
+                        className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+                      >
+                        {updating ? 'Saving...' : 'Save Changes'}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+              
+              {/* User Assessments */}
+              <div className="bg-white rounded-lg shadow overflow-hidden">
+                <div className="px-6 py-4 border-b">
+                  <h3 className="text-lg font-medium text-gray-900">User Assessments</h3>
+                </div>
+                <div className="overflow-x-auto">
+                  {user.assessments.length > 0 ? (
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Type
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Status
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Tier
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Price
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Payment
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Date
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Actions
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {user.assessments.map((assessment) => (
+                          <tr key={assessment.id}>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm font-medium text-gray-900">
+                                {getAssessmentTypeName(assessment.type)}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusBadgeClass(assessment.status)}`}>
+                                {assessment.status.charAt(0).toUpperCase() + assessment.status.slice(1)}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {assessment.tier.charAt(0).toUpperCase() + assessment.tier.slice(1)}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {formatPrice(assessment.price)}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              {assessment.payment ? (
+                                <div className="flex flex-col">
+                                  <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${getPaymentStatusBadgeClass(assessment.payment.status)}`}>
+                                    {assessment.payment.status.charAt(0).toUpperCase() + assessment.payment.status.slice(1)}
+                                  </span>
+                                  <span className="text-xs text-gray-500 mt-1">
+                                    {formatPrice(assessment.payment.amount)}
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-xs text-gray-500">No payment</span>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {format(new Date(assessment.createdAt), 'PP')}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                              <Link
+                                href={`/clerk/assessments/${assessment.id}`}
+                                className="text-indigo-600 hover:text-indigo-900"
+                              >
+                                View
+                              </Link>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <div className="px-6 py-4 text-center text-gray-500">
+                      No assessments found for this user
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-white p-6 rounded-lg shadow text-center">
+          <p className="text-gray-600">User not found</p>
+        </div>
+      )}
+    </div>
+  );
+}

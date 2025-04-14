@@ -1,0 +1,143 @@
+// src/app/api/clerk/users/[id]/route.ts
+import { NextRequest, NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '@/lib/auth/auth';
+import { prisma } from '@/lib/db';
+
+interface Params {
+  params: {
+    id: string;
+  };
+}
+
+export async function GET(request: NextRequest, { params }: Params) {
+  try {
+    const { id } = params;
+    
+    // Check user authentication and clerk permissions
+    const session = await getServerSession(authOptions);
+    
+    if (!session) {
+      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+    }
+    
+    // Ensure user has clerk or admin role
+    if (session.user.role !== 'CLERK' && session.user.role !== 'ADMIN') {
+      return NextResponse.json({ message: 'Forbidden' }, { status: 403 });
+    }
+    
+    // Fetch user with assessments
+    const user = await prisma.user.findUnique({
+      where: {
+        id: id,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        bio: true,
+        skills: true,
+        education: true,
+        experience: true,
+        createdAt: true,
+        updatedAt: true,
+        assessments: {
+          select: {
+            id: true,
+            type: true,
+            status: true,
+            tier: true,
+            price: true,
+            createdAt: true,
+            payment: {
+              select: {
+                status: true,
+                amount: true,
+              },
+            },
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+        },
+      },
+    });
+    
+    if (!user) {
+      return NextResponse.json({ message: 'User not found' }, { status: 404 });
+    }
+    
+    return NextResponse.json({ user });
+  } catch (error) {
+    console.error('Error fetching user:', error);
+    return NextResponse.json(
+      { message: 'An error occurred while fetching the user' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PUT(request: NextRequest, { params }: Params) {
+  try {
+    const { id } = params;
+    
+    // Check user authentication and clerk permissions
+    const session = await getServerSession(authOptions);
+    
+    if (!session) {
+      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+    }
+    
+    // Ensure user has clerk or admin role
+    if (session.user.role !== 'CLERK' && session.user.role !== 'ADMIN') {
+      return NextResponse.json({ message: 'Forbidden' }, { status: 403 });
+    }
+    
+    // Parse request body
+    const body = await request.json();
+    
+    // Update allowable fields only (clerks can update profile info but not email)
+    const updateData: any = {};
+    
+    // List of fields that clerks can update
+    const allowedFields = ['name', 'phone', 'bio', 'skills', 'education', 'experience'];
+    
+    // Only include allowed fields in update data
+    for (const field of allowedFields) {
+      if (body[field] !== undefined) {
+        updateData[field] = body[field];
+      }
+    }
+    
+    // Perform update
+    const updatedUser = await prisma.user.update({
+      where: {
+        id: id,
+      },
+      data: updateData,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        bio: true,
+        skills: true,
+        education: true,
+        experience: true,
+        updatedAt: true,
+      }
+    });
+    
+    return NextResponse.json({ 
+      message: 'User updated successfully',
+      user: updatedUser,
+    });
+  } catch (error) {
+    console.error('Error updating user:', error);
+    return NextResponse.json(
+      { message: 'An error occurred while updating the user' },
+      { status: 500 }
+    );
+  }
+}

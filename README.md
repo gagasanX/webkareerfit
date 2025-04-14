@@ -8,9 +8,11 @@ First, run the development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+
+#studio
+npx prisma studio
+
+
+#bash struktur
+find ./src/app -type f,d | sort
+

@@ -2,13 +2,9 @@
 import { NextAuthOptions } from "next-auth";
 import { DefaultSession } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
-// For bcrypt you'll need to install the package:
-// npm install bcrypt
-// npm install @types/bcrypt --save-dev
 import * as bcryptModule from "bcrypt";
 
 // Workaround for bcrypt in case it's not available
-// (for development purposes only, should be replaced with real bcrypt in production)
 const compare = async (data: string, hash: string) => {
   try {
     if (bcryptModule && typeof bcryptModule.compare === 'function') {
@@ -26,12 +22,17 @@ const compare = async (data: string, hash: string) => {
 
 import { prisma } from "@/lib/db";
 
+// Define UserRole type to match Prisma schema
+type UserRole = 'USER' | 'CLERK' | 'ADMIN';
+
 // Extend Session type
 declare module "next-auth" {
   interface Session {
     user: {
       id: string;
-      isAdmin?: boolean;
+      role?: UserRole;
+      isAdmin?: boolean; // Keep for backward compatibility
+      isClerk?: boolean; // Computed property for backward compatibility
       isAffiliate?: boolean;
     } & DefaultSession["user"];
   }
@@ -39,7 +40,8 @@ declare module "next-auth" {
   interface User {
     id: string;
     email: string;
-    isAdmin: boolean;
+    role?: UserRole;
+    isAdmin: boolean; // Keep for backward compatibility
     isAffiliate: boolean;
   }
 }
@@ -76,12 +78,18 @@ export const authOptions: NextAuthOptions = {
           throw new Error("Invalid email or password");
         }
 
+        // Work around TypeScript issues with any for now
+        const userRole = (user as any).role || 'USER';
+        const isClerk = userRole === 'CLERK' || userRole === 'ADMIN';
+
         return {
           id: user.id,
           email: user.email,
           name: user.name,
           image: user.image,
+          role: userRole,
           isAdmin: user.isAdmin,
+          isClerk: isClerk, // Computed property
           isAffiliate: user.isAffiliate
         };
       }
@@ -96,7 +104,9 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user }) {
       if (user) {
         token.id = user.id;
+        token.role = user.role;
         token.isAdmin = user.isAdmin;
+        token.isClerk = (user as any).isClerk;
         token.isAffiliate = user.isAffiliate;
       }
       return token;
@@ -104,7 +114,9 @@ export const authOptions: NextAuthOptions = {
     async session({ session, token }) {
       if (token) {
         session.user.id = token.id as string;
+        session.user.role = token.role as UserRole;
         session.user.isAdmin = token.isAdmin as boolean;
+        session.user.isClerk = token.isClerk as boolean;
         session.user.isAffiliate = token.isAffiliate as boolean;
       }
       return session;

@@ -38,7 +38,31 @@ export default function LoginPage() {
         return;
       }
 
-      router.push(callbackUrl);
+      // Pastikan callbackUrl adalah path relatif (tanpa domain)
+      let redirectPath = callbackUrl;
+      
+      // Jika callbackUrl adalah URL penuh (dengan http/https), ambil hanya pathname
+      if (redirectPath.startsWith('http')) {
+        try {
+          const url = new URL(redirectPath);
+          redirectPath = url.pathname + url.search;
+        } catch (e) {
+          // Jika tidak dapat parse URL, gunakan default
+          redirectPath = '/dashboard';
+        }
+      }
+      
+      // Jika redirect path masih kosong, arahkan ke dashboard
+      if (!redirectPath || redirectPath === '') {
+        redirectPath = '/dashboard';
+      }
+      
+      // Log untuk debug (boleh dibuang selepas masalah selesai)
+      console.log('Redirecting to:', redirectPath);
+      
+      // Navigasi ke path relatif
+      router.push(redirectPath);
+      
     } catch (error) {
       setErrorMessage('An error occurred during login. Please try again.');
       setLoading(false);

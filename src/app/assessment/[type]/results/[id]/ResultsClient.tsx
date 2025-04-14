@@ -36,6 +36,7 @@ interface AssessmentData {
   resumeRecommendations?: string[];
   aiProcessed?: boolean;
   aiProcessedAt?: string;
+  readinessLevel?: string; // Added readinessLevel property
 }
 
 interface ResultsClientProps {
@@ -129,6 +130,7 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
         resumeRecommendations: data.data?.resumeRecommendations || [],
         aiProcessed: data.data?.aiProcessed || false,
         aiProcessedAt: data.data?.aiProcessedAt || null,
+        readinessLevel: data.data?.readinessLevel || calculateReadinessLevel((data.data?.scores as ScoresData)?.overallScore || 0)
       };
       
       // Ensure overallScore exists
@@ -161,6 +163,14 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
     }
   };
 
+  // Function to calculate readiness level based on score
+  const calculateReadinessLevel = (score: number): string => {
+    if (score < 50) return "Early Development";
+    if (score < 70) return "Developing Competency";
+    if (score < 85) return "Approaching Readiness";
+    return "Fully Prepared";
+  };
+
   // Manual refresh function for AI results
   const handleRefreshResults = () => {
     setLoading(true);
@@ -174,6 +184,22 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
     if (percentage >= 40) return 'bg-yellow-500';
     if (percentage >= 20) return 'bg-orange-500';
     return 'bg-red-500';
+  };
+
+  // Get readiness level color
+  const getReadinessLevelColor = (level: string): string => {
+    switch (level) {
+      case "Early Development":
+        return "text-red-600";
+      case "Developing Competency":
+        return "text-yellow-600";
+      case "Approaching Readiness":
+        return "text-blue-600";
+      case "Fully Prepared":
+        return "text-green-600";
+      default:
+        return "text-gray-600";
+    }
   };
 
   // Show loading state
@@ -247,6 +273,10 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
   const summary = assessmentData.summary || 'Assessment completed successfully.';
   const completedAt = assessmentData.completedAt || new Date().toISOString();
   const categoryAnalysis = assessmentData.categoryAnalysis || {};
+  
+  // Get or calculate readiness level
+  const readinessLevel = assessmentData.readinessLevel || calculateReadinessLevel(overallScore);
+  const readinessLevelColor = getReadinessLevelColor(readinessLevel);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -266,7 +296,7 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
           <div className="p-6 border-b">
             <div className="text-center">
               <h2 className="text-xl font-semibold text-gray-800 mb-2">Overall Score</h2>
-              <div className="flex justify-center">
+              <div className="flex justify-center flex-col items-center">
                 <div className="relative h-36 w-36">
                   <div className="absolute inset-0 flex items-center justify-center">
                     <span className="text-3xl font-bold text-gray-800">{overallScore}%</span>
@@ -291,6 +321,11 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
                       strokeLinecap="round"
                     />
                   </svg>
+                </div>
+                {/* Readiness Level - Added this section */}
+                <div className="mt-2">
+                  <span className="font-medium">Readiness Level: </span>
+                  <span className={`font-bold ${readinessLevelColor}`}>{readinessLevel}</span>
                 </div>
               </div>
               <p className="mt-4 text-gray-600 max-w-xl mx-auto">{summary}</p>
