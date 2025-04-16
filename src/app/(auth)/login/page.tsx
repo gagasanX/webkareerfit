@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, Suspense } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -8,7 +8,8 @@ import { Button } from '@/components/ui/Button';
 import Header from '@/components/ui/Header';
 import Footer from '@/components/ui/Footer';
 
-export default function LoginPage() {
+// Separate component that uses useSearchParams
+function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const callbackUrl = searchParams?.get('callbackUrl') || '/dashboard';
@@ -70,6 +71,112 @@ export default function LoginPage() {
   };
 
   return (
+    <form className="space-y-5" onSubmit={handleSubmit}>
+      {successMessage && (
+        <div className="mb-6 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg" role="alert">
+          <span className="block">{decodeURIComponent(successMessage).replace(/\+/g, ' ')}</span>
+        </div>
+      )}
+      
+      {errorMessage && (
+        <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg" role="alert">
+          <span className="block">{errorMessage}</span>
+        </div>
+      )}
+    
+      <div>
+        <label htmlFor="email-address" className="block text-sm font-medium text-gray-700 mb-1">
+          Email Address
+        </label>
+        <input
+          id="email-address"
+          name="email"
+          type="email"
+          autoComplete="email"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#7e43f1] focus:border-transparent transition-all"
+          placeholder="you@example.com"
+        />
+      </div>
+      
+      <div>
+        <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+          Password
+        </label>
+        <input
+          id="password"
+          name="password"
+          type="password"
+          autoComplete="current-password"
+          required
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#7e43f1] focus:border-transparent transition-all"
+          placeholder="Enter your password"
+        />
+      </div>
+
+      <div className="flex items-center justify-between mt-2">
+        <div className="flex items-center">
+          <input
+            id="remember-me"
+            name="remember-me"
+            type="checkbox"
+            className="h-4 w-4 text-[#7e43f1] focus:ring-[#38b6ff] border-gray-300 rounded"
+          />
+          <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-700">
+            Remember me
+          </label>
+        </div>
+
+        <div className="text-sm">
+          <Link href="/forgot-password" className="font-medium text-[#7e43f1] hover:text-[#38b6ff] transition-colors">
+            Forgot password?
+          </Link>
+        </div>
+      </div>
+
+      <div className="mt-6">
+        <Button
+          type="submit"
+          disabled={loading}
+          className="w-full py-3 bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] hover:from-[#7e43f1] hover:to-[#38b6ff] text-white font-medium rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl"
+        >
+          {loading ? 'Signing in...' : 'Sign In'}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+// Loading fallback for Suspense
+function LoginFormFallback() {
+  return (
+    <div className="space-y-5">
+      <div className="h-10 bg-gray-200 rounded animate-pulse mb-6"></div>
+      <div>
+        <div className="h-5 w-24 bg-gray-200 rounded animate-pulse mb-1"></div>
+        <div className="h-10 bg-gray-200 rounded animate-pulse"></div>
+      </div>
+      <div>
+        <div className="h-5 w-24 bg-gray-200 rounded animate-pulse mb-1"></div>
+        <div className="h-10 bg-gray-200 rounded animate-pulse"></div>
+      </div>
+      <div className="flex items-center justify-between mt-2">
+        <div className="h-5 w-28 bg-gray-200 rounded animate-pulse"></div>
+        <div className="h-5 w-28 bg-gray-200 rounded animate-pulse"></div>
+      </div>
+      <div className="mt-6">
+        <div className="h-12 bg-gray-200 rounded animate-pulse"></div>
+      </div>
+    </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
     <div className="min-h-screen flex flex-col">
       <Header />
       
@@ -91,83 +198,9 @@ export default function LoginPage() {
             
             {/* Form section */}
             <div className="p-6">
-              {successMessage && (
-                <div className="mb-6 bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg" role="alert">
-                  <span className="block">{decodeURIComponent(successMessage).replace(/\+/g, ' ')}</span>
-                </div>
-              )}
-              
-              {errorMessage && (
-                <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg" role="alert">
-                  <span className="block">{errorMessage}</span>
-                </div>
-              )}
-              
-              <form className="space-y-5" onSubmit={handleSubmit}>
-                <div>
-                  <label htmlFor="email-address" className="block text-sm font-medium text-gray-700 mb-1">
-                    Email Address
-                  </label>
-                  <input
-                    id="email-address"
-                    name="email"
-                    type="email"
-                    autoComplete="email"
-                    required
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#7e43f1] focus:border-transparent transition-all"
-                    placeholder="you@example.com"
-                  />
-                </div>
-                
-                <div>
-                  <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
-                    Password
-                  </label>
-                  <input
-                    id="password"
-                    name="password"
-                    type="password"
-                    autoComplete="current-password"
-                    required
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-[#7e43f1] focus:border-transparent transition-all"
-                    placeholder="Enter your password"
-                  />
-                </div>
-
-                <div className="flex items-center justify-between mt-2">
-                  <div className="flex items-center">
-                    <input
-                      id="remember-me"
-                      name="remember-me"
-                      type="checkbox"
-                      className="h-4 w-4 text-[#7e43f1] focus:ring-[#38b6ff] border-gray-300 rounded"
-                    />
-                    <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-700">
-                      Remember me
-                    </label>
-                  </div>
-
-                  <div className="text-sm">
-                    <Link href="/forgot-password" className="font-medium text-[#7e43f1] hover:text-[#38b6ff] transition-colors">
-                      Forgot password?
-                    </Link>
-                  </div>
-                </div>
-
-                <div className="mt-6">
-                  <Button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full py-3 bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] hover:from-[#7e43f1] hover:to-[#38b6ff] text-white font-medium rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl"
-                  >
-                    {loading ? 'Signing in...' : 'Sign In'}
-                  </Button>
-                </div>
-              </form>
+              <Suspense fallback={<LoginFormFallback />}>
+                <LoginForm />
+              </Suspense>
               
               <div className="mt-6 text-center">
                 <p className="text-gray-600">
