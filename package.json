@@ -17,6 +17,7 @@
     "@sendgrid/mail": "^8.1.4",
     "@types/formidable": "^3.4.5",
     "@types/multer": "^1.4.12",
+    "@vercel/edge-config": "^1.4.0",
     "axios": "^1.8.2",
     "bcrypt": "^5.1.1",
     "bcryptjs": "^3.0.2",
