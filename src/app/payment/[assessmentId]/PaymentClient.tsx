@@ -98,8 +98,8 @@ export default function PaymentClient({
         return;
       }
       
-      // For paid assessments, proceed with normal payment flow
-      const response = await fetch('/api/payment/initiate', {
+      // For paid assessments, proceed with normal payment flow using the create endpoint
+      const response = await fetch('/api/payment/create', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -108,20 +108,22 @@ export default function PaymentClient({
           assessmentId: assessment.id,
           amount: finalPrice,
           method: paymentMethod,
+          gateway: 'billplz' // Explicitly specify billplz as the payment gateway
         }),
       });
       
       if (!response.ok) {
-        throw new Error('Failed to initiate payment');
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to create payment');
       }
       
       const data = await response.json();
       
       // Redirect to payment gateway
-      if (data.redirectUrl) {
-        window.location.href = data.redirectUrl;
+      if (data.paymentUrl) {
+        window.location.href = data.paymentUrl;
       } else {
-        throw new Error('No redirect URL provided');
+        throw new Error('No payment URL provided');
       }
     } catch (err) {
       console.error('Payment error:', err);

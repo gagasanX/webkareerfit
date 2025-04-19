@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
 import Header from '@/components/ui/Header';
 import Footer from '@/components/ui/Footer';
+import { get } from '@vercel/edge-config';
 
 // Separate component that uses useSearchParams
 function LoginForm() {
@@ -175,7 +176,35 @@ function LoginFormFallback() {
   );
 }
 
-export default function LoginPage() {
+// Main LoginPage component with Edge Config check
+export default async function LoginPage() {
+  // Baca login_enabled dari Edge Config dengan fallback
+  let loginEnabled: boolean;
+  try {
+    const configValue = await get('login_enabled');
+    loginEnabled = configValue ?? true; // Fallback ke true kalau undefined
+  } catch (error) {
+    console.error('Failed to read Edge Config:', error);
+    loginEnabled = true; // Fallback ke true kalau Edge Config gagal
+  }
+
+  if (!loginEnabled) {
+    return (
+      <div className="min-h-screen flex flex-col">
+        <Header />
+        <main className="flex-grow flex items-center justify-center p-6">
+          <div className="w-full max-w-md text-center">
+            <div className="bg-white rounded-xl shadow-xl p-6">
+              <h2 className="text-2xl font-bold text-gray-800">Maintenance Mode</h2>
+              <p className="text-gray-600 mt-2">Login is temporarily disabled. Please try again later.</p>
+            </div>
+          </div>
+        </main>
+        <Footer />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col">
       <Header />
@@ -187,7 +216,7 @@ export default function LoginPage() {
             <div className="bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] p-6 text-white text-center">
               <div className="inline-block bg-white p-2 rounded-lg shadow-lg mb-4">
                 <img 
-                  src="https://kareerfit.com/wp-content/uploads/2025/01/KAREERfit.png" 
+                  src="https://kareerfit.com/wp-content/uploads/2025/04/kareerfit-e1745044965740.png" 
                   alt="KareerFit Logo" 
                   className="h-8"
                 />
