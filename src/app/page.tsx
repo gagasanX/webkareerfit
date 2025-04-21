@@ -133,7 +133,7 @@ export default function HomePage() {
           <div className="mb-10">
             <div className="inline-block bg-white p-2 rounded-lg shadow-lg mb-2">
               <img 
-                src="https://kareerfit.com/wp-content/uploads/2025/04/kareerfit-e1745044965740.png" 
+                src="https://kareerfit.com/wp-content/uploads/2025/04/kareerfit-1-e1745277544629.png" 
                 alt="KareerFit Logo" 
                 className="h-8"
               />
@@ -205,7 +205,7 @@ export default function HomePage() {
           <div className="text-center mb-6">
             <div className="inline-flex items-center justify-center mb-4">
               <img 
-                src="https://kareerfit.com/wp-content/uploads/2025/04/kareerfit-e1745044965740.png" 
+                src="https://kareerfit.com/wp-content/uploads/2025/04/kareerfit-1-e1745277544629.png" 
                 alt="KareerFit Logo" 
                 className="h-8"
               />

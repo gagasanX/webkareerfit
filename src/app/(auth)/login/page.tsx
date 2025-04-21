@@ -182,7 +182,8 @@ export default async function LoginPage() {
   let loginEnabled: boolean;
   try {
     const configValue = await get('login_enabled');
-    loginEnabled = configValue ?? true; // Fallback ke true kalau undefined
+    // Fix: Explicitly convert the value to boolean type using a type guard
+    loginEnabled = typeof configValue === 'boolean' ? configValue : true;
   } catch (error) {
     console.error('Failed to read Edge Config:', error);
     loginEnabled = true; // Fallback ke true kalau Edge Config gagal
@@ -216,7 +217,7 @@ export default async function LoginPage() {
             <div className="bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] p-6 text-white text-center">
               <div className="inline-block bg-white p-2 rounded-lg shadow-lg mb-4">
                 <img 
-                  src="https://kareerfit.com/wp-content/uploads/2025/04/kareerfit-e1745044965740.png" 
+                  src="https://kareerfit.com/wp-content/uploads/2025/04/kareerfit-1-e1745277544629.png" 
                   alt="KareerFit Logo" 
                   className="h-8"
                 />

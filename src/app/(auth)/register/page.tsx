@@ -86,7 +86,7 @@ export default function RegisterPage() {
             <div className="bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] p-6 text-white text-center">
               <div className="inline-block bg-white p-2 rounded-lg shadow-lg mb-4">
                 <img 
-                  src="https://kareerfit.com/wp-content/uploads/2025/01/KAREERfit.png" 
+                  src="https://kareerfit.com/wp-content/uploads/2025/04/kareerfit-1-e1745277544629.png" 
                   alt="KareerFit Logo" 
                   className="h-8"
                 />

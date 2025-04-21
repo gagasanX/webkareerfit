@@ -279,11 +279,11 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
   const readinessLevelColor = getReadinessLevelColor(readinessLevel);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-12 px-4 sm:px-6 lg:px-8">
+    <div className="print-container min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl mx-auto">
         {/* Header section */}
         <div className="bg-white rounded-xl shadow-md overflow-hidden mb-8">
-          <div className="bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] p-6 text-white">
+          <div className="print-header bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] p-6 text-white">
             <h1 className="text-2xl font-bold">
               {assessmentTypeLabels[assessmentType] || assessmentType} Results
             </h1>
@@ -332,7 +332,7 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
               
               {/* AI analysis status indicator */}
               {aiStatus === 'processing' && (
-                <div className="mt-4 p-3 bg-blue-50 text-blue-700 rounded-lg flex items-center justify-center">
+                <div className="print-hidden mt-4 p-3 bg-blue-50 text-blue-700 rounded-lg flex items-center justify-center">
                   <div className="w-4 h-4 border-2 border-t-transparent border-blue-700 rounded-full animate-spin mr-2"></div>
                   <span>AI analysis in progress... This may take a few minutes.</span>
                   <button 
@@ -355,7 +355,7 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {strengths.length > 0 && (
-                  <div className="bg-green-50 p-5 rounded-lg">
+                  <div className="bg-green-50 p-5 rounded-lg print-bg-light">
                     <h3 className="text-lg font-medium text-green-800 mb-3">Your Strengths</h3>
                     <ul className="list-disc list-inside space-y-2">
                       {strengths.map((strength, index) => (
@@ -366,7 +366,7 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
                 )}
                 
                 {improvements.length > 0 && (
-                  <div className="bg-yellow-50 p-5 rounded-lg">
+                  <div className="bg-yellow-50 p-5 rounded-lg print-bg-light">
                     <h3 className="text-lg font-medium text-yellow-800 mb-3">Areas for Improvement</h3>
                     <ul className="list-disc list-inside space-y-2">
                       {improvements.map((improvement, index) => (
@@ -463,7 +463,7 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
                     // Enhanced recommendation with details
                     const detailedRec = recommendation as unknown as RecommendationWithDetails;
                     return (
-                      <div key={index} className="bg-blue-50 rounded-lg p-4">
+                      <div key={index} className="bg-blue-50 rounded-lg p-4 print-bg-light">
                         <div className="flex items-start mb-2">
                           <div className="flex-shrink-0 h-6 w-6 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-xs mt-0.5">
                             {index + 1}
@@ -501,7 +501,7 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
               <h2 className="text-xl font-semibold text-gray-800 mb-4">Resume Analysis</h2>
               
               {aiStatus === 'processing' ? (
-                <div className="flex items-center justify-center p-6 text-gray-500">
+                <div className="print-hidden flex items-center justify-center p-6 text-gray-500">
                   <div className="w-5 h-5 border-2 border-t-transparent border-gray-500 rounded-full animate-spin mr-2"></div>
                   <span>Resume analysis in progress...</span>
                 </div>
@@ -528,7 +528,7 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
         )}
 
         {/* Action buttons */}
-        <div className="flex flex-col sm:flex-row justify-center space-y-4 sm:space-y-0 sm:space-x-4 mb-8">
+        <div className="print-hidden flex flex-col sm:flex-row justify-center space-y-4 sm:space-y-0 sm:space-x-4 mb-8">
           <button
             onClick={() => router.push('/dashboard')}
             className="bg-white text-[#7e43f1] border border-[#7e43f1] px-6 py-3 rounded-lg font-medium hover:bg-purple-50 transition-colors"
@@ -554,6 +554,165 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
           )}
         </div>
       </div>
+
+      {/* Print-specific styles */}
+      <style jsx global>{`
+        @media print {
+          /* General Layout */
+          body {
+            background: white !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            font-size: 12pt !important;
+            color: #000 !important;
+          }
+          
+          .print-container {
+            min-height: 0 !important;
+            background: white !important;
+            padding: 0 !important;
+          }
+          
+          .max-w-4xl {
+            max-width: 100% !important;
+            margin: 0 !important;
+            padding: 0 20px !important;
+          }
+          
+          /* Hide elements not needed in print */
+          .bg-gradient-to-br,
+          .print-hidden,
+          button {
+            display: none !important;
+          }
+          
+          /* Reset backgrounds and borders */
+          .bg-white {
+            box-shadow: none !important;
+            margin: 15px 0 !important;
+            border: 1px solid #ddd !important;
+          }
+          
+          .rounded-xl {
+            border-radius: 0 !important;
+          }
+          
+          /* Header styling */
+          .print-header {
+            background: #f8f9fa !important;
+            color: #000 !important;
+            border-bottom: 2px solid #333 !important;
+            padding: 20px !important;
+          }
+          
+          .print-header h1 {
+            color: #000 !important;
+            font-size: 24pt !important;
+            margin-bottom: 10px !important;
+          }
+          
+          .print-header p {
+            color: #666 !important;
+          }
+          
+          /* Score circle optimization */
+          .h-36.w-36 {
+            height: 100px !important;
+            width: 100px !important;
+          }
+          
+          /* Typography for print */
+          h1 { font-size: 24pt !important; }
+          h2 { font-size: 18pt !important; }
+          h3 { font-size: 14pt !important; }
+          h4 { font-size: 12pt !important; }
+          p, li { font-size: 11pt !important; }
+          
+          /* Color adjustments */
+          .bg-green-50,
+          .bg-yellow-50,
+          .bg-blue-50,
+          .print-bg-light {
+            background: #f8f9fa !important;
+            border: 1px solid #ddd !important;
+          }
+          
+          .text-white {
+            color: #000 !important;
+          }
+          
+          .text-gray-700,
+          .text-gray-600,
+          .text-gray-800 {
+            color: #000 !important;
+          }
+          
+          .text-green-800,
+          .text-yellow-800,
+          .text-blue-800 {
+            color: #333 !important;
+          }
+          
+          .text-green-700,
+          .text-yellow-700,
+          .text-blue-700 {
+            color: #555 !important;
+          }
+          
+          /* Score bars */
+          .bg-green-500,
+          .bg-blue-500,
+          .bg-yellow-500,
+          .bg-orange-500,
+          .bg-red-500 {
+            background: #666 !important;
+            print-color-adjust: exact !important;
+          }
+          
+          /* Recommendation numbers */
+          .flex-shrink-0.h-6.w-6.rounded-full {
+            background: #333 !important;
+            color: #fff !important;
+            print-color-adjust: exact !important;
+          }
+          
+          /* Keep SVG colors for the score circle */
+          svg path {
+            print-color-adjust: exact !important;
+          }
+          
+          /* Page break handling */
+          .bg-white {
+            page-break-inside: avoid !important;
+          }
+          
+          h2, h3 {
+            page-break-after: avoid !important;
+          }
+          
+          ul, ol {
+            page-break-inside: avoid !important;
+          }
+          
+          /* Ensure consistent spacing */
+          .p-6 {
+            padding: 15px !important;
+          }
+          
+          .mb-8 {
+            margin-bottom: 15px !important;
+          }
+          
+          .space-y-6 > * + * {
+            margin-top: 12px !important;
+          }
+          
+          /* Loading and error states not needed in print */
+          .animate-spin {
+            display: none !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }

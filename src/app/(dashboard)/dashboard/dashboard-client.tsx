@@ -399,7 +399,7 @@ export default function DashboardClient() {
       <aside className="w-20 bg-white shadow-lg flex flex-col items-center py-8 fixed h-full">
         <div className="bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] p-1 rounded-full mb-10 w-12 h-12 flex items-center justify-center">
           <img 
-            src="https://kareerfit.com/wp-content/uploads/2025/04/kareerfit-e1745044965740.png" 
+            src="https://kareerfit.com/wp-content/uploads/2025/04/kareerfit-1-e1745277544629.png" 
             alt="KareerFit Logo" 
             className="w-10 h-10 object-contain" 
           />
