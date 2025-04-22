@@ -29,37 +29,136 @@ function PaymentStatusClient() {
     // Extract the relevant parameters based on the payment gateway
     const billplzId = searchParams.get('billplz[id]');
     const billplzPaid = searchParams.get('billplz[paid]');
+    const billplzSignature = searchParams.get('billplz[x_signature]');
     const toyyibStatus = searchParams.get('status');
     const toyyibBillCode = searchParams.get('billcode');
     
-    // Determine payment status from URL parameters
-    if (billplzId && billplzPaid === 'true') {
-      setPaymentStatus('success');
-      setPaymentDetails({
-        gateway: 'Billplz',
-        reference: billplzId
-      });
-    } else if (billplzId && billplzPaid === 'false') {
-      setPaymentStatus('failed');
-      setPaymentDetails({
-        gateway: 'Billplz',
-        reference: billplzId
-      });
-    } else if (toyyibStatus === '1' && toyyibBillCode) {
-      setPaymentStatus('success');
-      setPaymentDetails({
-        gateway: 'ToyyibPay',
-        reference: toyyibBillCode
-      });
-    } else if (toyyibStatus && toyyibStatus !== '1' && toyyibBillCode) {
-      setPaymentStatus('failed');
-      setPaymentDetails({
-        gateway: 'ToyyibPay',
-        reference: toyyibBillCode
-      });
+    // If we have Billplz parameters
+    if (billplzId) {
+      try {
+        // Create a set of all URL parameters to verify on server
+        const billplzParams = {
+          id: billplzId,
+          paid: billplzPaid === 'true' ? 'true' : 'false',
+          x_signature: billplzSignature || '',
+        };
+        
+        // Call API to verify payment and update database
+        const response = await fetch('/api/payment/verify-redirect', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            gateway: 'billplz',
+            params: billplzParams
+          }),
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
+          setPaymentStatus(data.status === 'completed' ? 'success' : 'failed');
+          setPaymentDetails({
+            gateway: 'Billplz',
+            reference: billplzId,
+            assessmentId: data.assessmentId || null
+          });
+        } else {
+          console.error('Payment verification failed:', data.message);
+          // Still show status based on URL parameters as fallback
+          if (billplzPaid === 'true') {
+            setPaymentStatus('success');
+          } else {
+            setPaymentStatus('failed');
+          }
+          setPaymentDetails({
+            gateway: 'Billplz',
+            reference: billplzId
+          });
+        }
+      } catch (error) {
+        console.error('Error verifying payment:', error);
+        // Fallback to URL parameter status
+        if (billplzPaid === 'true') {
+          setPaymentStatus('success');
+        } else {
+          setPaymentStatus('failed');
+        }
+        setPaymentDetails({
+          gateway: 'Billplz',
+          reference: billplzId
+        });
+      }
+    } 
+    // If we have Toyyibpay parameters
+    else if (toyyibBillCode) {
+      try {
+        // Create a set of all URL parameters to verify on server
+        const toyyibParams = {
+          billcode: toyyibBillCode,
+          status: toyyibStatus || '',
+        };
+        
+        // Call API to verify payment and update database
+        const response = await fetch('/api/payment/verify-redirect', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            gateway: 'toyyibpay',
+            params: toyyibParams
+          }),
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
+          setPaymentStatus(data.status === 'completed' ? 'success' : 'failed');
+          setPaymentDetails({
+            gateway: 'ToyyibPay',
+            reference: toyyibBillCode,
+            assessmentId: data.assessmentId || null
+          });
+        } else {
+          console.error('Payment verification failed:', data.message);
+          // Fallback to URL parameter status
+          if (toyyibStatus === '1') {
+            setPaymentStatus('success');
+          } else {
+            setPaymentStatus('failed');
+          }
+          setPaymentDetails({
+            gateway: 'ToyyibPay',
+            reference: toyyibBillCode
+          });
+        }
+      } catch (error) {
+        console.error('Error verifying payment:', error);
+        // Fallback to URL parameter status
+        if (toyyibStatus === '1') {
+          setPaymentStatus('success');
+        } else {
+          setPaymentStatus('failed');
+        }
+        setPaymentDetails({
+          gateway: 'ToyyibPay',
+          reference: toyyibBillCode
+        });
+      }
     } else {
       setPaymentStatus('unknown');
     }
+  };
+  
+  const getAssessmentUrl = () => {
+    if (paymentDetails && paymentDetails.assessmentId) {
+      // If we have assessment details, redirect to the assessment
+      return `/assessment/${paymentDetails.assessmentType || 'general'}/${paymentDetails.assessmentId}`;
+    }
+    // Otherwise redirect to dashboard
+    return '/dashboard';
   };
   
   if (status === 'loading' || paymentStatus === 'loading') {
@@ -138,10 +237,12 @@ function PaymentStatusClient() {
                 
                 <div className="flex flex-col space-y-3">
                   <Link
-                    href="/dashboard"
+                    href={getAssessmentUrl()}
                     className="px-6 py-3 bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] text-white rounded-lg font-medium hover:shadow-lg transition-shadow text-center"
                   >
-                    Go to Dashboard
+                    {paymentDetails && paymentDetails.assessmentId 
+                      ? 'Go to Assessment' 
+                      : 'Go to Dashboard'}
                   </Link>
                 </div>
               </div>

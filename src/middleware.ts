@@ -16,15 +16,18 @@ export async function middleware(request: NextRequest) {
     '/api/auth/signout',
     '/api/auth/session',
     '/api/auth/csrf',
+    // Adding auth routes explicitly as public paths
+    '/admin-auth/login',
+    '/admin-auth/register',
+    '/clerk-auth/login',
+    '/clerk-auth/register'
   ];
 
-  // Check if the current path is a public path
-  const isPublicPath = publicPaths.some(publicPath => 
-    path === publicPath || 
+  // Check if the current path is a public path (more specific check)
+  const isPublicPath = publicPaths.includes(path) || 
     path.startsWith('/api/auth/') ||
     path.includes('_next') || 
-    path.includes('/static/')
-  );
+    path.includes('/static/');
 
   // Get the token, if it exists
   const token = await getToken({
@@ -32,9 +35,41 @@ export async function middleware(request: NextRequest) {
     secret: process.env.NEXTAUTH_SECRET,
   });
 
+  // Public paths should always be accessible without redirects
+  if (isPublicPath) {
+    // For auth pages, check if already logged in and redirect to appropriate dashboard if true
+    if (token) {
+      if ((path === '/admin-auth/login' || path === '/admin-auth/register') && token.isAdmin) {
+        return NextResponse.redirect(new URL('/admin/dashboard', request.url));
+      }
+      
+      if ((path === '/clerk-auth/login' || path === '/clerk-auth/register') && 
+          (token.isClerk || token.isAdmin)) {
+        return NextResponse.redirect(new URL('/clerk/dashboard', request.url));
+      }
+      
+      if (path === '/login' || path === '/register') {
+        return NextResponse.redirect(new URL('/dashboard', request.url));
+      }
+    }
+    
+    // For all other public paths, just continue
+    return NextResponse.next();
+  }
+
+  // At this point, we're dealing with protected routes
   // Redirect to login if accessing a protected route without being authenticated
-  if (!token && !isPublicPath) {
-    const url = new URL('/login', request.url);
+  if (!token) {
+    // Determine the appropriate login page based on the path
+    let loginPath = '/login';
+    
+    if (path.startsWith('/admin')) {
+      loginPath = '/admin-auth/login';
+    } else if (path.startsWith('/clerk')) {
+      loginPath = '/clerk-auth/login';
+    }
+    
+    const url = new URL(loginPath, request.url);
     url.searchParams.set('callbackUrl', encodeURI(request.url));
     return NextResponse.redirect(url);
   }
@@ -82,4 +117,3 @@ export const config = {
     '/((?!_next/static|_next/image|favicon.ico|public).*)',
   ],
 };
-

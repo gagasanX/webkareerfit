@@ -123,6 +123,26 @@ model Referral {
   @@index([assessmentId])
 }
 
+model SystemSetting {
+  key       String   @id
+  value     String   @db.Text
+  isJson    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([key])
+}
+
+model EmailTemplate {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  subject     String
+  htmlContent String   @db.Text
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 model AffiliateApplication {
   id          String   @id @default(cuid())
   createdAt   DateTime @default(now())
