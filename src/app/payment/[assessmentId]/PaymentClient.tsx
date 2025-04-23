@@ -27,8 +27,16 @@ export default function PaymentClient({
   const [finalPrice, setFinalPrice] = useState<number>(basePrice);
   const [discount, setDiscount] = useState<number>(0);
   
+  console.log(`[PaymentClient] Initial render - Tier: ${assessment.tier}, Base Price: ${basePrice}, Final Price: ${finalPrice}`);
+  
+  // Ensure finalPrice is properly initialized and updated when basePrice changes
+  useEffect(() => {
+    console.log(`[PaymentClient] basePrice changed: ${basePrice}`);
+    setFinalPrice(basePrice - discount);
+  }, [basePrice, discount]);
+  
   // Check if the assessment is free (price is 0)
-  const isFree = finalPrice === 0;
+  const isFree = finalPrice <= 0;
   
   // If the assessment is free, process it automatically and redirect
   useEffect(() => {
@@ -64,6 +72,7 @@ export default function PaymentClient({
   }, [isFree, assessment, router, isProcessing]);
   
   const handleApplyCoupon = (discountAmount: number, newPrice: number) => {
+    console.log(`[PaymentClient] Coupon applied - Discount: ${discountAmount}, New Price: ${newPrice}`);
     setDiscount(discountAmount);
     setFinalPrice(newPrice);
   };
@@ -75,6 +84,8 @@ export default function PaymentClient({
     
     setIsProcessing(true);
     setError(null);
+    
+    console.log(`[PaymentClient] Submitting payment - Amount: ${finalPrice}, Method: ${paymentMethod}`);
     
     try {
       // If the assessment is free, use the free completion endpoint
@@ -108,7 +119,8 @@ export default function PaymentClient({
           assessmentId: assessment.id,
           amount: finalPrice,
           method: paymentMethod,
-          gateway: 'billplz' // Explicitly specify billplz as the payment gateway
+          // Include the tier for debugging
+          tier: assessment.tier
         }),
       });
       
@@ -118,6 +130,7 @@ export default function PaymentClient({
       }
       
       const data = await response.json();
+      console.log(`[PaymentClient] Payment created successfully - Redirecting to: ${data.paymentUrl}`);
       
       // Redirect to payment gateway
       if (data.paymentUrl) {

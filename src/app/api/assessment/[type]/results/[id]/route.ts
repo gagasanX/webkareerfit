@@ -20,6 +20,14 @@ export async function GET(
       );
     }
     
+    // Fix: Verify params exist before using them
+    if (!params || !params.type || !params.id) {
+      return NextResponse.json(
+        { error: 'Missing required parameters' },
+        { status: 400 }
+      );
+    }
+    
     const { type, id } = params;
     console.log(`Fetching results for assessment: ${type}/${id}`);
 
@@ -109,26 +117,81 @@ async function runAiAnalysis(
     console.log(`Running AI analysis for assessment: ${assessmentId}`);
     
     // Call the AI analysis endpoint
-    const response = await fetch(new URL('/api/ai-analysis', process.env.NEXTAUTH_URL), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        assessmentId,
-        assessmentType,
-        answers,
-        personalInfo,
-        userId
-      })
-    });
+    const aiUrl = new URL('/api/ai-analysis', process.env.NEXTAUTH_URL);
+    console.log(`Calling AI analysis endpoint: ${aiUrl.toString()}`);
     
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(`AI Analysis failed: ${errorData.error || response.status}`);
+    const payload = {
+      assessmentId,
+      assessmentType,
+      answers,
+      personalInfo,
+      userId
+    };
+    
+    console.log(`AI analysis payload: ${JSON.stringify(payload).substring(0, 200)}...`);
+    
+    // Fix: Better error handling for the fetch request
+    let response;
+    try {
+      response = await fetch(aiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload)
+      });
+    } catch (fetchError) {
+      console.error('Fetch error during AI analysis:', fetchError);
+      throw new Error(`Network error calling AI Analysis: ${fetchError instanceof Error ? fetchError.message : 'Unknown error'}`);
     }
     
-    const result = await response.json();
+    if (!response.ok) {
+      let errorMessage = `AI Analysis failed with status: ${response.status}`;
+      try {
+        // Try to get error details from response
+        const errorText = await response.text();
+        // Check if the response is HTML (error page)
+        if (errorText.trim().startsWith('<!DOCTYPE') || errorText.trim().startsWith('<html')) {
+          console.error('Received HTML error page from AI Analysis endpoint');
+          errorMessage = `AI Analysis failed: Received HTML error page instead of JSON response (status: ${response.status})`;
+        } else {
+          // Try to parse as JSON
+          try {
+            const errorData = JSON.parse(errorText);
+            errorMessage = `AI Analysis failed: ${errorData.error || response.status}`;
+          } catch (parseError) {
+            errorMessage = `AI Analysis failed (status: ${response.status}): ${errorText.substring(0, 100)}...`;
+          }
+        }
+      } catch (responseError) {
+        // If we can't read the response at all
+        console.error('Error reading error response:', responseError);
+      }
+      throw new Error(errorMessage);
+    }
+    
+    // Fix: Improved JSON parsing with better error handling
+    let result;
+    try {
+      const responseText = await response.text();
+      
+      // Check if the response is HTML (error page)
+      if (responseText.trim().startsWith('<!DOCTYPE') || responseText.trim().startsWith('<html')) {
+        console.error('Received HTML instead of JSON from AI Analysis');
+        throw new Error('Invalid response format: received HTML instead of JSON');
+      }
+      
+      result = JSON.parse(responseText);
+      console.log('AI analysis result received successfully');
+    } catch (parseError) {
+      console.error('Error parsing AI analysis response:', parseError);
+      throw new Error(`Failed to parse AI analysis response: ${parseError instanceof Error ? parseError.message : 'Unknown error'}`);
+    }
+    
+    if (!result || !result.analysis) {
+      console.error('Invalid AI analysis result structure:', result);
+      throw new Error('AI Analysis returned invalid data structure');
+    }
     
     // Update assessment with analysis results
     const updatedAssessment = await prisma.assessment.update({
@@ -162,7 +225,9 @@ async function runAiAnalysis(
       data: {
         data: {
           aiProcessed: false,
-          aiError: error instanceof Error ? error.message : 'Unknown error'
+          aiError: error instanceof Error ? error.message : 'Unknown error',
+          // Make sure aiAnalysisStarted is set to false to allow future retries
+          aiAnalysisStarted: false
         }
       }
     });

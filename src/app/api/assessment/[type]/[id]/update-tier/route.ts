@@ -8,94 +8,96 @@ export async function POST(
   { params }: { params: { type: string; id: string } }
 ) {
   try {
-    console.log('Update tier API called');
-    
-    // Authenticate user
     const session = await getServerSession(authOptions);
-    
+
     if (!session?.user?.id) {
-      console.log('Unauthorized access attempt');
       return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }
-    
-    const userId = session.user.id;
+
     const { type, id } = params;
     
-    // Parse request data
-    let requestData;
-    try {
-      requestData = await request.json();
-      console.log('Request data:', JSON.stringify(requestData));
-    } catch (jsonError) {
-      console.error('Failed to parse request JSON:', jsonError);
-      return NextResponse.json({ message: 'Invalid request data' }, { status: 400 });
+    if (!type || !id) {
+      return NextResponse.json(
+        { message: 'Missing required parameters' },
+        { status: 400 }
+      );
     }
-    
-    const { tier } = requestData;
+
+    // Extract the tier from the request body
+    const { tier } = await request.json();
     
     if (!tier) {
-      console.log('Missing required field: tier');
-      return NextResponse.json({ message: 'Missing required field: tier' }, { status: 400 });
+      return NextResponse.json(
+        { message: 'Missing tier information' },
+        { status: 400 }
+      );
     }
-    
+
     // Validate tier
-    if (!['basic', 'standard', 'premium'].includes(tier)) {
-      return NextResponse.json({ message: 'Invalid tier. Must be basic, standard, or premium' }, { status: 400 });
+    const validTiers = ['basic', 'standard', 'premium'];
+    if (!validTiers.includes(tier)) {
+      return NextResponse.json(
+        { message: 'Invalid tier selection' },
+        { status: 400 }
+      );
     }
-    
-    // Verify assessment exists and belongs to user
+
+    // Find the assessment
     const assessment = await prisma.assessment.findUnique({
-      where: { id },
-    });
-    
-    if (!assessment) {
-      return NextResponse.json({ message: 'Assessment not found' }, { status: 404 });
-    }
-    
-    if (assessment.userId !== userId) {
-      return NextResponse.json({ message: 'You do not own this assessment' }, { status: 403 });
-    }
-    
-    // Determine price based on tier
-    const tierPrices = {
-      basic: 50,       // Basic Analysis
-      standard: 100,   // Basic Report
-      premium: 250     // Full Report + Interview
-    };
-    
-    const price = tierPrices[tier as keyof typeof tierPrices] || 50;
-    
-    // Update assessment tier and price
-    const updatedAssessment = await prisma.assessment.update({
-      where: { id },
-      data: {
-        tier,
-        price,
+      where: {
+        id: id,
       },
     });
-    
-    // If there's an existing payment, update it
-    const existingPayment = await prisma.payment.findUnique({
-      where: { assessmentId: id },
-    });
-    
-    if (existingPayment && existingPayment.status === 'pending') {
-      await prisma.payment.update({
-        where: { id: existingPayment.id },
-        data: { amount: price },
-      });
+
+    if (!assessment) {
+      return NextResponse.json(
+        { message: 'Assessment not found' },
+        { status: 404 }
+      );
     }
-    
+
+    // Ensure the assessment belongs to the user
+    if (assessment.userId !== session.user.id) {
+      return NextResponse.json(
+        { message: 'You do not have permission to update this assessment' },
+        { status: 403 }
+      );
+    }
+
+    // Determine price based on tier
+    const tierPrices = {
+      basic: 50,
+      standard: 100,
+      premium: 250,
+    };
+
+    const price = tierPrices[tier as keyof typeof tierPrices];
+
+    // Update the assessment with the selected tier and price
+    const updatedAssessment = await prisma.assessment.update({
+      where: {
+        id: id,
+      },
+      data: {
+        tier: tier,
+        price: price,
+      },
+    });
+
+    console.log(`Updated assessment ${id} with tier: ${tier} and price: ${price}`);
+
     return NextResponse.json({
       success: true,
-      message: 'Assessment tier updated successfully',
-      assessment: updatedAssessment
+      assessment: updatedAssessment,
     });
   } catch (error) {
     console.error('Error updating assessment tier:', error);
-    return NextResponse.json({ 
-      message: 'Failed to update assessment tier',
-      details: error instanceof Error ? error.message : 'Unknown error'
-    }, { status: 500 });
+    return NextResponse.json(
+      { 
+        message: 'Failed to update assessment tier',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      }, 
+      { status: 500 }
+    );
   }
 }

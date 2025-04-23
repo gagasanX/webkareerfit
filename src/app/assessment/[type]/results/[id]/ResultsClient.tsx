@@ -36,6 +36,9 @@ interface AssessmentData {
   resumeRecommendations?: string[];
   aiProcessed?: boolean;
   aiProcessedAt?: string;
+  aiAnalysisStarted?: boolean;
+  aiAnalysisStartedAt?: string;
+  aiError?: string;
   readinessLevel?: string; // Added readinessLevel property
 }
 
@@ -53,6 +56,7 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
   const [assessmentData, setAssessmentData] = useState<AssessmentData | null>(null);
   const [aiStatus, setAiStatus] = useState<'pending' | 'processing' | 'completed' | 'failed'>('pending');
   const [pollingCount, setPollingCount] = useState(0);
+  const [debugInfo, setDebugInfo] = useState<string | null>(null);
 
   // Assessment type labels
   const assessmentTypeLabels: Record<string, string> = {
@@ -81,18 +85,25 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
   useEffect(() => {
     // Only poll if:
     // 1. We have assessment data
-    // 2. AI is not marked as completed
-    // 3. We haven't polled too many times (max 30 times = 5 minutes)
-    if (assessmentData && aiStatus !== 'completed' && pollingCount < 30) {
+    // 2. AI is being processed (aiAnalysisStarted is true)
+    // 3. AI is not completed yet
+    // 4. We haven't polled too many times (max 30 times = 5 minutes)
+    if (assessmentData && 
+        assessmentData.aiAnalysisStarted && 
+        !assessmentData.aiProcessed && 
+        pollingCount < 30) {
+      
+      console.log(`Polling for AI updates (attempt ${pollingCount + 1})...`);
+      setDebugInfo(`Polling for AI updates (attempt ${pollingCount + 1})`);
+      
       const timer = setTimeout(() => {
-        console.log(`Polling for AI updates (attempt ${pollingCount + 1})...`);
         fetchResults();
         setPollingCount(prev => prev + 1);
       }, 10000); // Poll every 10 seconds
       
       return () => clearTimeout(timer);
     }
-  }, [assessmentData, aiStatus, pollingCount]);
+  }, [assessmentData, pollingCount]);
 
   const fetchResults = async () => {
     if (!assessmentType || !assessmentId) {
@@ -102,35 +113,58 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
     
     try {
       console.log(`Fetching results for assessment: ${assessmentType}/${assessmentId}`);
-      const response = await fetch(`/api/assessment/${assessmentType}/results/${assessmentId}`);
+      setDebugInfo(`Fetching results for assessment: ${assessmentType}/${assessmentId}`);
+      
+      // Add a cache-busting parameter to prevent cached responses
+      const now = new Date().getTime();
+      const response = await fetch(`/api/assessment/${assessmentType}/results/${assessmentId}?_nocache=${now}`);
       
       if (!response.ok) {
-        const errorData = await response.json();
-        console.error('Error response:', errorData);
-        throw new Error(errorData.error || 'Failed to fetch assessment results');
+        let errorMessage = 'Failed to fetch assessment results';
+        
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch (e) {
+          console.error('Error parsing error response:', e);
+        }
+        
+        throw new Error(errorMessage);
       }
       
-      const data = await response.json();
-      console.log('Assessment data received:', data);
+      let data;
+      try {
+        data = await response.json();
+        console.log('Assessment data received:', data);
+      } catch (e) {
+        console.error('Error parsing response JSON:', e);
+        throw new Error('Failed to parse server response');
+      }
       
       setAssessment(data);
       
-      // Ensure data.data has required properties with defaults
+      // Get assessment data from response
+      const responseData = data.data || {};
+      
+      // Ensure data has required properties with defaults
       const processedData: AssessmentData = {
-        scores: (data.data?.scores as ScoresData) || { overallScore: 10 },
-        recommendations: data.data?.recommendations || [],
-        summary: data.data?.summary || 'Processing, Please wait.',
-        strengths: data.data?.strengths || [],
-        improvements: data.data?.improvements || [],
-        answers: data.data?.answers || {},
-        completedAt: data.data?.completedAt || new Date().toISOString(),
-        submittedAt: data.data?.submittedAt || new Date().toISOString(),
-        resumeText: data.data?.resumeText || '',
-        resumeAnalysis: data.data?.resumeAnalysis || '',
-        resumeRecommendations: data.data?.resumeRecommendations || [],
-        aiProcessed: data.data?.aiProcessed || false,
-        aiProcessedAt: data.data?.aiProcessedAt || null,
-        readinessLevel: data.data?.readinessLevel || calculateReadinessLevel((data.data?.scores as ScoresData)?.overallScore || 0)
+        scores: responseData.scores || { overallScore: 10 },
+        recommendations: responseData.recommendations || [],
+        summary: responseData.summary || 'Processing, Please wait.',
+        strengths: responseData.strengths || [],
+        improvements: responseData.improvements || [],
+        answers: responseData.answers || {},
+        completedAt: responseData.completedAt || data.completedAt || new Date().toISOString(),
+        submittedAt: responseData.submittedAt || data.createdAt || new Date().toISOString(),
+        resumeText: responseData.resumeText || '',
+        resumeAnalysis: responseData.resumeAnalysis || '',
+        resumeRecommendations: responseData.resumeRecommendations || [],
+        aiProcessed: responseData.aiProcessed || false,
+        aiAnalysisStarted: responseData.aiAnalysisStarted || false,
+        aiAnalysisStartedAt: responseData.aiAnalysisStartedAt,
+        aiProcessedAt: responseData.aiProcessedAt,
+        aiError: responseData.aiError,
+        readinessLevel: responseData.readinessLevel || calculateReadinessLevel(responseData.scores?.overallScore || 0)
       };
       
       // Ensure overallScore exists
@@ -138,17 +172,24 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
         const scoreValues = Object.values(processedData.scores);
         processedData.scores.overallScore = scoreValues.length > 0 
           ? Math.round(scoreValues.reduce((a, b) => a + b, 0) / scoreValues.length)
-          : 70;
+          : 10; // Default to 10 if no scores available
       }
       
       // Check AI processing status
       if (processedData.aiProcessed) {
         setAiStatus('completed');
-        console.log('AI analysis completed at:', processedData.aiProcessedAt);
-      } else if (processedData.resumeText && processedData.resumeText.length > 0) {
+        setDebugInfo('AI analysis is complete');
+        console.log('AI analysis completed');
+      } else if (processedData.aiAnalysisStarted) {
         setAiStatus('processing');
+        setDebugInfo('AI analysis in progress');
         console.log('AI analysis in progress...');
+      } else if (processedData.aiError) {
+        setAiStatus('failed');
+        setDebugInfo(`AI analysis failed: ${processedData.aiError}`);
+        console.log('AI analysis failed:', processedData.aiError);
       } else {
+        setDebugInfo('No AI analysis started yet');
         console.log('No AI analysis started yet');
       }
       
@@ -157,9 +198,10 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
       setError('');
     } catch (err) {
       console.error('Error fetching assessment results:', err);
-      setError('Error loading assessment results. Please try again.');
+      setError(err instanceof Error ? err.message : 'Error loading assessment results. Please try again.');
       setLoading(false);
       setAiStatus('failed');
+      setDebugInfo(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };
 
@@ -174,6 +216,7 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
   // Manual refresh function for AI results
   const handleRefreshResults = () => {
     setLoading(true);
+    setDebugInfo('Manually refreshing results...');
     fetchResults();
   };
 
@@ -226,6 +269,11 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
           </div>
           <h2 className="text-xl font-bold text-center mb-4">Error</h2>
           <p className="text-gray-600 text-center mb-6">{error}</p>
+          {debugInfo && (
+            <div className="mb-6 p-3 bg-gray-100 text-sm text-gray-700 rounded-lg overflow-auto max-h-32">
+              <strong>Debug Info:</strong> {debugInfo}
+            </div>
+          )}
           <div className="flex justify-center">
             <button
               onClick={fetchResults}
@@ -251,6 +299,11 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
           </div>
           <h2 className="text-xl font-bold mb-4">No Results Found</h2>
           <p className="text-gray-600 mb-6">We couldn't find any results for this assessment.</p>
+          {debugInfo && (
+            <div className="mb-6 p-3 bg-gray-100 text-sm text-gray-700 rounded-lg overflow-auto max-h-32">
+              <strong>Debug Info:</strong> {debugInfo}
+            </div>
+          )}
           <div className="flex justify-center">
             <button
               onClick={() => router.push('/dashboard')}
@@ -281,6 +334,13 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
   return (
     <div className="print-container min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl mx-auto">
+        {/* Debug info - show in development mode only */}
+        {process.env.NODE_ENV === 'development' && debugInfo && (
+          <div className="print-hidden mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-sm">
+            <strong>Debug Info:</strong> {debugInfo}
+          </div>
+        )}
+
         {/* Header section */}
         <div className="bg-white rounded-xl shadow-md overflow-hidden mb-8">
           <div className="print-header bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] p-6 text-white">
@@ -340,6 +400,18 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
                     className="ml-3 text-xs underline hover:text-blue-800"
                   >
                     Refresh
+                  </button>
+                </div>
+              )}
+              
+              {aiStatus === 'failed' && (
+                <div className="print-hidden mt-4 p-3 bg-red-50 text-red-700 rounded-lg flex items-center justify-center">
+                  <span>AI analysis encountered an error. Your results may be incomplete.</span>
+                  <button 
+                    onClick={handleRefreshResults}
+                    className="ml-3 text-xs underline hover:text-red-800"
+                  >
+                    Try Again
                   </button>
                 </div>
               )}
@@ -438,7 +510,7 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
           </div>
         </div>
 
-        {/* Enhanced Recommendations section */}
+        {/* Recommendations section */}
         {recommendations && recommendations.length > 0 && (
           <div className="bg-white rounded-xl shadow-md overflow-hidden mb-8">
             <div className="p-6">
@@ -490,39 +562,6 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
                   }
                 })}
               </div>
-            </div>
-          </div>
-        )}
-
-        {/* Resume Analysis section */}
-        {assessmentData.resumeText && (
-          <div className="bg-white rounded-xl shadow-md overflow-hidden mb-8">
-            <div className="p-6">
-              <h2 className="text-xl font-semibold text-gray-800 mb-4">Resume Analysis</h2>
-              
-              {aiStatus === 'processing' ? (
-                <div className="print-hidden flex items-center justify-center p-6 text-gray-500">
-                  <div className="w-5 h-5 border-2 border-t-transparent border-gray-500 rounded-full animate-spin mr-2"></div>
-                  <span>Resume analysis in progress...</span>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <p className="text-gray-700">
-                    {assessmentData.resumeAnalysis || "Your resume has been analyzed as part of the assessment. See specific recommendations related to your resume in the recommendations section."}
-                  </p>
-                  
-                  {assessmentData.resumeRecommendations && assessmentData.resumeRecommendations.length > 0 && (
-                    <div className="mt-4">
-                      <h3 className="text-md font-medium text-gray-800 mb-2">Resume Recommendations</h3>
-                      <ul className="list-disc list-inside space-y-2 text-gray-700">
-                        {assessmentData.resumeRecommendations.map((rec, index) => (
-                          <li key={index}>{rec}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           </div>
         )}
