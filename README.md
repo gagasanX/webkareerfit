@@ -39,3 +39,9 @@ bash
 
 # deploy Copy
 vercel --prod
+
+//===============
+git add .
+git commit -m "Fix AI analysis stuck issue"
+git push
+vercel --prod

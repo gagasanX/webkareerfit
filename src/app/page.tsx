@@ -149,7 +149,7 @@ export default function HomePage() {
                 Find Your <span className="underline decoration-[#fcb3b3] decoration-4 underline-offset-4">Dream Career</span> With AI Assessment
               </h1>
               <p className="text-white/80 text-lg">
-                KAREERfit is the modern way of planning your future. No more guesswork - our AI-powered reveal the perfect career match for your unique talents.
+                KAREERfit is the Intelligent way of planning your future. No more guesswork - our AI-powered reveal the perfect career match for your unique talents.
               </p>
             </div>
             
@@ -194,7 +194,7 @@ export default function HomePage() {
 
           {/* Footer */}
           <div className="mt-8 text-white/60 text-sm">
-            © {new Date().getFullYear()} KareerFit. Transform your career journey today.
+            V1.0.11© {new Date().getFullYear()} KareerFit. Transform your career journey today.
           </div>
         </div>
       </div>
