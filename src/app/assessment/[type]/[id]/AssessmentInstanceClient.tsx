@@ -1,3 +1,4 @@
+// app/assessment/[type]/[id]/AssessmentInstanceClient.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -126,6 +127,8 @@ export default function AssessmentInstanceClient() {
   const [currentStep, setCurrentStep] = useState(1);
   const [answers, setAnswers] = useState<Record<string | number, any>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState('');
   
   // Assessment type labels
   const assessmentTypeLabels: Record<AssessmentType, string> = {
@@ -210,6 +213,31 @@ export default function AssessmentInstanceClient() {
     }
   };
   
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setFileError('');
+    const file = e.target.files?.[0];
+    
+    if (!file) {
+      return;
+    }
+    
+    // Check file type
+    const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain'];
+    if (!allowedTypes.includes(file.type)) {
+      setFileError('File type not allowed. Please upload PDF, DOC, DOCX, or TXT files only.');
+      return;
+    }
+    
+    // Check file size (5MB max)
+    const maxSize = 5 * 1024 * 1024;
+    if (file.size > maxSize) {
+      setFileError('File size exceeds 5MB limit.');
+      return;
+    }
+    
+    setResumeFile(file);
+  };
+  
   const saveProgress = async () => {
     try {
       const response = await fetch(`/api/assessment/${type}/${id}/progress`, {
@@ -238,22 +266,39 @@ export default function AssessmentInstanceClient() {
   const submitAssessment = async () => {
     setSubmitting(true);
     try {
-      const response = await fetch(`/api/assessment/${type}/${id}/submit`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+      // Create FormData object for file upload
+      const formData = new FormData();
+      
+      // Add answers as JSON string
+      formData.append('formData', JSON.stringify({
+        personalInfo: {
+          name: session?.user?.name || '',
+          email: session?.user?.email || '',
         },
-        body: JSON.stringify({
-          answers
-        }),
+        ...answers
+      }));
+      
+      // Add resume file if available
+      if (resumeFile) {
+        formData.append('resume', resumeFile);
+      }
+      
+      // Submit to the submit-with-file endpoint
+      const response = await fetch(`/api/assessment/${type}/${id}/submit-with-file`, {
+        method: 'POST',
+        body: formData
+        // Don't set Content-Type header for multipart/form-data
       });
 
       if (!response.ok) {
         throw new Error('Failed to submit assessment');
       }
       
-      // Redirect to results page
-      router.push(`/assessment/${type}/results/${id}`);
+      // Get response data
+      const result = await response.json();
+      
+      // Redirect to results page or processing page
+      router.push(result.redirectTo || `/assessment/${type}/results/${id}`);
     } catch (error) {
       console.error('Error submitting assessment:', error);
       setError('Error submitting assessment. Please try again.');
@@ -302,6 +347,9 @@ export default function AssessmentInstanceClient() {
   // Get questions for current step
   const currentQuestions = questions.filter(q => q.step === currentStep) || [];
   const totalSteps = assessment?.totalSteps || 5;
+  
+  // Determine if we're on the final step
+  const isFinalStep = assessment && currentStep === assessment.totalSteps;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -340,6 +388,39 @@ export default function AssessmentInstanceClient() {
                 />
               </div>
             ))}
+            
+            {/* File upload section - only show on final step */}
+            {isFinalStep && (
+              <div className="mt-8 p-4 bg-blue-50 rounded-lg border border-blue-100">
+                <h3 className="font-medium text-blue-800 mb-2">Upload Your Resume/CV (Optional)</h3>
+                <p className="text-sm text-blue-700 mb-4">
+                  Upload your resume for a more personalized assessment. Supported formats: PDF, DOC, DOCX, TXT (Max 5MB)
+                </p>
+                
+                <div className="mt-2">
+                  <input
+                    type="file"
+                    id="resume"
+                    accept=".pdf,.doc,.docx,.txt"
+                    onChange={handleFileChange}
+                    className="block w-full text-sm text-gray-500
+                      file:mr-4 file:py-2 file:px-4
+                      file:rounded-md file:border-0
+                      file:text-sm file:font-semibold
+                      file:bg-blue-50 file:text-blue-700
+                      hover:file:bg-blue-100"
+                  />
+                  {fileError && (
+                    <p className="mt-1 text-sm text-red-600">{fileError}</p>
+                  )}
+                  {resumeFile && (
+                    <p className="mt-1 text-sm text-green-600">
+                      File selected: {resumeFile.name} ({Math.round(resumeFile.size / 1024)} KB)
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
             
             {/* Navigation buttons */}
             <div className="flex justify-between mt-8">

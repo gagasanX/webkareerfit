@@ -17,3 +17,25 @@ npx prisma studio
 find ./src/app -type f,d | sort
 
 cd /workspaces/webkareerfit/prisma/migrations
+
+
+
+
+bash
+
+#Copy
+npm run dev
+Pergi ke http://localhost:3000/login dan pastikan login page load tanpa error.
+Langkah 4: Deploy Semula ke Vercel
+Commit changes:
+bash
+
+#Copy
+git add .
+git commit -m "Fix"
+git push
+Deploy:
+bash
+
+# deploy Copy
+vercel --prod
