@@ -39,6 +39,9 @@ interface AssessmentData {
   aiAnalysisStarted?: boolean;
   aiAnalysisStartedAt?: string;
   aiError?: string;
+  // Added fields for manual processing
+  reviewNotes?: string;
+  reviewedAt?: string;
 }
 
 interface ResultsClientProps {
@@ -54,6 +57,8 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
   const [assessment, setAssessment] = useState<any>(null);
   const [assessmentData, setAssessmentData] = useState<AssessmentData | null>(null);
   const [aiStatus, setAiStatus] = useState<'pending' | 'processing' | 'completed' | 'failed'>('pending');
+  // New state for manual processing
+  const [manualStatus, setManualStatus] = useState<'pending_review' | 'in_review' | 'completed' | null>(null);
   const [pollingCount, setPollingCount] = useState(0);
   const [debugInfo, setDebugInfo] = useState<string | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -209,6 +214,26 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
       
       setAssessment(data);
       
+      // Check if this is a manual processing assessment
+      const isManualProcessing = data.manualProcessing || data.price === 100 || data.price === 250;
+      
+      // Set manual status based on assessment status if it's a manual processing assessment
+      if (isManualProcessing) {
+        setManualStatus(data.status as 'pending_review' | 'in_review' | 'completed' | null);
+        
+        // If manual processing is completed, we'll treat it as if AI is completed
+        // so that results are displayed
+        if (data.status === 'completed') {
+          setAiStatus('completed');
+        } else {
+          // Don't set AI status for in-progress manual reviews
+          setAiStatus('pending');
+        }
+        
+        console.log(`Manual processing assessment detected. Status: ${data.status}`);
+        setDebugInfo(`Manual processing (RM${data.price}) assessment. Status: ${data.status}`);
+      }
+      
       // Get assessment data
       const responseData = data.data || {};
       
@@ -322,6 +347,9 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
         aiAnalysisStartedAt: responseData.aiAnalysisStartedAt || responseData.aiProcessingStarted,
         aiProcessedAt: responseData.aiProcessedAt,
         aiError: responseData.aiError,
+        // Add manual processing data
+        reviewNotes: data.reviewNotes,
+        reviewedAt: data.reviewedAt,
       };
       
       // Check AI processing status
@@ -732,6 +760,19 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
             color: #718096;
             text-align: center;
           }
+
+          .review-notes {
+            background-color: #f0f9ff;
+            border: 1px solid #bae6fd;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+          }
+
+          .review-notes h3 {
+            color: #0369a1;
+            margin-bottom: 10px;
+          }
           
           /* Print-specific styles */
           @media print {
@@ -779,6 +820,15 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
             </div>
           </div>
         </div>
+        
+        ${assessmentData?.reviewNotes ? `
+        <!-- Expert Review Section -->
+        <div class="section review-notes">
+          <h2>Expert Review</h2>
+          <p>Reviewed on ${new Date(assessmentData.reviewedAt || new Date()).toLocaleDateString()}</p>
+          <div class="whitespace-pre-wrap">${assessmentData.reviewNotes}</div>
+        </div>
+        ` : ''}
         
         <!-- Strengths and Improvements Section -->
         <div class="section">
@@ -1003,8 +1053,39 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
               </div>
               <p className="mt-4 text-gray-600 max-w-xl mx-auto">{summary}</p>
               
-              {/* AI analysis status indicator */}
-              {aiStatus === 'processing' && (
+              {/* Manual processing status indicators */}
+              {manualStatus === 'pending_review' && (
+                <div className="print-hidden mt-4 p-3 bg-yellow-50 text-yellow-700 rounded-lg flex items-center justify-center">
+                  <svg className="h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <span>Your assessment is waiting for expert review. We'll notify you when it's complete.</span>
+                  <button 
+                    onClick={handleRefreshResults}
+                    className="ml-3 text-xs underline hover:text-yellow-800"
+                  >
+                    Refresh
+                  </button>
+                </div>
+              )}
+              
+              {manualStatus === 'in_review' && (
+                <div className="print-hidden mt-4 p-3 bg-blue-50 text-blue-700 rounded-lg flex items-center justify-center">
+                  <svg className="h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                  </svg>
+                  <span>Your assessment is currently being reviewed by our experts. This typically takes 1-2 business days.</span>
+                  <button 
+                    onClick={handleRefreshResults}
+                    className="ml-3 text-xs underline hover:text-blue-800"
+                  >
+                    Refresh
+                  </button>
+                </div>
+              )}
+              
+              {/* AI analysis status indicator (only show if not manual processing) */}
+              {!manualStatus && aiStatus === 'processing' && (
                 <div className="print-hidden mt-4 p-3 bg-blue-50 text-blue-700 rounded-lg flex items-center justify-center">
                   <div className="w-4 h-4 border-2 border-t-transparent border-blue-700 rounded-full animate-spin mr-2"></div>
                   <span>AI analysis in progress... This may take a few minutes.</span>
@@ -1017,7 +1098,7 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
                 </div>
               )}
               
-              {aiStatus === 'failed' && (
+              {!manualStatus && aiStatus === 'failed' && (
                 <div className="print-hidden mt-4 p-3 bg-red-50 text-red-700 rounded-lg flex items-center justify-center">
                   <span>AI analysis encountered an error. Your results may be incomplete.</span>
                   <button 
@@ -1047,6 +1128,23 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
             </div>
           </div>
         </div>
+
+        {/* Expert Review Notes (when available) */}
+        {assessment.reviewNotes && manualStatus === 'completed' && (
+          <div className="bg-white rounded-xl shadow-md overflow-hidden mb-8">
+            <div className="p-6">
+              <h2 className="text-xl font-semibold text-gray-800 mb-4">Expert Review</h2>
+              <div className="bg-blue-50 p-6 rounded-lg border border-blue-100">
+                <p className="text-blue-800 font-medium mb-3">
+                  Reviewed on {new Date(assessment.reviewedAt || assessment.updatedAt).toLocaleDateString()}
+                </p>
+                <div className="prose prose-blue max-w-none">
+                  <div className="whitespace-pre-wrap">{assessment.reviewNotes}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Strengths and Improvements */}
         {(strengths.length > 0 || improvements.length > 0) && (
@@ -1201,21 +1299,30 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
             Back to Dashboard
           </button>
           
-          {aiStatus === 'processing' ? (
+          {manualStatus === 'pending_review' || manualStatus === 'in_review' ? (
             <button
               onClick={handleRefreshResults}
-              className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center justify-center"
+              className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg font-medium transition-colors"
             >
-              <div className="w-4 h-4 border-2 border-t-transparent border-white rounded-full animate-spin mr-2"></div>
-              Refresh Results
+              Check Status
             </button>
           ) : (
-            <button
-              onClick={handlePrint}
-              className="bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] hover:from-[#7e43f1] hover:to-[#38b6ff] text-white px-6 py-3 rounded-lg font-medium transition-colors"
-            >
-              Download Results
-            </button>
+            aiStatus === 'processing' ? (
+              <button
+                onClick={handleRefreshResults}
+                className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center justify-center"
+              >
+                <div className="w-4 h-4 border-2 border-t-transparent border-white rounded-full animate-spin mr-2"></div>
+                Refresh Results
+              </button>
+            ) : (
+              <button
+                onClick={handlePrint}
+                className="bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] hover:from-[#7e43f1] hover:to-[#38b6ff] text-white px-6 py-3 rounded-lg font-medium transition-colors"
+              >
+                Download Results
+              </button>
+            )
           )}
         </div>
       </div>

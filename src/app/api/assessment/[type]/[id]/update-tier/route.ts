@@ -1,3 +1,4 @@
+// src/app/api/assessment/[type]/[id]/update-tier/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth/auth';
@@ -73,6 +74,10 @@ export async function POST(
 
     const price = tierPrices[tier as keyof typeof tierPrices];
 
+    // Set manualProcessing based on tier
+    // Standard and Premium tiers (RM100 and RM250) use manual processing
+    const useManualProcessing = tier === 'standard' || tier === 'premium';
+
     // Update the assessment with the selected tier and price
     const updatedAssessment = await prisma.assessment.update({
       where: {
@@ -81,10 +86,11 @@ export async function POST(
       data: {
         tier: tier,
         price: price,
+        manualProcessing: useManualProcessing
       },
     });
 
-    console.log(`Updated assessment ${id} with tier: ${tier} and price: ${price}`);
+    console.log(`Updated assessment ${id} with tier: ${tier}, price: ${price}, manualProcessing: ${useManualProcessing}`);
 
     return NextResponse.json({
       success: true,

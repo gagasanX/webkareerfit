@@ -1,88 +1,125 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/lib/auth/auth';
 import { prisma } from '@/lib/db';
+import { authOptions } from '@/lib/auth/auth';
 
-export async function GET(request: NextRequest) {
+export async function GET(req: Request) {
   try {
-    // Check user authentication and clerk permissions
+    // Check authentication and clerk role
     const session = await getServerSession(authOptions);
-    
-    if (!session) {
-      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+    if (!session || !session.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    
-    // Ensure user has clerk or admin role - PERBAIKAN
-    if (!session.user.isClerk && !session.user.isAdmin) {
-      return NextResponse.json({ message: 'Forbidden' }, { status: 403 });
+
+    // Check if user is a clerk or admin
+    const user = await prisma.user.findUnique({
+      where: { id: session.user.id },
+    });
+
+    if (!user || (!user.isClerk && !user.isAdmin)) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
-    
-    // Get query parameters
-    const url = new URL(request.url);
+
+    // Parse query parameters
+    const url = new URL(req.url);
     const page = parseInt(url.searchParams.get('page') || '1');
     const search = url.searchParams.get('search') || '';
-    const status = url.searchParams.get('status') || '';
-    const type = url.searchParams.get('type') || '';
-    const pageSize = 10;
-    
-    // Build filters
-    const filters: any = {};
-    
-    // Add status filter
-    if (status && status !== 'all') {
-      filters.status = status;
+    const status = url.searchParams.get('status') || 'all';
+    const type = url.searchParams.get('type') || 'all';
+
+    // Calculate pagination
+    const limit = 10;
+    const skip = (page - 1) * limit;
+
+    // Build query conditions
+    const where: any = {};
+
+    // Filter by status if provided
+    if (status !== 'all') {
+      where.status = status;
     }
-    
-    // Add type filter
-    if (type && type !== 'all') {
-      filters.type = type;
+
+    // Filter by type if provided
+    if (type !== 'all') {
+      where.type = type;
     }
-    
-    // Add search filter (search by user email, name, or assessment ID)
+
+    // Filter to only show manual review assessments (price 100 or 250)
+    where.price = { in: [100, 250] };
+
+    // Add search condition if provided
     if (search) {
-      filters.OR = [
+      where.OR = [
         { id: { contains: search } },
-        { user: { email: { contains: search } } },
         { user: { name: { contains: search } } },
+        { user: { email: { contains: search } } },
       ];
     }
-    
-    // Count total matching assessments
-    const totalAssessments = await prisma.assessment.count({
-      where: filters,
-    });
-    
-    // Calculate total pages
-    const totalPages = Math.ceil(totalAssessments / pageSize);
-    
-    // Fetch assessments with pagination
-    const assessments = await prisma.assessment.findMany({
-      where: filters,
-      include: {
-        user: {
-          select: {
-            name: true,
-            email: true,
+
+    // Get assigned assessments
+    const assignedWhere = {
+      ...where,
+      assignedClerkId: session.user.id,
+    };
+
+    // Get unassigned assessments
+    const unassignedWhere = {
+      ...where,
+      assignedClerkId: null,
+      status: 'pending_review',
+    };
+
+    // Execute queries
+    const [assigned, unassigned, totalAssigned, totalUnassigned] = await Promise.all([
+      prisma.assessment.findMany({
+        where: assignedWhere,
+        include: {
+          user: {
+            select: {
+              name: true,
+              email: true,
+            },
           },
         },
-      },
-      orderBy: {
-        createdAt: 'desc',
-      },
-      skip: (page - 1) * pageSize,
-      take: pageSize,
-    });
+        orderBy: { updatedAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.assessment.findMany({
+        where: unassignedWhere,
+        include: {
+          user: {
+            select: {
+              name: true,
+              email: true,
+            },
+          },
+        },
+        orderBy: { createdAt: 'asc' },
+        skip,
+        take: limit,
+      }),
+      prisma.assessment.count({ where: assignedWhere }),
+      prisma.assessment.count({ where: unassignedWhere }),
+    ]);
 
     return NextResponse.json({
-      assessments,
-      currentPage: page,
-      totalPages,
-      totalAssessments,
+      assigned,
+      unassigned,
+      pagination: {
+        totalAssigned,
+        totalUnassigned,
+        currentPage: page,
+        totalPages: Math.max(
+          Math.ceil(totalAssigned / limit),
+          Math.ceil(totalUnassigned / limit)
+        ),
+      },
     });
   } catch (error) {
     console.error('Error fetching assessments:', error);
     return NextResponse.json(
-      { message: 'An error occurred while fetching assessments' },
+      { error: 'Failed to fetch assessments' },
       { status: 500 }
     );
   }

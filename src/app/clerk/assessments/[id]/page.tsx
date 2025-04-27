@@ -4,7 +4,17 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { format } from 'date-fns';
-import { ArrowLeftIcon, CheckCircleIcon, XCircleIcon, ClockIcon } from 'lucide-react';
+import { 
+  ArrowLeftIcon, 
+  CheckCircleIcon, 
+  XCircleIcon, 
+  ClockIcon, 
+  EditIcon,
+  UserIcon,
+  CreditCardIcon,
+  FileTextIcon,
+  SendIcon
+} from 'lucide-react';
 
 interface AssessmentData {
   id: string;
@@ -15,6 +25,10 @@ interface AssessmentData {
   updatedAt: string;
   price: number;
   data: any;
+  manualProcessing: boolean;
+  assignedClerkId: string | null;
+  reviewNotes: string | null;
+  reviewedAt: string | null;
   user: {
     id: string;
     name: string | null;
@@ -42,37 +56,46 @@ export default function AssessmentDetailPage({ params }: { params: { id: string 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [updating, setUpdating] = useState(false);
-  const [selectedStatus, setSelectedStatus] = useState('');
-  const [selectedTier, setSelectedTier] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [reviewNotes, setReviewNotes] = useState('');
   const [updateSuccess, setUpdateSuccess] = useState(false);
+  const [activeTab, setActiveTab] = useState('details');
 
   useEffect(() => {
-    const fetchAssessment = async () => {
-      try {
-        setLoading(true);
-        const response = await fetch(`/api/clerk/assessments/${params.id}`);
-        
-        if (!response.ok) {
-          throw new Error('Failed to load assessment');
-        }
-        
-        const data = await response.json();
-        setAssessment(data.assessment);
-        setSelectedStatus(data.assessment.status);
-        setSelectedTier(data.assessment.tier);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'An error occurred');
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchAssessment();
   }, [params.id]);
 
-  const updateAssessment = async () => {
+  const fetchAssessment = async () => {
     try {
-      setUpdating(true);
+      setLoading(true);
+      const response = await fetch(`/api/clerk/assessments/${params.id}`);
+      
+      if (!response.ok) {
+        throw new Error('Failed to load assessment');
+      }
+      
+      const data = await response.json();
+      setAssessment(data.assessment);
+      
+      // Pre-fill review notes if they exist
+      if (data.assessment.reviewNotes) {
+        setReviewNotes(data.assessment.reviewNotes);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const submitReview = async () => {
+    if (!reviewNotes.trim()) {
+      alert('Please enter review notes before submitting.');
+      return;
+    }
+
+    try {
+      setSubmitting(true);
       setUpdateSuccess(false);
       
       const response = await fetch(`/api/clerk/assessments/${params.id}`, {
@@ -81,30 +104,35 @@ export default function AssessmentDetailPage({ params }: { params: { id: string 
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          status: selectedStatus,
-          tier: selectedTier,
+          action: 'submit_review',
+          reviewNotes: reviewNotes,
         }),
       });
       
       if (!response.ok) {
-        throw new Error('Failed to update assessment');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to submit review');
       }
       
-      // Update local state with new values
-      setAssessment(prev => {
-        if (!prev) return null;
-        return {
-          ...prev,
-          status: selectedStatus,
-          tier: selectedTier,
-        };
-      });
+      // Update the assessment in state
+      const data = await response.json();
+      if (data.assessment) {
+        setAssessment(data.assessment);
+      } else {
+        // Refresh the assessment data from the server
+        fetchAssessment();
+      }
       
       setUpdateSuccess(true);
+      
+      // Give some time for the success message to show
+      setTimeout(() => {
+        router.push('/clerk/assessments');
+      }, 2000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(err instanceof Error ? err.message : 'An error occurred while submitting the review');
     } finally {
-      setUpdating(false);
+      setSubmitting(false);
     }
   };
 
@@ -129,11 +157,26 @@ export default function AssessmentDetailPage({ params }: { params: { id: string 
       case 'completed':
         return <CheckCircleIcon className="w-5 h-5 text-green-500" />;
       case 'pending':
+      case 'pending_review':
         return <ClockIcon className="w-5 h-5 text-yellow-500" />;
+      case 'in_review':
+        return <EditIcon className="w-5 h-5 text-blue-500" />;
       case 'cancelled':
         return <XCircleIcon className="w-5 h-5 text-red-500" />;
       default:
-        return null;
+        return <ClockIcon className="w-5 h-5 text-gray-500" />;
+    }
+  };
+
+  // Format status for display
+  const formatStatus = (status: string) => {
+    switch(status) {
+      case 'pending_review':
+        return 'Pending Review';
+      case 'in_review':
+        return 'In Review';
+      default:
+        return status.charAt(0).toUpperCase() + status.slice(1);
     }
   };
   
@@ -145,16 +188,47 @@ export default function AssessmentDetailPage({ params }: { params: { id: string 
     }).format(price);
   };
 
+  // Get badge color by status
+  const getStatusBadgeClass = (status: string) => {
+    switch(status) {
+      case 'pending':
+      case 'pending_review':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'in_review':
+        return 'bg-blue-100 text-blue-800';
+      case 'completed':
+        return 'bg-green-100 text-green-800';
+      case 'cancelled':
+        return 'bg-red-100 text-red-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  // Check if the assessment is completed
+  const isCompleted = assessment?.status === 'completed';
+  
+  // Check if the assessment is in the manual processing workflow
+  const isManualProcessing = assessment?.manualProcessing || assessment?.price === 100 || assessment?.price === 250;
+
   return (
-    <div>
+    <div className="max-w-6xl mx-auto">
       <div className="flex items-center mb-6">
         <button
-          onClick={() => router.back()}
+          onClick={() => router.push('/clerk/assessments')}
           className="mr-4 p-2 rounded-full hover:bg-gray-100"
         >
           <ArrowLeftIcon className="w-5 h-5" />
         </button>
-        <h2 className="text-xl font-semibold">Assessment Details</h2>
+        <h2 className="text-xl font-semibold">Assessment Review</h2>
+        
+        {assessment && (
+          <div className="ml-4">
+            <span className={`px-3 py-1 rounded-full text-xs font-medium ${getStatusBadgeClass(assessment.status)}`}>
+              {formatStatus(assessment.status)}
+            </span>
+          </div>
+        )}
       </div>
 
       {loading ? (
@@ -171,192 +245,307 @@ export default function AssessmentDetailPage({ params }: { params: { id: string 
           {updateSuccess && (
             <div className="bg-green-50 p-4 rounded-lg text-green-700 flex items-center">
               <CheckCircleIcon className="w-5 h-5 mr-2" />
-              Assessment updated successfully
+              {isCompleted 
+                ? 'Review submitted successfully! Redirecting...' 
+                : 'Assessment updated successfully'}
             </div>
           )}
           
-          {/* Assessment Information */}
+          {/* Tabs navigation */}
           <div className="bg-white rounded-lg shadow overflow-hidden">
-            <div className="px-6 py-4 border-b">
-              <div className="flex justify-between items-center">
-                <h3 className="text-lg font-medium text-gray-900">Assessment Information</h3>
-                <div className="flex items-center">
-                  {getStatusIcon(assessment.status)}
-                  <span className="ml-2 text-sm font-medium">
-                    {assessment.status.charAt(0).toUpperCase() + assessment.status.slice(1)}
-                  </span>
-                </div>
-              </div>
-            </div>
-            <div className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Assessment ID</p>
-                  <p className="mt-1">{assessment.id}</p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Type</p>
-                  <p className="mt-1">{getAssessmentTypeName(assessment.type)}</p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Tier</p>
-                  <p className="mt-1">{assessment.tier.charAt(0).toUpperCase() + assessment.tier.slice(1)}</p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Created</p>
-                  <p className="mt-1">{format(new Date(assessment.createdAt), 'PPP p')}</p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Last Updated</p>
-                  <p className="mt-1">{format(new Date(assessment.updatedAt), 'PPP p')}</p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Price</p>
-                  <p className="mt-1">{formatPrice(assessment.price)}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-          
-          {/* User Information */}
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <div className="px-6 py-4 border-b">
-              <h3 className="text-lg font-medium text-gray-900">User Information</h3>
-            </div>
-            <div className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Name</p>
-                  <p className="mt-1">{assessment.user.name || 'Not provided'}</p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Email</p>
-                  <p className="mt-1">{assessment.user.email}</p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-500">Phone</p>
-                  <p className="mt-1">{assessment.user.phone || 'Not provided'}</p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-500">User Since</p>
-                  <p className="mt-1">{format(new Date(assessment.user.createdAt), 'PPP')}</p>
-                </div>
-              </div>
-              <div className="mt-4">
-                <Link
-                  href={`/clerk/users/${assessment.user.id}`}
-                  className="text-indigo-600 hover:text-indigo-900 text-sm font-medium"
+            <div className="flex border-b">
+              <button
+                onClick={() => setActiveTab('details')}
+                className={`flex-1 py-4 px-6 text-center font-medium ${
+                  activeTab === 'details'
+                    ? 'border-b-2 border-indigo-500 text-indigo-600'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                Assessment Details
+              </button>
+              <button
+                onClick={() => setActiveTab('responses')}
+                className={`flex-1 py-4 px-6 text-center font-medium ${
+                  activeTab === 'responses'
+                    ? 'border-b-2 border-indigo-500 text-indigo-600'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                User Responses
+              </button>
+              {isManualProcessing && (
+                <button
+                  onClick={() => setActiveTab('review')}
+                  className={`flex-1 py-4 px-6 text-center font-medium ${
+                    activeTab === 'review'
+                      ? 'border-b-2 border-indigo-500 text-indigo-600'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
                 >
-                  View User Profile
-                </Link>
-              </div>
-            </div>
-          </div>
-          
-          {/* Payment Information */}
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <div className="px-6 py-4 border-b">
-              <h3 className="text-lg font-medium text-gray-900">Payment Information</h3>
-            </div>
-            <div className="p-6">
-              {assessment.payment ? (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Payment ID</p>
-                    <p className="mt-1">{assessment.payment.id}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Amount</p>
-                    <p className="mt-1">{formatPrice(assessment.payment.amount)}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Method</p>
-                    <p className="mt-1">{assessment.payment.method}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Status</p>
-                    <p className="mt-1">{assessment.payment.status}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Payment Date</p>
-                    <p className="mt-1">{format(new Date(assessment.payment.createdAt), 'PPP')}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-500">Coupon</p>
-                    <p className="mt-1">
-                      {assessment.payment.coupon
-                        ? `${assessment.payment.coupon.code} (${assessment.payment.coupon.discountPercentage}% off)`
-                        : 'None'}
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-gray-600">No payment information available</p>
+                  Review & Submit
+                </button>
               )}
             </div>
           </div>
           
-          {/* Update Assessment */}
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <div className="px-6 py-4 border-b">
-              <h3 className="text-lg font-medium text-gray-900">Update Assessment</h3>
-            </div>
-            <div className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label htmlFor="status" className="block text-sm font-medium text-gray-700">
-                    Status
-                  </label>
-                  <select
-                    id="status"
-                    value={selectedStatus}
-                    onChange={(e) => setSelectedStatus(e.target.value)}
-                    className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
-                  >
-                    <option value="pending">Pending</option>
-                    <option value="completed">Completed</option>
-                    <option value="cancelled">Cancelled</option>
-                  </select>
+          {/* Content based on active tab */}
+          {activeTab === 'details' && (
+            <>
+              {/* Assessment Information */}
+              <div className="bg-white rounded-lg shadow overflow-hidden">
+                <div className="px-6 py-4 border-b">
+                  <div className="flex items-center">
+                    <FileTextIcon className="w-5 h-5 text-indigo-600 mr-2" />
+                    <h3 className="text-lg font-medium text-gray-900">Assessment Information</h3>
+                  </div>
                 </div>
-                <div>
-                  <label htmlFor="tier" className="block text-sm font-medium text-gray-700">
-                    Tier
-                  </label>
-                  <select
-                    id="tier"
-                    value={selectedTier}
-                    onChange={(e) => setSelectedTier(e.target.value)}
-                    className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
-                  >
-                    <option value="basic">Basic</option>
-                    <option value="standard">Standard</option>
-                    <option value="premium">Premium</option>
-                  </select>
+                <div className="p-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div>
+                      <p className="text-sm font-medium text-gray-500">Assessment ID</p>
+                      <p className="mt-1">{assessment.id}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-500">Type</p>
+                      <p className="mt-1">{getAssessmentTypeName(assessment.type)}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-500">Tier</p>
+                      <p className="mt-1">{assessment.tier.charAt(0).toUpperCase() + assessment.tier.slice(1)}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-500">Created</p>
+                      <p className="mt-1">{format(new Date(assessment.createdAt), 'PPP p')}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-500">Last Updated</p>
+                      <p className="mt-1">{format(new Date(assessment.updatedAt), 'PPP p')}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-500">Price</p>
+                      <p className="mt-1">{formatPrice(assessment.price)}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-500">Processing Type</p>
+                      <p className="mt-1">{assessment.manualProcessing ? 'Manual Review' : 'AI Analysis'}</p>
+                    </div>
+                    {assessment.reviewedAt && (
+                      <div>
+                        <p className="text-sm font-medium text-gray-500">Reviewed On</p>
+                        <p className="mt-1">{format(new Date(assessment.reviewedAt), 'PPP p')}</p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
-              <div className="mt-6">
-                <button
-                  type="button"
-                  onClick={updateAssessment}
-                  disabled={updating}
-                  className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
-                >
-                  {updating ? 'Updating...' : 'Update Assessment'}
-                </button>
+              
+              {/* User Information */}
+              <div className="bg-white rounded-lg shadow overflow-hidden">
+                <div className="px-6 py-4 border-b">
+                  <div className="flex items-center">
+                    <UserIcon className="w-5 h-5 text-indigo-600 mr-2" />
+                    <h3 className="text-lg font-medium text-gray-900">User Information</h3>
+                  </div>
+                </div>
+                <div className="p-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <p className="text-sm font-medium text-gray-500">Name</p>
+                      <p className="mt-1">{assessment.user.name || 'Not provided'}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-500">Email</p>
+                      <p className="mt-1">{assessment.user.email}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-500">Phone</p>
+                      <p className="mt-1">{assessment.user.phone || 'Not provided'}</p>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-500">User Since</p>
+                      <p className="mt-1">{format(new Date(assessment.user.createdAt), 'PPP')}</p>
+                    </div>
+                  </div>
+                  <div className="mt-4">
+                    <Link
+                      href={`/clerk/users/${assessment.user.id}`}
+                      className="text-indigo-600 hover:text-indigo-900 text-sm font-medium"
+                    >
+                      View User Profile
+                    </Link>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
+              
+              {/* Payment Information */}
+              <div className="bg-white rounded-lg shadow overflow-hidden">
+                <div className="px-6 py-4 border-b">
+                  <div className="flex items-center">
+                    <CreditCardIcon className="w-5 h-5 text-indigo-600 mr-2" />
+                    <h3 className="text-lg font-medium text-gray-900">Payment Information</h3>
+                  </div>
+                </div>
+                <div className="p-6">
+                  {assessment.payment ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div>
+                        <p className="text-sm font-medium text-gray-500">Payment ID</p>
+                        <p className="mt-1">{assessment.payment.id}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-500">Amount</p>
+                        <p className="mt-1">{formatPrice(assessment.payment.amount)}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-500">Method</p>
+                        <p className="mt-1">{assessment.payment.method}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-500">Status</p>
+                        <p className="mt-1">{assessment.payment.status}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-500">Payment Date</p>
+                        <p className="mt-1">{format(new Date(assessment.payment.createdAt), 'PPP')}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-gray-500">Coupon</p>
+                        <p className="mt-1">
+                          {assessment.payment.coupon
+                            ? `${assessment.payment.coupon.code} (${assessment.payment.coupon.discountPercentage}% off)`
+                            : 'None'}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-gray-600">No payment information available</p>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
           
-          {/* Assessment Data (if applicable) */}
-          {assessment.data && (
+          {activeTab === 'responses' && (
             <div className="bg-white rounded-lg shadow overflow-hidden">
               <div className="px-6 py-4 border-b">
-                <h3 className="text-lg font-medium text-gray-900">Assessment Data</h3>
+                <div className="flex items-center">
+                  <FileTextIcon className="w-5 h-5 text-indigo-600 mr-2" />
+                  <h3 className="text-lg font-medium text-gray-900">User Responses</h3>
+                </div>
               </div>
               <div className="p-6">
-                <pre className="bg-gray-50 p-4 rounded-lg overflow-x-auto text-sm">
-                  {JSON.stringify(assessment.data, null, 2)}
-                </pre>
+                {assessment.data && assessment.data.responses ? (
+                  <div className="space-y-8">
+                    {Object.entries(assessment.data.responses).map(([questionId, response]: [string, any], index) => (
+                      <div key={questionId} className="border-b border-gray-200 pb-6 last:border-b-0 last:pb-0">
+                        <h4 className="font-medium text-lg text-indigo-700 mb-2">Question {index + 1}</h4>
+                        <div className="bg-gray-50 p-3 rounded-md mb-4">
+                          <p className="text-gray-700">{response.question}</p>
+                        </div>
+                        <h4 className="font-medium text-gray-700 mb-2">User's Answer:</h4>
+                        <div className="bg-white border border-gray-200 p-4 rounded-md">
+                          <p className="whitespace-pre-wrap">{response.answer}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <p className="text-gray-500">No responses found for this assessment.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          
+          {activeTab === 'review' && (
+            <div className="bg-white rounded-lg shadow overflow-hidden">
+              <div className="px-6 py-4 border-b">
+                <div className="flex items-center">
+                  <EditIcon className="w-5 h-5 text-indigo-600 mr-2" />
+                  <h3 className="text-lg font-medium text-gray-900">
+                    {isCompleted ? 'Review Submitted' : 'Submit Your Review'}
+                  </h3>
+                </div>
+              </div>
+              <div className="p-6">
+                {isCompleted ? (
+                  <div className="bg-green-50 p-6 rounded-lg border border-green-100">
+                    <div className="flex items-center mb-4">
+                      <CheckCircleIcon className="w-6 h-6 text-green-500 mr-2" />
+                      <h4 className="text-lg font-medium text-green-700">Review Completed</h4>
+                    </div>
+                    
+                    <p className="text-gray-700 mb-4">
+                      This assessment has been reviewed and completed on {assessment.reviewedAt 
+                        ? format(new Date(assessment.reviewedAt), 'MMMM d, yyyy') 
+                        : format(new Date(assessment.updatedAt), 'MMMM d, yyyy')}.
+                    </p>
+                    
+                    <div className="bg-white p-4 rounded-lg border border-gray-200 mb-4">
+                      <h4 className="font-medium text-gray-700 mb-2">Review Notes:</h4>
+                      <div className="whitespace-pre-wrap">{assessment.reviewNotes}</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <div className="mb-6">
+                      <p className="text-gray-700 mb-4">
+                        Please review the user's responses thoroughly and provide your expert feedback below. 
+                        This review will be visible to the user as part of their assessment results.
+                      </p>
+                      
+                      <div className="bg-yellow-50 p-4 rounded-lg mb-6">
+                        <h4 className="font-medium text-yellow-800 mb-2 flex items-center">
+                          <ClockIcon className="w-5 h-5 mr-2" />
+                          Important Notes
+                        </h4>
+                        <ul className="list-disc list-inside text-yellow-700 space-y-1">
+                          <li>Be thorough and provide constructive feedback</li>
+                          <li>Include specific strengths and areas for improvement</li>
+                          <li>Your review will help guide the user's career development</li>
+                          <li>Once submitted, the review cannot be modified</li>
+                        </ul>
+                      </div>
+                    </div>
+                    
+                    <div className="mb-6">
+                      <label htmlFor="reviewNotes" className="block text-sm font-medium text-gray-700 mb-2">
+                        Review Notes
+                      </label>
+                      <textarea
+                        id="reviewNotes"
+                        rows={12}
+                        value={reviewNotes}
+                        onChange={(e) => setReviewNotes(e.target.value)}
+                        placeholder="Enter your detailed assessment review here..."
+                        className="w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
+                      />
+                    </div>
+                    
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={submitReview}
+                        disabled={submitting || !reviewNotes.trim()}
+                        className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {submitting ? (
+                          <>
+                            <div className="w-4 h-4 mr-2 border-2 border-t-transparent border-white rounded-full animate-spin"></div>
+                            Submitting...
+                          </>
+                        ) : (
+                          <>
+                            <SendIcon className="w-4 h-4 mr-2" />
+                            Submit Review
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}

@@ -23,7 +23,7 @@ model User {
   role                  String                 @default("USER")
   isAdmin               Boolean                @default(false)
   isAffiliate           Boolean                @default(false)
-  isClerk               Boolean                @default(false)  // Medan baharu untuk kerani
+  isClerk               Boolean                @default(false)  
   phone                 String?
   affiliateCode         String?                @unique
   referredBy            String?
@@ -33,6 +33,9 @@ model User {
   assessments           Assessment[]
   payments              Payment[]
   referrals             Referral[]
+  
+  // Assessments yang telah ditetapkan ke clerk untuk review
+  assignedAssessments   Assessment[]           @relation("ClerkAssessments") 
 }
 
 model Assessment {
@@ -48,6 +51,15 @@ model Assessment {
   user      User       @relation(fields: [userId], references: [id])
   payment   Payment?
   referrals Referral[]
+  
+  // Field baru untuk pengurusan pemprosesan manual
+  assignedClerkId String?
+  assignedClerk   User?    @relation("ClerkAssessments", fields: [assignedClerkId], references: [id])
+  reviewNotes     String?  @db.Text
+  reviewedAt      DateTime?
+  manualProcessing Boolean  @default(false)
+
+  @@index([assignedClerkId])
 }
 
 model Payment {
