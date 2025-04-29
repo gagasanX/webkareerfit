@@ -71,12 +71,18 @@ export async function POST(request: NextRequest) {
         
         // If payment is successful
         if (isSuccessful) {
-          // Update assessment status if it's not already completed
+          // Check if this assessment requires manual processing
+          const isManualProcessing = payment.assessment?.manualProcessing || 
+                                    payment.assessment?.price === 100 || 
+                                    payment.assessment?.price === 250;
+          
+          // Update assessment status based on processing type
           if (payment.assessment && payment.assessment.status !== 'completed') {
             await prisma.assessment.update({
               where: { id: payment.assessment.id },
               data: {
-                status: 'in_progress', // Set to in_progress so user can continue
+                // For manual processing, set to pending_review; otherwise, set to in_progress
+                status: isManualProcessing ? 'pending_review' : 'in_progress',
               }
             });
           }
@@ -86,20 +92,46 @@ export async function POST(request: NextRequest) {
             console.error('Failed to send receipt email:', err);
           });
           
-          // Process affiliate commission if applicable - this can be moved to a separate function
+          // Process affiliate commission if applicable
           await processAffiliateCommission(payment);
+          
+          // Include the processing type and appropriate redirect URL in the response
+          return NextResponse.json({
+            success: true,
+            status: 'completed',
+            message: 'Payment verified successfully',
+            assessmentId: payment.assessment?.id,
+            assessmentType: payment.assessment?.type,
+            isManualProcessing: isManualProcessing,
+            // Always redirect to results for both processing types
+            redirectUrl: `/assessment/${payment.assessment?.type}/results/${payment.assessment?.id}`
+          });
+        } else {
+          return NextResponse.json({
+            success: true,
+            status: 'failed',
+            message: 'Payment verification failed',
+            assessmentId: payment.assessment?.id,
+            assessmentType: payment.assessment?.type
+          });
         }
+      } else {
+        // Payment already processed by webhook, just return the status
+        return NextResponse.json({
+          success: true,
+          status: payment.status === 'completed' ? 'completed' : 'failed',
+          message: `Payment already processed (${payment.status})`,
+          assessmentId: payment.assessment?.id,
+          assessmentType: payment.assessment?.type,
+          isManualProcessing: payment.assessment?.manualProcessing || 
+                            payment.assessment?.price === 100 || 
+                            payment.assessment?.price === 250,
+          redirectUrl: `/assessment/${payment.assessment?.type}/results/${payment.assessment?.id}`
+        });
       }
-      
-      return NextResponse.json({
-        success: true,
-        status: isSuccessful ? 'completed' : 'failed',
-        message: isSuccessful ? 'Payment verified successfully' : 'Payment verification failed',
-        assessmentId: payment.assessment?.id,
-        assessmentType: payment.assessment?.type
-      });
     } 
     else if (gateway === 'toyyibpay') {
+      // Similar logic for toyyibpay with the same changes for manual processing
       const { billcode, status } = params;
       
       if (!billcode) {
@@ -139,12 +171,17 @@ export async function POST(request: NextRequest) {
         
         // If payment is successful
         if (isSuccessful) {
-          // Update assessment status if it's not already completed
+          // Check if this assessment requires manual processing
+          const isManualProcessing = payment.assessment?.manualProcessing || 
+                                    payment.assessment?.price === 100 || 
+                                    payment.assessment?.price === 250;
+          
+          // Update assessment status based on processing type
           if (payment.assessment && payment.assessment.status !== 'completed') {
             await prisma.assessment.update({
               where: { id: payment.assessment.id },
               data: {
-                status: 'in_progress',
+                status: isManualProcessing ? 'pending_review' : 'in_progress',
               }
             });
           }
@@ -156,16 +193,18 @@ export async function POST(request: NextRequest) {
           
           // Process affiliate commission
           await processAffiliateCommission(payment);
+          
+          return NextResponse.json({
+            success: true,
+            status: 'completed',
+            message: 'Payment verified successfully',
+            assessmentId: payment.assessment?.id,
+            assessmentType: payment.assessment?.type,
+            isManualProcessing: isManualProcessing,
+            redirectUrl: `/assessment/${payment.assessment?.type}/results/${payment.assessment?.id}`
+          });
         }
       }
-      
-      return NextResponse.json({
-        success: true,
-        status: isSuccessful ? 'completed' : 'failed',
-        message: isSuccessful ? 'Payment verified successfully' : 'Payment verification failed',
-        assessmentId: payment.assessment?.id,
-        assessmentType: payment.assessment?.type
-      });
     } 
     else {
       return NextResponse.json({ 
@@ -188,19 +227,12 @@ function verifyBillplzSignature(params: any, xSignatureKey: string): boolean {
   // Implement the same signature verification as in verifyBillplzPayment
   // This is a simplified example - you should use your actual verification logic
   
-  // Create a string of all the parameters except the signature itself
-  const signatureString = `${params.id}${params.paid}`;
-  
-  // In a real implementation, you would compute a HMAC or other signature 
-  // and compare it with the x_signature that was received
-  
   // For now, always return true in development (REMOVE THIS IN PRODUCTION)
   if (process.env.NODE_ENV === 'development') {
     return true;
   }
   
   // Implementation would depend on how Billplz signatures work
-  // Example: return computeHmacSignature(signatureString, xSignatureKey) === params.x_signature;
   return true; // Replace with actual verification
 }
 

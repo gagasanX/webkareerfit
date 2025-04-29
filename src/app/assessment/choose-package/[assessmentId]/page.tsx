@@ -1,8 +1,10 @@
+// src/app/assessment/choose-package/[assessmentId]/page.tsx
 import { redirect } from 'next/navigation';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth/auth';
 import { prisma } from '@/lib/db';
 import PackageSelection from '@/components/PackageSelection';
+import AssessmentDebugHelper from '@/components/AssessmentDebugHelper';
 
 export default async function ChoosePackagePage({ params }: { params: { assessmentId: string } }) {
   const session = await getServerSession(authOptions);
@@ -12,13 +14,18 @@ export default async function ChoosePackagePage({ params }: { params: { assessme
     redirect(`/login?callbackUrl=/assessment/choose-package/${params.assessmentId}`);
   }
 
+  console.log(`ChoosePackagePage: assessmentId=${params.assessmentId}, userId=${session.user.id}`);
+
   // Get assessment details
   const assessment = await prisma.assessment.findUnique({
     where: { id: params.assessmentId },
   });
 
+  console.log(`Assessment: ${JSON.stringify(assessment)}`);
+
   // If assessment doesn't exist or doesn't belong to user, redirect to dashboard
   if (!assessment || assessment.userId !== session.user.id) {
+    console.log(`Redirecting to /dashboard: assessment=${!!assessment}, userMatch=${assessment?.userId === session.user.id}`);
     redirect('/dashboard');
   }
 
@@ -39,6 +46,15 @@ export default async function ChoosePackagePage({ params }: { params: { assessme
               assessmentType={assessment.type} 
               initialTier={assessment.tier || 'basic'} 
             />
+            
+            {/* Only show in development mode */}
+            {process.env.NODE_ENV === 'development' && (
+              <AssessmentDebugHelper
+                assessmentId={assessment.id}
+                assessmentType={assessment.type}
+                currentTier={assessment.tier || 'basic'}
+              />
+            )}
           </div>
         </div>
       </div>

@@ -3,6 +3,7 @@ import { NextAuthOptions } from "next-auth";
 import { DefaultSession } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
 import * as bcryptModule from "bcrypt";
+import { prisma } from "@/lib/db";
 
 // Workaround for bcrypt in case it's not available
 const compare = async (data: string, hash: string) => {
@@ -19,8 +20,6 @@ const compare = async (data: string, hash: string) => {
     return false;
   }
 };
-
-import { prisma } from "@/lib/db";
 
 // Define UserRole type to match Prisma schema
 type UserRole = 'USER' | 'CLERK' | 'ADMIN';
@@ -42,6 +41,7 @@ declare module "next-auth" {
     email: string;
     role?: UserRole;
     isAdmin: boolean; // Keep for backward compatibility
+    isClerk: boolean; // Added isClerk explicitly
     isAffiliate: boolean;
   }
 }
@@ -59,39 +59,45 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
-        const user = await prisma.user.findUnique({
-          where: {
-            email: credentials.email
+        try {
+          const user = await prisma.user.findUnique({
+            where: {
+              email: credentials.email
+            }
+          });
+
+          if (!user) {
+            throw new Error("Invalid email or password");
           }
-        });
 
-        if (!user) {
-          throw new Error("Invalid email or password");
+          const isPasswordValid = await compare(
+            credentials.password,
+            user.password
+          );
+
+          if (!isPasswordValid) {
+            throw new Error("Invalid email or password");
+          }
+
+          // Cast the role to UserRole type to ensure type safety
+          const userRole = (user.role || 'USER') as UserRole;
+          const isClerk = userRole === 'CLERK' || userRole === 'ADMIN' || user.isClerk || user.isAdmin;
+
+          // Return the user with proper typing
+          return {
+            id: user.id,
+            email: user.email,
+            name: user.name || "User",
+            image: user.image,
+            role: userRole,
+            isAdmin: user.isAdmin,
+            isClerk: isClerk, 
+            isAffiliate: user.isAffiliate
+          };
+        } catch (error) {
+          console.error("Auth error:", error);
+          throw error;
         }
-
-        const isPasswordValid = await compare(
-          credentials.password,
-          user.password
-        );
-
-        if (!isPasswordValid) {
-          throw new Error("Invalid email or password");
-        }
-
-        // Work around TypeScript issues with any for now
-        const userRole = (user as any).role || 'USER';
-        const isClerk = userRole === 'CLERK' || userRole === 'ADMIN';
-
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          image: user.image,
-          role: userRole,
-          isAdmin: user.isAdmin,
-          isClerk: isClerk, // Computed property
-          isAffiliate: user.isAffiliate
-        };
       }
     })
   ],
@@ -106,13 +112,13 @@ export const authOptions: NextAuthOptions = {
         token.id = user.id;
         token.role = user.role;
         token.isAdmin = user.isAdmin;
-        token.isClerk = (user as any).isClerk;
+        token.isClerk = user.isClerk;
         token.isAffiliate = user.isAffiliate;
       }
       return token;
     },
     async session({ session, token }) {
-      if (token) {
+      if (token && session.user) {
         session.user.id = token.id as string;
         session.user.role = token.role as UserRole;
         session.user.isAdmin = token.isAdmin as boolean;
@@ -126,5 +132,6 @@ export const authOptions: NextAuthOptions = {
     strategy: "jwt",
     maxAge: 30 * 24 * 60 * 60 // 30 days
   },
+  debug: process.env.NODE_ENV === 'development', // Enable debug in development
   secret: process.env.NEXTAUTH_SECRET || "your-fallback-secret-for-development"
 };

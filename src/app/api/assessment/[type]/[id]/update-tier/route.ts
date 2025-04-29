@@ -1,4 +1,3 @@
-// src/app/api/assessment/[type]/[id]/update-tier/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth/auth';
@@ -25,7 +24,7 @@ export async function POST(
     }
 
     // Extract the tier from the request body
-    const { tier } = await request.json();
+    const { tier, manualProcessing } = await request.json();
     
     if (!tier) {
       return NextResponse.json(

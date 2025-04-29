@@ -78,9 +78,17 @@ export default function PaymentClient({
   };
   
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+    // Always prevent default to stop form from reloading the page
+    if (e && e.preventDefault) {
+      e.preventDefault();
+    }
     
-    if (isProcessing) return;
+    console.log("Submit handler called");
+    
+    if (isProcessing) {
+      console.log("Already processing, ignoring click");
+      return;
+    }
     
     setIsProcessing(true);
     setError(null);
@@ -144,6 +152,17 @@ export default function PaymentClient({
       setIsProcessing(false);
     }
   };
+  
+  // Debug output
+  console.log("[PaymentClient Debug]", {
+    isFree,
+    isProcessing,
+    paymentMethod,
+    finalPrice,
+    basePrice,
+    assessmentId: assessment.id,
+    tier: assessment.tier
+  });
   
   // If assessment is free and being processed, show a loading state
   if (isFree && isProcessing) {
@@ -262,7 +281,8 @@ export default function PaymentClient({
                     
                     <div className="mt-6 flex flex-col sm:flex-row gap-3">
                       <button
-                        type="submit"
+                        type="submit" 
+                        onClick={handleSubmit}
                         disabled={isProcessing}
                         className="flex-1 bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] text-white py-2 px-4 rounded-lg hover:shadow-md focus:outline-none focus:ring-2 focus:ring-[#7e43f1] focus:ring-opacity-50 disabled:opacity-70"
                       >
@@ -319,6 +339,19 @@ export default function PaymentClient({
           </div>
         </div>
       </div>
+      
+      {/* Main page payment button (visible in your screenshot) - make sure this is rendered on the page */}
+      {basePrice > 0 && (
+        <div className="mt-8 flex justify-center">
+          <button
+            onClick={handleSubmit}
+            disabled={isProcessing}
+            className="px-8 py-3 bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] text-white font-bold rounded-lg hover:shadow-lg text-lg"
+          >
+            {isProcessing ? 'Processing...' : `Start Assessment for RM ${finalPrice}`}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

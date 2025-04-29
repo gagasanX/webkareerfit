@@ -62,7 +62,10 @@ function PaymentStatusClient() {
           setPaymentDetails({
             gateway: 'Billplz',
             reference: billplzId,
-            assessmentId: data.assessmentId || null
+            assessmentId: data.assessmentId || null,
+            assessmentType: data.assessmentType || null,
+            redirectUrl: data.redirectUrl || null,
+            isManualProcessing: data.isManualProcessing || false
           });
         } else {
           console.error('Payment verification failed:', data.message);
@@ -93,14 +96,13 @@ function PaymentStatusClient() {
     } 
     // If we have Toyyibpay parameters
     else if (toyyibBillCode) {
+      // Similar logic for Toyyibpay
       try {
-        // Create a set of all URL parameters to verify on server
         const toyyibParams = {
           billcode: toyyibBillCode,
           status: toyyibStatus || '',
         };
         
-        // Call API to verify payment and update database
         const response = await fetch('/api/payment/verify-redirect', {
           method: 'POST',
           headers: {
@@ -119,11 +121,13 @@ function PaymentStatusClient() {
           setPaymentDetails({
             gateway: 'ToyyibPay',
             reference: toyyibBillCode,
-            assessmentId: data.assessmentId || null
+            assessmentId: data.assessmentId || null,
+            assessmentType: data.assessmentType || null,
+            redirectUrl: data.redirectUrl || null,
+            isManualProcessing: data.isManualProcessing || false
           });
         } else {
-          console.error('Payment verification failed:', data.message);
-          // Fallback to URL parameter status
+          // Fallback handling similar to Billplz
           if (toyyibStatus === '1') {
             setPaymentStatus('success');
           } else {
@@ -136,7 +140,7 @@ function PaymentStatusClient() {
         }
       } catch (error) {
         console.error('Error verifying payment:', error);
-        // Fallback to URL parameter status
+        // Fallback handling
         if (toyyibStatus === '1') {
           setPaymentStatus('success');
         } else {
@@ -153,11 +157,17 @@ function PaymentStatusClient() {
   };
   
   const getAssessmentUrl = () => {
-    if (paymentDetails && paymentDetails.assessmentId) {
-      // If we have assessment details, redirect to the assessment
-      return `/assessment/${paymentDetails.assessmentType || 'general'}/${paymentDetails.assessmentId}`;
+    // If we have a specific redirect URL from the server, use that
+    if (paymentDetails?.redirectUrl) {
+      return paymentDetails.redirectUrl;
     }
-    // Otherwise redirect to dashboard
+    
+    // If we have assessment details, build the URL for results page
+    if (paymentDetails?.assessmentId && paymentDetails?.assessmentType) {
+      return `/assessment/${paymentDetails.assessmentType}/results/${paymentDetails.assessmentId}`;
+    }
+    
+    // Default to dashboard
     return '/dashboard';
   };
   
@@ -220,6 +230,9 @@ function PaymentStatusClient() {
               <div className="text-center">
                 <p className="mb-6 text-gray-600">
                   Thank you for your payment. Your assessment is now available.
+                  {paymentDetails?.isManualProcessing 
+                    ? ' Our experts will review it and provide personalized results.' 
+                    : ''}
                 </p>
                 
                 {paymentDetails && (
@@ -232,6 +245,13 @@ function PaymentStatusClient() {
                       <span className="text-gray-500">Reference:</span>
                       <span className="font-medium">{paymentDetails.reference}</span>
                     </div>
+                    {paymentDetails.isManualProcessing && (
+                      <div className="mt-4 pt-3 border-t border-gray-200">
+                        <p className="text-blue-600">
+                          Your assessment will be manually reviewed by our experts. This typically takes 1-2 business days.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
                 
@@ -240,9 +260,9 @@ function PaymentStatusClient() {
                     href={getAssessmentUrl()}
                     className="px-6 py-3 bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] text-white rounded-lg font-medium hover:shadow-lg transition-shadow text-center"
                   >
-                    {paymentDetails && paymentDetails.assessmentId 
-                      ? 'Go to Assessment' 
-                      : 'Go to Dashboard'}
+                    {paymentDetails?.isManualProcessing 
+                      ? 'View Assessment Status' 
+                      : 'Go to Assessment'}
                   </Link>
                 </div>
               </div>

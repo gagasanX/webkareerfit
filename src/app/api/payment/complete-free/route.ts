@@ -71,7 +71,6 @@ export async function POST(request: NextRequest) {
         paymentId = updatedPayment.id;
         
         // If there's a coupon associated, increment its usage counter
-        // (This might already be done by the apply coupon API, but making sure)
         if (assessment.payment.couponId) {
           await tx.coupon.update({
             where: { id: assessment.payment.couponId },
@@ -96,11 +95,16 @@ export async function POST(request: NextRequest) {
         paymentId = newPayment.id;
       }
       
-      // Update assessment status to in_progress
+      // Check if this assessment requires manual processing
+      const isManualProcessing = assessment.manualProcessing || 
+                                assessment.price === 100 || 
+                                assessment.price === 250;
+      
+      // Update assessment status based on processing type
       await tx.assessment.update({
         where: { id: assessmentId },
         data: {
-          status: 'in_progress'
+          status: isManualProcessing ? 'pending_review' : 'in_progress'
         }
       });
     });
@@ -120,7 +124,6 @@ export async function POST(request: NextRequest) {
       
       if (user && user.referredBy) {
         // For free assessments, we may want different commission rules
-        // For example, a smaller fixed amount instead of a percentage
         const commissionAmount = 2.0; // Fixed RM2 commission for free assessments
         
         // Create or update the referral record
@@ -157,9 +160,16 @@ export async function POST(request: NextRequest) {
       console.error('Error processing referral for free assessment:', referralError);
     }
     
+    // Check if this assessment requires manual processing
+    const isManualProcessing = assessment.manualProcessing || 
+                              assessment.price === 100 || 
+                              assessment.price === 250;
+    
     return NextResponse.json({
       success: true,
-      message: 'Assessment unlocked successfully'
+      message: 'Assessment unlocked successfully',
+      redirectUrl: `/assessment/${assessment.type}/results/${assessment.id}`,
+      isManualProcessing: isManualProcessing
     });
   } catch (error) {
     console.error('Error processing free assessment:', error);

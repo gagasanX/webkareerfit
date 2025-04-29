@@ -1,55 +1,71 @@
-// app/api/assessment/route.ts
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth/auth';
 import { prisma } from '@/lib/db';
 
 // GET handler to fetch user's assessments
-export async function GET(request: Request) {
+export async function GET(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
     
-    if (!session || !session.user?.id) {
+    if (!session?.user?.id) {
       return NextResponse.json(
-        { error: 'Authentication required' },
+        { message: 'Unauthorized' },
         { status: 401 }
       );
     }
     
     const assessments = await prisma.assessment.findMany({
       where: { userId: session.user.id },
-      include: { payment: true },
       orderBy: { createdAt: 'desc' },
     });
     
-    return NextResponse.json(assessments);
+    return NextResponse.json({
+      success: true,
+      assessments
+    });
   } catch (error) {
     console.error('Error fetching assessments:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch assessments' },
+      { 
+        message: 'Failed to fetch assessments',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     );
   }
 }
 
 // POST handler to create a new assessment
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
+
+    if (!session?.user?.id) {
+      return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Parse request data
+    const { type, tier = 'basic' } = await request.json();
     
-    if (!session || !session.user?.id) {
+    if (!type) {
       return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
+        { message: 'Assessment type is required' },
+        { status: 400 }
       );
     }
-    
-    const { type, tier } = await request.json();
-    
+
     // Determine price based on tier
-    let price = 50; // Default to basic tier price
-    if (tier === 'standard') price = 100;
-    if (tier === 'premium') price = 250;
+    const tierPrices = {
+      basic: 50,
+      standard: 100,
+      premium: 250,
+    };
+
+    const price = tierPrices[tier as keyof typeof tierPrices] || 50;
+    
+    // Convert object to string using JSON.stringify
+    const tierData = JSON.stringify({ tier });
     
     // Create assessment
     const assessment = await prisma.assessment.create({
@@ -57,27 +73,32 @@ export async function POST(request: Request) {
         type,
         status: 'pending',
         price,
-        data: { tier }, // Store tier in the data JSON field
-        user: { connect: { id: session.user.id } },
+        data: tierData,
+        user: {
+          connect: {
+            id: session.user.id
+          }
+        },
+        tier
       },
     });
-    
-    // Create pending payment record
-    await prisma.payment.create({
-      data: {
-        amount: price,
-        method: 'pending',
-        status: 'pending',
-        user: { connect: { id: session.user.id } },
-        assessment: { connect: { id: assessment.id } },
-      },
+
+    return NextResponse.json({
+      success: true,
+      assessment: {
+        id: assessment.id,
+        type: assessment.type,
+        tier: assessment.tier,
+        price: assessment.price
+      }
     });
-    
-    return NextResponse.json(assessment);
   } catch (error) {
     console.error('Error creating assessment:', error);
     return NextResponse.json(
-      { error: 'Failed to create assessment' },
+      { 
+        message: 'Failed to create assessment',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      }, 
       { status: 500 }
     );
   }

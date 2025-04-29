@@ -33,6 +33,10 @@ CREATE TABLE "Assessment" (
     "data" JSONB,
     "price" DOUBLE PRECISION NOT NULL DEFAULT 0,
     "userId" TEXT NOT NULL,
+    "assignedClerkId" TEXT,
+    "reviewNotes" TEXT,
+    "reviewedAt" TIMESTAMP(3),
+    "manualProcessing" BOOLEAN NOT NULL DEFAULT false,
 
     CONSTRAINT "Assessment_pkey" PRIMARY KEY ("id")
 );
@@ -113,6 +117,30 @@ CREATE TABLE "Referral" (
 );
 
 -- CreateTable
+CREATE TABLE "SystemSetting" (
+    "key" TEXT NOT NULL,
+    "value" TEXT NOT NULL,
+    "isJson" BOOLEAN NOT NULL DEFAULT false,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "SystemSetting_pkey" PRIMARY KEY ("key")
+);
+
+-- CreateTable
+CREATE TABLE "EmailTemplate" (
+    "id" TEXT NOT NULL,
+    "name" TEXT NOT NULL,
+    "subject" TEXT NOT NULL,
+    "htmlContent" TEXT NOT NULL,
+    "active" BOOLEAN NOT NULL DEFAULT true,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL,
+
+    CONSTRAINT "EmailTemplate_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "AffiliateApplication" (
     "id" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -137,6 +165,9 @@ CREATE UNIQUE INDEX "User_email_key" ON "User"("email");
 CREATE UNIQUE INDEX "User_affiliateCode_key" ON "User"("affiliateCode");
 
 -- CreateIndex
+CREATE INDEX "Assessment_assignedClerkId_idx" ON "Assessment"("assignedClerkId");
+
+-- CreateIndex
 CREATE UNIQUE INDEX "Payment_assessmentId_key" ON "Payment"("assessmentId");
 
 -- CreateIndex
@@ -152,10 +183,19 @@ CREATE INDEX "Referral_affiliateId_idx" ON "Referral"("affiliateId");
 CREATE INDEX "Referral_assessmentId_idx" ON "Referral"("assessmentId");
 
 -- CreateIndex
+CREATE INDEX "SystemSetting_key_idx" ON "SystemSetting"("key");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "EmailTemplate_name_key" ON "EmailTemplate"("name");
+
+-- CreateIndex
 CREATE INDEX "AffiliateApplication_userId_idx" ON "AffiliateApplication"("userId");
 
 -- AddForeignKey
 ALTER TABLE "Assessment" ADD CONSTRAINT "Assessment_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "Assessment" ADD CONSTRAINT "Assessment_assignedClerkId_fkey" FOREIGN KEY ("assignedClerkId") REFERENCES "User"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "Payment" ADD CONSTRAINT "Payment_couponId_fkey" FOREIGN KEY ("couponId") REFERENCES "Coupon"("id") ON DELETE SET NULL ON UPDATE CASCADE;
@@ -182,4 +222,4 @@ ALTER TABLE "Referral" ADD CONSTRAINT "Referral_assessmentId_fkey" FOREIGN KEY (
 ALTER TABLE "Referral" ADD CONSTRAINT "Referral_affiliateId_fkey" FOREIGN KEY ("affiliateId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "AffiliateApplication" ADD CONSTRAINT "AffiliateApplication_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "AffiliateApplication" ADD CONSTRAINT "AffiliateApplication_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User"("id") ON DELETE RESTRICT ON UPDATE CASCAD

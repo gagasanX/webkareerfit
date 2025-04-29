@@ -5,7 +5,6 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
 }
 
 model User {
@@ -45,7 +44,7 @@ model Assessment {
   status    String     @default("pending")
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
-  data      Json?
+  data      Json?      // Tukar dari String? ke Json? untuk PostgreSQL
   price     Float      @default(0)
   userId    String
   user      User       @relation(fields: [userId], references: [id])
@@ -55,7 +54,7 @@ model Assessment {
   // Field baru untuk pengurusan pemprosesan manual
   assignedClerkId String?
   assignedClerk   User?    @relation("ClerkAssessments", fields: [assignedClerkId], references: [id])
-  reviewNotes     String?  @db.Text
+  reviewNotes     String?
   reviewedAt      DateTime?
   manualProcessing Boolean  @default(false)
 
@@ -137,7 +136,7 @@ model Referral {
 
 model SystemSetting {
   key       String   @id
-  value     String   @db.Text
+  value     String
   isJson    Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -149,7 +148,7 @@ model EmailTemplate {
   id          String   @id @default(cuid())
   name        String   @unique
   subject     String
-  htmlContent String   @db.Text
+  htmlContent String   // Untuk text panjang dalam PostgreSQL, boleh guna @db.Text jika perlu
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -165,9 +164,9 @@ model AffiliateApplication {
   phone       String
   website     String?
   socialMedia String?
-  howPromote  String
+  howPromote  String   // Untuk text panjang dalam PostgreSQL, boleh guna @db.Text jika perlu
   status      String
-  notes       String?
+  notes       String?  // Untuk text panjang dalam PostgreSQL, boleh guna @db.Text jika perlu
   user        User     @relation(fields: [userId], references: [id])
 
   @@index([userId])
