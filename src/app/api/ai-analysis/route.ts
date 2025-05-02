@@ -1,12 +1,13 @@
-// app/api/ai-analysis/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { getOpenAIClient } from '@/lib/openai';
+import { createOpenAIClient } from '@/lib/openai-client';
 
-export const maxDuration = 60; // Use Edge Runtime with longer timeouts
+// Set Edge runtime for longer execution time
+export const runtime = 'edge';
+export const maxDuration = 60; // Set to 60 seconds
 
 export async function POST(request: NextRequest) {
-  console.log('AI Analysis endpoint called');
+  console.log('[ai-analysis] API endpoint called');
   
   try {
     // Parse the request body
@@ -14,10 +15,11 @@ export async function POST(request: NextRequest) {
     const { assessmentId, type, responses } = body;
 
     if (!assessmentId || !type) {
+      console.error('[ai-analysis] Missing required parameters');
       return NextResponse.json({ error: 'Missing required parameters' }, { status: 400 });
     }
 
-    console.log(`Processing AI analysis for assessment ${assessmentId} of type ${type}`);
+    console.log(`[ai-analysis] Processing for assessment ${assessmentId} of type ${type}`);
 
     // Get the assessment data
     const assessment = await prisma.assessment.findUnique({
@@ -25,32 +27,21 @@ export async function POST(request: NextRequest) {
     });
 
     if (!assessment) {
-      console.error(`Assessment ${assessmentId} not found`);
+      console.error(`[ai-analysis] Assessment ${assessmentId} not found`);
       return NextResponse.json({ error: 'Assessment not found' }, { status: 404 });
     }
 
-    // Update assessment status to processing
-    await prisma.assessment.update({
-      where: { id: assessmentId },
-      data: {
-        status: 'processing',
-        data: {
-          ...(assessment.data as object || {}),
-          aiAnalysisStarted: true,
-          aiAnalysisStartedAt: new Date().toISOString(),
-        }
-      },
-    });
-
     // Get categories based on assessment type
     const categories = getCategories(type);
+    console.log(`[ai-analysis] Categories for ${type}:`, categories);
     
-    // Process AI analysis directly (no background processing)
     try {
-      console.log('Starting immediate AI analysis');
+      // Perform the AI analysis directly - no background processing
+      console.log('[ai-analysis] Starting OpenAI analysis...');
       const analysisResult = await processAIAnalysis(type, responses, categories);
+      console.log('[ai-analysis] Analysis completed successfully');
       
-      // Update the assessment with the AI analysis
+      // Update the assessment with the AI analysis results
       await prisma.assessment.update({
         where: { id: assessmentId },
         data: {
@@ -65,39 +56,36 @@ export async function POST(request: NextRequest) {
             improvements: analysisResult.improvements,
             aiProcessed: true,
             aiProcessedAt: new Date().toISOString(),
-            aiAnalysisStarted: true,
-            aiAnalysisCompleted: true,
           }
         }
       });
       
-      console.log('AI analysis completed successfully');
-      
       return NextResponse.json({
         success: true,
-        message: 'AI analysis completed',
-        analysis: analysisResult,
+        message: 'AI analysis completed successfully',
+        analysis: analysisResult
       });
-    } catch (error) {
-      console.error('Error in direct AI analysis:', error);
       
-      // Update assessment with error
+    } catch (aiError) {
+      console.error('[ai-analysis] Error in AI processing:', aiError);
+      
+      // Update assessment with error status
       await prisma.assessment.update({
         where: { id: assessmentId },
         data: {
           status: 'error',
           data: {
             ...(assessment.data as object || {}),
-            aiError: error instanceof Error ? error.message : 'Unknown error',
+            aiError: aiError instanceof Error ? aiError.message : 'Unknown error',
             aiProcessing: false,
           }
         }
       });
       
-      throw error;
+      throw aiError;
     }
   } catch (error) {
-    console.error('Error in AI analysis API:', error);
+    console.error('[ai-analysis] Unhandled error:', error);
     return NextResponse.json(
       { error: 'Failed to process AI analysis request', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
@@ -127,7 +115,7 @@ function getCategories(assessmentType: string): string[] {
   }
 }
 
-// Process AI analysis directly - no background processing
+// Function to process AI analysis directly
 async function processAIAnalysis(
   assessmentType: string,
   responses: any,
@@ -139,18 +127,18 @@ async function processAIAnalysis(
       .map(([key, value]) => `${key}: ${value}`)
       .join('\n');
 
-    // Create the prompt for the AI - improved for higher quality analysis
-    const systemPrompt = `You are an expert career assessment analyst with deep expertise in ${assessmentType.toUpperCase()} evaluations. 
-You provide sophisticated, highly personalized analyses based on assessment responses. 
-Your analysis should be thorough, insightful, and actionable - comparable to what a highly paid career consultant would provide.
-Generate varied and realistic scores (0-100) for each category that accurately reflect the responses.
-Your recommendations should be specific, detailed, and tailored to the individual's unique situation.`;
+    // Create a more expert prompt for the AI analysis
+    const systemPrompt = `You are a senior career assessment analyst with over 20 years of experience in ${assessmentType.toUpperCase()} evaluations. 
+You provide sophisticated, individualized analyses that are insightful, nuanced, and actionable.
+You must generate meaningful and varied scores (0-100) for each category that accurately reflect the assessment responses.
+Think like a highly paid career advisor that provides personalized, expert insights.
+Ensure that your recommendations are specific, practical, and tailored to the individual's situation.`;
 
-    const userPrompt = `Analyze these ${assessmentType.toUpperCase()} assessment responses and provide a comprehensive professional analysis:
+    const userPrompt = `Analyze these ${assessmentType.toUpperCase()} assessment responses to provide a comprehensive professional analysis:
 
 ${formattedResponses}
 
-Provide a thorough analysis with this JSON structure:
+Format your analysis as JSON with the following structure:
 {
   "scores": {
     ${categories.map(cat => `"${cat}": number (0-100)`).join(',\n    ')},
@@ -175,52 +163,93 @@ For readiness levels:
 - 70-84: "Approaching Readiness"
 - 85-100: "Fully Prepared"
 
-IMPORTANT REQUIREMENTS:
-- Each category MUST get a unique score based on a careful analysis of the responses
-- Scores should reflect the quality and depth of the responses, not just be arbitrary
-- Each recommendation must be highly specific, actionable, and directly tied to the assessment responses
-- The summary should provide a personalized overview of their current career readiness
-- Strengths and improvements must be personalized to the individual's situation
-- Your analysis must sound like it comes from a professional career coach with 15+ years of experience
-- Avoid generic advice - everything should be personalized to the assessment responses
+VERY IMPORTANT REQUIREMENTS:
+- Each category must have a unique score that reflects the quality of the responses
+- Scores should not all be the same or very similar
+- Each recommendation must be detailed, actionable, and directly related to the assessment responses
+- Include at least 3 distinct strengths and 3 areas for improvement
+- The summary should be personalized and provide meaningful insight
+- Your analysis should sound like it was written by a professional career coach with extensive experience
+- Every aspect of your analysis must be personalized to the assessment responses provided
 
-Return ONLY valid JSON with NO additional text.`;
+Return ONLY valid JSON - no other text or explanation.`;
 
-    // Get the OpenAI client
-    const openai = getOpenAIClient();
+    // Initialize OpenAI client
+    console.log('[ai-analysis] Creating OpenAI client...');
+    const openai = createOpenAIClient();
     
-    // Call the OpenAI API - use GPT-4-turbo for better quality
-    console.log('Making OpenAI API call...');
+    // Call the OpenAI API
+    console.log('[ai-analysis] Calling OpenAI API...');
     const completion = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo-1106', // Can be upgraded to gpt-4 for even better results
+      model: 'gpt-3.5-turbo-1106', // Using the JSON mode enabled model
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
       ],
-      response_format: { type: 'json_object' },
-      temperature: 0.5, // Balance between creativity and consistency
+      response_format: { type: 'json_object' }, // Force JSON response
+      temperature: 0.7, // Slightly higher temperature for more varied outputs
     });
 
     // Extract the response
     const responseContent = completion.choices[0]?.message?.content;
     
     if (!responseContent) {
+      console.error('[ai-analysis] Empty response from OpenAI');
       throw new Error('Empty response from AI');
     }
 
     // Parse the JSON response
-    const analysisResult = JSON.parse(responseContent);
+    console.log('[ai-analysis] Parsing JSON response...');
+    let analysisResult;
+    try {
+      analysisResult = JSON.parse(responseContent);
+    } catch (parseError) {
+      console.error('[ai-analysis] JSON parse error:', parseError);
+      console.error('[ai-analysis] Response content:', responseContent);
+      throw new Error('Failed to parse AI response as JSON');
+    }
 
     // Validate the response has all required fields
     if (!analysisResult.scores || !analysisResult.readinessLevel || 
         !Array.isArray(analysisResult.recommendations) || !analysisResult.summary ||
         !Array.isArray(analysisResult.strengths) || !Array.isArray(analysisResult.improvements)) {
-      throw new Error('Incomplete AI response');
+      console.error('[ai-analysis] Incomplete response from OpenAI:', analysisResult);
+      throw new Error('Incomplete AI response - missing required fields');
     }
 
+    // Verify all categories have scores
+    const missingCategories = categories.filter(cat => 
+      !analysisResult.scores[cat] && analysisResult.scores[cat] !== 0
+    );
+    
+    if (missingCategories.length > 0) {
+      console.warn(`[ai-analysis] Missing scores for categories: ${missingCategories.join(', ')}`);
+      
+      // Fill in missing categories with default scores
+      missingCategories.forEach(cat => {
+        analysisResult.scores[cat] = 70; // Default score
+      });
+    }
+
+    // Ensure overall score is present and valid
+    if (!analysisResult.scores.overallScore) {
+      console.log('[ai-analysis] Calculating missing overall score');
+      const categoryScores = Object.entries(analysisResult.scores)
+        .filter(([key]) => key !== 'overallScore')
+        .map(([_, value]) => Number(value));
+      
+      if (categoryScores.length > 0) {
+        const sum = categoryScores.reduce((a, b) => a + b, 0);
+        analysisResult.scores.overallScore = Math.round(sum / categoryScores.length);
+      } else {
+        analysisResult.scores.overallScore = 70; // Default
+      }
+    }
+
+    console.log('[ai-analysis] Analysis result successfully generated');
     return analysisResult;
   } catch (error) {
-    console.error('Error processing AI analysis:', error);
+    console.error('[ai-analysis] Error in AI processing:', error);
     throw error;
   }
 }

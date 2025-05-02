@@ -1,35 +1,34 @@
-// app/api/debug/openai-test/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { getOpenAIClient } from '@/lib/openai';
+import { createOpenAIClient, testOpenAIConnection } from '@/lib/openai-client';
 
 export async function GET(request: NextRequest) {
   try {
-    console.log("Testing OpenAI connection...");
-    console.log("API Key set:", !!process.env.OPENAI_API_KEY);
-    console.log("API Key prefix:", process.env.OPENAI_API_KEY?.substring(0, 7) + "..." || "none");
+    console.log("[openai-test] Testing OpenAI connection...");
     
-    // Test OpenAI connection
-    const openai = getOpenAIClient();
-    const completion = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
-      messages: [{ role: "user", content: "Say hello" }],
-      max_tokens: 10
-    });
+    // Check if API key is set
+    const apiKey = process.env.OPENAI_API_KEY;
+    console.log("[openai-test] API Key set:", !!apiKey);
+    console.log("[openai-test] API Key prefix:", apiKey?.substring(0, 7) + "..." || "none");
+    
+    // Test connection
+    const result = await testOpenAIConnection();
     
     return NextResponse.json({
-      success: true,
-      response: completion.choices[0]?.message?.content,
-      model: completion.model,
-      apiKeyWorking: true
+      ...result,
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV,
+      vercelEnv: process.env.VERCEL_ENV || 'not-vercel'
     });
   } catch (error) {
-    console.error("OpenAI test error:", error);
+    console.error("[openai-test] Error:", error);
     
     return NextResponse.json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
-      apiKeyWorking: false,
-      apiKeySet: !!process.env.OPENAI_API_KEY
+      apiKeySet: !!process.env.OPENAI_API_KEY,
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV,
+      vercelEnv: process.env.VERCEL_ENV || 'not-vercel'
     }, { status: 500 });
   }
 }

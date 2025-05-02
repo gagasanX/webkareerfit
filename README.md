@@ -34,10 +34,8 @@ bash
 git add .
 git commit -m "Fix"
 git push
-Deploy:
-bash
 
-# deploy Copy
+#Deploy:bash
 vercel --prod
 
 //===============
