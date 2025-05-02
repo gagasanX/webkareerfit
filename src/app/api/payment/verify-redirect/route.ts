@@ -1,3 +1,4 @@
+// app/api/payment/verify-redirect/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { verifyBillplzPayment } from '@/lib/payment/billplz';
@@ -73,8 +74,8 @@ export async function POST(request: NextRequest) {
         if (isSuccessful) {
           // Check if this assessment requires manual processing
           const isManualProcessing = payment.assessment?.manualProcessing || 
-                                    payment.assessment?.price === 100 || 
-                                    payment.assessment?.price === 250;
+                                    payment.assessment?.tier === 'standard' || 
+                                    payment.assessment?.tier === 'premium';
           
           // Update assessment status based on processing type
           if (payment.assessment && payment.assessment.status !== 'completed') {
@@ -95,6 +96,25 @@ export async function POST(request: NextRequest) {
           // Process affiliate commission if applicable
           await processAffiliateCommission(payment);
           
+          // Determine the appropriate redirect URL based on tier
+          let redirectUrl;
+          
+          // For premium tier (RM250), use premium-results page
+          if (payment.assessment?.tier === 'premium') {
+            redirectUrl = `/assessment/${payment.assessment?.type}/premium-results/${payment.assessment?.id}`;
+            console.log(`Premium tier - Redirecting to: ${redirectUrl}`);
+          } 
+          // For standard tier (RM100), use standard-results page
+          else if (payment.assessment?.tier === 'standard') {
+            redirectUrl = `/assessment/${payment.assessment?.type}/standard-results/${payment.assessment?.id}`;
+            console.log(`Standard tier - Redirecting to: ${redirectUrl}`);
+          }
+          // Fallback for basic tier
+          else {
+            redirectUrl = `/assessment/${payment.assessment?.type}/results/${payment.assessment?.id}`;
+            console.log(`Basic tier - Redirecting to: ${redirectUrl}`);
+          }
+
           // Include the processing type and appropriate redirect URL in the response
           return NextResponse.json({
             success: true,
@@ -103,8 +123,7 @@ export async function POST(request: NextRequest) {
             assessmentId: payment.assessment?.id,
             assessmentType: payment.assessment?.type,
             isManualProcessing: isManualProcessing,
-            // Always redirect to results for both processing types
-            redirectUrl: `/assessment/${payment.assessment?.type}/results/${payment.assessment?.id}`
+            redirectUrl: redirectUrl
           });
         } else {
           return NextResponse.json({
@@ -112,11 +131,23 @@ export async function POST(request: NextRequest) {
             status: 'failed',
             message: 'Payment verification failed',
             assessmentId: payment.assessment?.id,
-            assessmentType: payment.assessment?.type
+            assessmentType: payment.assessment?.type,
+            redirectUrl: `/payment/failed?id=${payment.assessment?.id}`
           });
         }
       } else {
         // Payment already processed by webhook, just return the status
+        // Determine redirect URL based on tier
+        let redirectUrl;
+        
+        if (payment.assessment?.tier === 'premium') {
+          redirectUrl = `/assessment/${payment.assessment?.type}/premium-results/${payment.assessment?.id}`;
+        } else if (payment.assessment?.tier === 'standard') {
+          redirectUrl = `/assessment/${payment.assessment?.type}/standard-results/${payment.assessment?.id}`;
+        } else {
+          redirectUrl = `/assessment/${payment.assessment?.type}/results/${payment.assessment?.id}`;
+        }
+        
         return NextResponse.json({
           success: true,
           status: payment.status === 'completed' ? 'completed' : 'failed',
@@ -124,9 +155,9 @@ export async function POST(request: NextRequest) {
           assessmentId: payment.assessment?.id,
           assessmentType: payment.assessment?.type,
           isManualProcessing: payment.assessment?.manualProcessing || 
-                            payment.assessment?.price === 100 || 
-                            payment.assessment?.price === 250,
-          redirectUrl: `/assessment/${payment.assessment?.type}/results/${payment.assessment?.id}`
+                            payment.assessment?.tier === 'standard' || 
+                            payment.assessment?.tier === 'premium',
+          redirectUrl: redirectUrl
         });
       }
     } 
@@ -173,8 +204,8 @@ export async function POST(request: NextRequest) {
         if (isSuccessful) {
           // Check if this assessment requires manual processing
           const isManualProcessing = payment.assessment?.manualProcessing || 
-                                    payment.assessment?.price === 100 || 
-                                    payment.assessment?.price === 250;
+                                    payment.assessment?.tier === 'standard' || 
+                                    payment.assessment?.tier === 'premium';
           
           // Update assessment status based on processing type
           if (payment.assessment && payment.assessment.status !== 'completed') {
@@ -194,6 +225,17 @@ export async function POST(request: NextRequest) {
           // Process affiliate commission
           await processAffiliateCommission(payment);
           
+          // Determine redirect URL based on tier
+          let redirectUrl;
+          
+          if (payment.assessment?.tier === 'premium') {
+            redirectUrl = `/assessment/${payment.assessment?.type}/premium-results/${payment.assessment?.id}`;
+          } else if (payment.assessment?.tier === 'standard') {
+            redirectUrl = `/assessment/${payment.assessment?.type}/standard-results/${payment.assessment?.id}`;
+          } else {
+            redirectUrl = `/assessment/${payment.assessment?.type}/results/${payment.assessment?.id}`;
+          }
+          
           return NextResponse.json({
             success: true,
             status: 'completed',
@@ -201,12 +243,40 @@ export async function POST(request: NextRequest) {
             assessmentId: payment.assessment?.id,
             assessmentType: payment.assessment?.type,
             isManualProcessing: isManualProcessing,
-            redirectUrl: `/assessment/${payment.assessment?.type}/results/${payment.assessment?.id}`
+            redirectUrl: redirectUrl
+          });
+        } else {
+          return NextResponse.json({
+            success: true,
+            status: 'failed',
+            message: 'Payment verification failed',
+            assessmentId: payment.assessment?.id,
+            assessmentType: payment.assessment?.type,
+            redirectUrl: `/payment/failed?id=${payment.assessment?.id}`
           });
         }
+      } else {
+        // Payment already processed, determine redirect URL based on tier
+        let redirectUrl;
+        
+        if (payment.assessment?.tier === 'premium') {
+          redirectUrl = `/assessment/${payment.assessment?.type}/premium-results/${payment.assessment?.id}`;
+        } else if (payment.assessment?.tier === 'standard') {
+          redirectUrl = `/assessment/${payment.assessment?.type}/standard-results/${payment.assessment?.id}`;
+        } else {
+          redirectUrl = `/assessment/${payment.assessment?.type}/results/${payment.assessment?.id}`;
+        }
+        
+        return NextResponse.json({
+          success: true,
+          status: payment.status,
+          message: `Payment already processed (${payment.status})`,
+          assessmentId: payment.assessment?.id,
+          assessmentType: payment.assessment?.type,
+          redirectUrl: redirectUrl
+        });
       }
-    } 
-    else {
+    } else {
       return NextResponse.json({ 
         success: false, 
         message: 'Invalid payment gateway' 

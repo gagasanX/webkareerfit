@@ -1,10 +1,8 @@
+// app/api/payment/process/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { prisma } from '@/lib/db';
 import { authOptions } from '@/lib/auth/auth';
-
-// You would typically import your payment gateway SDK here
-// import { initializePayment } from '@/lib/payment/gateway';
 
 // Define extended session user type
 type ExtendedUser = {
@@ -90,7 +88,7 @@ export async function POST(req: NextRequest) {
         where: { code: data.couponCode },
       });
 
-      if (!coupon || new Date() > coupon.expiresAt || coupon.isUsed) {
+      if (!coupon || new Date() > coupon.expiresAt || coupon.currentUses >= coupon.maxUses) {
         return NextResponse.json(
           { error: 'Invalid or expired coupon code' },
           { status: 400 }
@@ -145,34 +143,23 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // If coupon is being used, mark it as used
+    // If coupon is being used, increment its usage count
     if (appliedCoupon) {
       await prisma.coupon.update({
         where: { id: appliedCoupon.id },
-        data: { isUsed: true, usedAt: new Date() },
+        data: { 
+          currentUses: { increment: 1 },
+          updatedAt: new Date() 
+        },
       });
     }
 
     // In a real implementation, you would call your payment gateway here
-    // const paymentGatewayResponse = await initializePayment({
-    //   amount: finalAmount,
-    //   currency: 'MYR',
-    //   paymentMethod: data.paymentMethod,
-    //   description: `Payment for ${assessment.type.toUpperCase()} Assessment`,
-    //   metadata: {
-    //     assessmentId: assessment.id,
-    //     paymentId: payment.id,
-    //     userId: session.user.id,
-    //   },
-    //   returnUrl: `${process.env.NEXT_PUBLIC_BASE_URL}/payment/callback`,
-    // });
-
     // For development/testing, simulate a successful payment
     const simulatedPaymentResponse: SimulatedPaymentResponse = {
       success: true,
       paymentId: `sim_${Date.now()}`,
-      // Uncomment for testing redirect flow:
-      // redirectUrl: `${process.env.NEXT_PUBLIC_BASE_URL}/payment/success?id=${assessment.id}`,
+      redirectUrl: `${process.env.NEXT_PUBLIC_BASE_URL || ''}/payment/status?id=${assessment.id}`,
     };
 
     // Update payment with gateway reference
@@ -216,8 +203,8 @@ export async function POST(req: NextRequest) {
           await prisma.affiliateStats.update({
             where: { userId: referrerUser.id },
             data: {
-              totalReferrals: stats.totalReferrals + 1,
-              totalEarnings: stats.totalEarnings + commissionAmount,
+              totalReferrals: { increment: 1 },
+              totalEarnings: { increment: commissionAmount },
             },
           });
         }
@@ -227,10 +214,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       paymentId: payment.id,
-      // If the payment gateway requires redirect, include the URL
-      ...(simulatedPaymentResponse.redirectUrl && {
-        redirectUrl: simulatedPaymentResponse.redirectUrl,
-      }),
+      paymentUrl: simulatedPaymentResponse.redirectUrl,
     });
   } catch (error) {
     console.error('Error processing payment:', error);

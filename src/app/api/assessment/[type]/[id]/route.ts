@@ -1,9 +1,9 @@
-// src/app/api/assessment/[type]/[id]/route.ts
-import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
-import { prisma } from '@/lib/db';
-import { authOptions } from '@/lib/auth/auth';
-import { Assessment } from '@prisma/client';
+// app/api/assessment/[type]/[id]/route.ts
+import { NextRequest, NextResponse } from "next/server";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/lib/auth/auth";
+import { prisma } from "@/lib/db";
+import { Assessment } from "@prisma/client";
 
 // Define interface for Assessment data JSON structure
 interface AssessmentData {
@@ -12,7 +12,54 @@ interface AssessmentData {
   aiAnalysisStarted?: boolean;
   aiAnalysisStartedAt?: string;
   aiError?: string;
+  tier?: string;
+  affiliateId?: string | null;
   [key: string]: any; // Allow for other properties
+}
+
+// GET endpoint for retrieving an assessment
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { type: string; id: string } }
+) {
+  try {
+    const session = await getServerSession(authOptions);
+
+    if (!session?.user?.id) {
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+    }
+
+    const { type, id } = params;
+
+    const assessment = await prisma.assessment.findUnique({
+      where: { id },
+      include: {
+        payment: true,
+      },
+    });
+
+    if (!assessment) {
+      return NextResponse.json(
+        { message: "Assessment not found" },
+        { status: 404 }
+      );
+    }
+
+    if (assessment.userId !== session.user.id) {
+      return NextResponse.json(
+        { message: "Unauthorized access to this assessment" },
+        { status: 403 }
+      );
+    }
+
+    return NextResponse.json(assessment);
+  } catch (error) {
+    console.error("Error fetching assessment:", error);
+    return NextResponse.json(
+      { message: "Error fetching assessment", error: String(error) },
+      { status: 500 }
+    );
+  }
 }
 
 // POST endpoint for submitting an assessment
@@ -51,6 +98,9 @@ export async function POST(
       },
     });
 
+    // Log assessment details for debugging
+    console.log(`Assessment submitted: ${id} - Type: ${type}, Tier: ${assessment.tier}, Price: ${assessment.price}, Manual: ${assessment.manualProcessing}`);
+
     // Determine processing path based on manual processing flag or price
     if (assessment.manualProcessing || assessment.price >= 100) {
       // For manual processing packages - queue for manual review
@@ -71,6 +121,8 @@ export async function POST(
 // Process with AI (typically RM50 tier)
 async function processWithAI(assessment: Assessment, type: string) {
   try {
+    console.log(`Starting AI processing for assessment ${assessment.id} (${type})`);
+    
     // Update status to processing
     await prisma.assessment.update({
       where: { id: assessment.id },
@@ -90,6 +142,8 @@ async function processWithAI(assessment: Assessment, type: string) {
 
     // Call your existing AI analysis endpoint
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || '';
+    console.log(`Calling AI analysis endpoint: ${apiUrl}/api/ai-analysis for assessment ${assessment.id}`);
+    
     const aiResponse = await fetch(`${apiUrl}/api/ai-analysis`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -101,13 +155,18 @@ async function processWithAI(assessment: Assessment, type: string) {
     });
 
     if (!aiResponse.ok) {
-      throw new Error('AI processing failed');
+      const errorData = await aiResponse.json().catch(() => ({}));
+      console.error(`AI processing failed with status ${aiResponse.status}:`, errorData);
+      throw new Error(`AI processing failed: ${errorData.error || aiResponse.status}`);
     }
 
+    const redirectUrl = `/assessment/${type}/processing/${assessment.id}`;
+    console.log(`AI processing initiated, redirecting to: ${redirectUrl}`);
+    
     return NextResponse.json({
       success: true,
       message: 'Assessment submitted for AI processing',
-      redirectUrl: `/assessment/${type}/processing/${assessment.id}`,
+      redirectUrl: redirectUrl,
     });
   } catch (error: unknown) {
     console.error('AI processing error:', error);
@@ -125,7 +184,7 @@ async function processWithAI(assessment: Assessment, type: string) {
     });
 
     return NextResponse.json(
-      { error: 'AI processing failed' },
+      { error: 'AI processing failed', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
   }
@@ -134,6 +193,8 @@ async function processWithAI(assessment: Assessment, type: string) {
 // Queue assessment for manual review (RM100 and RM250 tiers)
 async function queueForManualReview(assessment: Assessment) {
   try {
+    console.log(`Starting manual review process for assessment ${assessment.id} (${assessment.tier} tier)`);
+    
     // Update assessment status to pending review
     await prisma.assessment.update({
       where: { id: assessment.id },
@@ -143,15 +204,34 @@ async function queueForManualReview(assessment: Assessment) {
       },
     });
 
+    // Determine the appropriate redirect URL based on tier/price
+    let redirectUrl;
+    
+    // For premium tier (RM250), use premium-results page
+    if (assessment.price >= 250 || assessment.tier === 'premium') {
+      redirectUrl = `/assessment/${assessment.type}/premium-results/${assessment.id}`;
+      console.log(`Premium tier detected (RM${assessment.price}) - Redirecting to: ${redirectUrl}`);
+    } 
+    // For standard tier (RM100), use standard-results page
+    else if (assessment.price >= 100 || assessment.tier === 'standard') {
+      redirectUrl = `/assessment/${assessment.type}/standard-results/${assessment.id}`;
+      console.log(`Standard tier detected (RM${assessment.price}) - Redirecting to: ${redirectUrl}`);
+    }
+    // Fallback for any other case
+    else {
+      redirectUrl = `/assessment/${assessment.type}/results/${assessment.id}`;
+      console.log(`Default tier - Redirecting to: ${redirectUrl}`);
+    }
+
     return NextResponse.json({
       success: true,
       message: 'Assessment submitted for expert review',
-      redirectUrl: `/assessment/${assessment.type}/results/${assessment.id}`,
+      redirectUrl: redirectUrl,
     });
   } catch (error: unknown) {
     console.error('Error queueing for manual review:', error);
     return NextResponse.json(
-      { error: 'Failed to queue assessment' },
+      { error: 'Failed to queue assessment', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
   }

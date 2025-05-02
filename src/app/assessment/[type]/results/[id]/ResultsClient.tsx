@@ -1,3 +1,4 @@
+//app/assessment/[type]/results/[id]/resultclient.tsx
 'use client';
 
 import { useState, useEffect, useRef } from 'react';

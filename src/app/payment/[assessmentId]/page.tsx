@@ -6,18 +6,19 @@ import PaymentClient from './PaymentClient';
 
 export default async function PaymentPage({ params }: { params: { assessmentId: string } }) {
   const session = await getServerSession(authOptions);
+  const assessmentId = params.assessmentId; // Extract it once to avoid multiple access
 
   // Redirect to login if not authenticated
   if (!session || !session.user) {
-    redirect(`/login?callbackUrl=/payment/${params.assessmentId}`);
+    redirect(`/login?callbackUrl=/payment/${assessmentId}`);
   }
 
   // Get assessment details - FORCE DATABASE REFRESH
-  console.log(`Loading assessment ${params.assessmentId} for payment page`);
+  console.log(`Loading assessment ${assessmentId} for payment page`);
   
   // Fetch the assessment directly - avoid any caching issues
   const assessment = await prisma.assessment.findUnique({
-    where: { id: params.assessmentId },
+    where: { id: assessmentId },
     include: {
       payment: {
         include: { coupon: true }

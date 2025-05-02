@@ -1,95 +1,86 @@
+// app/api/assessment/create/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth/auth";
 import { prisma } from "@/lib/db";
-import { ExtendedUser, getUserId } from "@/lib/utils";
+import { getUserId } from "@/lib/utils";
+
+type TierType = 'basic' | 'standard' | 'premium';
 
 export async function POST(request: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
-
     if (!session) {
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
-
-    // Get the user ID safely using our utility function
-    const userId = getUserId(session);
     
+    const userId = getUserId(session);
     if (!userId) {
       return NextResponse.json({ message: "Invalid user session" }, { status: 401 });
     }
 
-    const formData = await request.formData();
-    const type = formData.get("type") as string;
-    const answersJson = formData.get("answers") as string;
-    const affiliateCode = formData.get("affiliateCode") as string | null;
+    // Terima dan proses data JSON
+    const data = await request.json();
+    const type = data.type as string;
+    const tier = data.tier as TierType;
     
-    if (!type || !answersJson) {
-      return NextResponse.json(
-        { message: "Type and answers are required" },
-        { status: 400 }
-      );
+    if (!type || !tier) {
+      return NextResponse.json({ message: "Assessment type and tier are required" }, { status: 400 });
     }
 
-    const answers = JSON.parse(answersJson);
-
-    // Process resume file if exists
-    let resumeUrl = null;
-    const resume = formData.get("resume") as File | null;
+    // Tentukan harga berdasarkan tier
+    const tierPrices: Record<TierType, number> = {
+      basic: 50.00,
+      standard: 100.00,
+      premium: 250.00
+    };
     
-    if (resume) {
-      // In a real app, you would upload to cloud storage
-      // This is a placeholder
-      resumeUrl = `uploads/${Date.now()}_${resume.name}`;
-    }
+    const price = tierPrices[tier];
+    const manualProcessing = tier === 'standard' || tier === 'premium';
 
-    // Find affiliate user if code provided
-    let affiliateId = null;
-    if (affiliateCode) {
-      const affiliateUser = await prisma.user.findFirst({
-        where: { affiliateCode },
-      });
-      
-      if (affiliateUser) {
-        affiliateId = affiliateUser.id;
-      }
-    }
+    // Log untuk debugging
+    console.log(`Creating assessment - Type: ${type}, Tier: ${tier}, Price: ${price}`);
 
-    // Create assessment
+    // Cipta assessment dengan harga yang betul
     const assessment = await prisma.assessment.create({
       data: {
         type,
-        userId: userId,
-        data: { 
-          answers,
-          resumeUrl,
-          affiliateId
-        },
-        price: 50.00, // Default price
+        userId,
+        tier,
+        price,
+        manualProcessing,
         status: "pending",
+        data: { tier }
       },
     });
 
-    // Create pending payment
+    // Cipta rekod payment
     const payment = await prisma.payment.create({
       data: {
-        userId: userId,
-        amount: 50.00, // Default price
-        method: "pending", // This will be updated when the user selects a payment method
+        userId,
+        amount: price,
+        method: "pending",
         status: "pending",
-        assessmentId: assessment.id, // Connect to assessment via assessmentId
+        assessmentId: assessment.id,
       },
     });
 
+    // Log kejayaan
+    console.log(`Assessment created successfully - ID: ${assessment.id}, Tier: ${tier}, Price: ${price}`);
+
+    // Kembalikan respons dengan ID yang jelas
     return NextResponse.json({
-      message: "Assessment created successfully",
-      assessmentId: assessment.id,
-      paymentId: payment.id,
+      id: assessment.id,
+      assessmentId: assessment.id, // Untuk keserasian
+      tier: assessment.tier,
+      price: assessment.price,
+      status: assessment.status,
+      message: "Assessment created successfully"
     });
   } catch (error) {
     console.error("Assessment creation error:", error);
     return NextResponse.json(
-      { message: "Error creating assessment" },
+      { message: "Error creating assessment", error: String(error) },
       { status: 500 }
     );
   }

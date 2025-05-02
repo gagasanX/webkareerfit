@@ -129,6 +129,7 @@ export default function AssessmentInstanceClient() {
   const [submitting, setSubmitting] = useState(false);
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState('');
+  const [debugInfo, setDebugInfo] = useState<string | null>(null);
   
   // Assessment type labels
   const assessmentTypeLabels: Record<AssessmentType, string> = {
@@ -147,6 +148,8 @@ export default function AssessmentInstanceClient() {
       router.push(`/login?callbackUrl=/assessment/${type}/${id}`);
       return;
     }
+    
+    console.log(`AssessmentInstanceClient loaded - Type: ${type}, ID: ${id}`);
   }, [status, router, type, id]);
 
   // Fetch assessment data
@@ -159,11 +162,17 @@ export default function AssessmentInstanceClient() {
   const fetchAssessment = async () => {
     setLoading(true);
     try {
+      console.log(`Fetching assessment data for ${type}/${id}`);
+      setDebugInfo(`Fetching assessment data for ${type}/${id}`);
+      
       const response = await fetch(`/api/assessment/${type}/${id}`);
       if (!response.ok) {
-        throw new Error('Failed to fetch assessment');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Failed to fetch assessment');
       }
+      
       const data = await response.json();
+      console.log('Assessment data received:', data);
       
       setAssessment(data);
       setQuestions(data.questions || []);
@@ -179,9 +188,11 @@ export default function AssessmentInstanceClient() {
       }
       
       setError('');
+      setDebugInfo(`Assessment data loaded successfully. Tier: ${data.tier}`);
     } catch (err) {
       console.error('Error fetching assessment:', err);
       setError('Error loading assessment. Please try again.');
+      setDebugInfo(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
       setLoading(false);
     }
@@ -236,10 +247,14 @@ export default function AssessmentInstanceClient() {
     }
     
     setResumeFile(file);
+    setDebugInfo(`Resume file selected: ${file.name} (${Math.round(file.size / 1024)} KB)`);
   };
   
   const saveProgress = async () => {
     try {
+      console.log(`Saving progress for assessment ${id} - Step ${currentStep}`);
+      setDebugInfo(`Saving progress - Step ${currentStep}`);
+      
       const response = await fetch(`/api/assessment/${type}/${id}/progress`, {
         method: 'POST',
         headers: {
@@ -252,13 +267,17 @@ export default function AssessmentInstanceClient() {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to save progress');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.message || 'Failed to save progress');
       }
       
+      console.log('Progress saved successfully');
+      setDebugInfo('Progress saved successfully');
       return true;
     } catch (error) {
       console.error('Error saving progress:', error);
       setError('Failed to save progress. Please try again.');
+      setDebugInfo(`Error saving progress: ${error instanceof Error ? error.message : 'Unknown error'}`);
       return false;
     }
   };
@@ -270,20 +289,28 @@ export default function AssessmentInstanceClient() {
       const formData = new FormData();
       
       // Add answers as JSON string
-      formData.append('formData', JSON.stringify({
+      const formDataPayload = {
         personalInfo: {
           name: session?.user?.name || '',
           email: session?.user?.email || '',
         },
         ...answers
-      }));
+      };
+      
+      console.log(`Submitting assessment ${id} with formData:`, formDataPayload);
+      setDebugInfo(`Preparing to submit assessment ${id}`);
+      
+      formData.append('formData', JSON.stringify(formDataPayload));
       
       // Add resume file if available
       if (resumeFile) {
         formData.append('resume', resumeFile);
+        console.log(`Including resume: ${resumeFile.name}`);
+        setDebugInfo(`Including resume: ${resumeFile.name}`);
       }
       
       // Submit to the submit-with-file endpoint
+      console.log(`Submitting to endpoint: /api/assessment/${type}/${id}/submit-with-file`);
       const response = await fetch(`/api/assessment/${type}/${id}/submit-with-file`, {
         method: 'POST',
         body: formData
@@ -291,18 +318,51 @@ export default function AssessmentInstanceClient() {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to submit assessment');
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Submission error response:', errorData);
+        throw new Error(errorData.error || `Failed to submit assessment: ${response.status}`);
       }
       
       // Get response data
-      const result = await response.json();
+      let result;
+      try {
+        result = await response.json();
+        console.log('Submission response:', result);
+      } catch (e) {
+        console.error('Error parsing response JSON:', e);
+        throw new Error('Invalid response from server');
+      }
       
-      // Redirect to results page or processing page
-      router.push(result.redirectTo || `/assessment/${type}/results/${id}`);
+      // Check for redirectUrl in the response
+      if (result.redirectUrl) {
+        console.log(`REDIRECTING TO: ${result.redirectUrl}`);
+        setDebugInfo(`Redirecting to: ${result.redirectUrl}`);
+        router.push(result.redirectUrl);
+      } else {
+        // Fallback to default redirect
+        console.log(`NO REDIRECT URL PROVIDED - Using default path`);
+        setDebugInfo(`No redirect URL - Using default`);
+        
+        // Use tier-based fallback logic
+        const assessmentData = await fetch(`/api/assessment/${type}/${id}`).then(res => res.json());
+        const tier = assessmentData.tier || 'basic';
+        
+        let defaultPath;
+        if (tier === 'premium') {
+          defaultPath = `/assessment/${type}/premium-results/${id}`;
+        } else if (tier === 'standard') {
+          defaultPath = `/assessment/${type}/standard-results/${id}`;
+        } else {
+          defaultPath = `/assessment/${type}/processing/${id}`;
+        }
+        
+        console.log(`Fallback redirect to: ${defaultPath}`);
+        router.push(defaultPath);
+      }
     } catch (error) {
       console.error('Error submitting assessment:', error);
-      setError('Error submitting assessment. Please try again.');
-    } finally {
+      setError(error instanceof Error ? error.message : 'Error submitting assessment. Please try again.');
+      setDebugInfo(`Submission error: ${error instanceof Error ? error.message : 'Unknown error'}`);
       setSubmitting(false);
     }
   };
@@ -331,6 +391,14 @@ export default function AssessmentInstanceClient() {
           </div>
           <h2 className="text-xl font-bold text-center mb-4">Error</h2>
           <p className="text-gray-600 text-center mb-6">{error}</p>
+          
+          {/* Debug info (only in development) */}
+          {process.env.NODE_ENV === 'development' && debugInfo && (
+            <div className="mb-6 p-3 bg-gray-100 text-xs text-gray-700 rounded-lg overflow-auto max-h-32">
+              <strong>Debug:</strong> {debugInfo}
+            </div>
+          )}
+          
           <div className="flex justify-center">
             <button
               onClick={fetchAssessment}
@@ -372,6 +440,15 @@ export default function AssessmentInstanceClient() {
               ></div>
             </div>
           </div>
+          
+          {/* Debug info (only in development) */}
+          {process.env.NODE_ENV === 'development' && debugInfo && (
+            <div className="px-6 pt-4 pb-0">
+              <div className="mb-4 p-2 bg-yellow-50 border border-yellow-200 rounded text-xs">
+                <strong>Debug:</strong> {debugInfo}
+              </div>
+            </div>
+          )}
           
           {/* Question form */}
           <div className="p-6">

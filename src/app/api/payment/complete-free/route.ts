@@ -1,3 +1,4 @@
+// app/api/payment/complete-free/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth/auth';
@@ -97,8 +98,8 @@ export async function POST(request: NextRequest) {
       
       // Check if this assessment requires manual processing
       const isManualProcessing = assessment.manualProcessing || 
-                                assessment.price === 100 || 
-                                assessment.price === 250;
+                                assessment.tier === 'standard' || 
+                                assessment.tier === 'premium';
       
       // Update assessment status based on processing type
       await tx.assessment.update({
@@ -160,16 +161,30 @@ export async function POST(request: NextRequest) {
       console.error('Error processing referral for free assessment:', referralError);
     }
     
-    // Check if this assessment requires manual processing
-    const isManualProcessing = assessment.manualProcessing || 
-                              assessment.price === 100 || 
-                              assessment.price === 250;
+    // Determine the appropriate redirect URL based on tier
+    let redirectUrl;
+    
+    // For premium tier (RM250), use premium-results page
+    if (assessment.tier === 'premium') {
+      redirectUrl = `/assessment/${assessment.type}/premium-results/${assessment.id}`;
+      console.log(`Premium tier - Redirecting to: ${redirectUrl}`);
+    } 
+    // For standard tier (RM100), use standard-results page
+    else if (assessment.tier === 'standard') {
+      redirectUrl = `/assessment/${assessment.type}/standard-results/${assessment.id}`;
+      console.log(`Standard tier - Redirecting to: ${redirectUrl}`);
+    }
+    // Fallback for basic tier
+    else {
+      redirectUrl = `/assessment/${assessment.type}/results/${assessment.id}`;
+      console.log(`Basic tier - Redirecting to: ${redirectUrl}`);
+    }
     
     return NextResponse.json({
       success: true,
       message: 'Assessment unlocked successfully',
-      redirectUrl: `/assessment/${assessment.type}/results/${assessment.id}`,
-      isManualProcessing: isManualProcessing
+      redirectUrl: redirectUrl,
+      isManualProcessing: assessment.manualProcessing || assessment.tier === 'standard' || assessment.tier === 'premium'
     });
   } catch (error) {
     console.error('Error processing free assessment:', error);

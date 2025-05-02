@@ -1,4 +1,4 @@
-'use client';  // THIS LINE IS CRITICAL - marks as client component
+'use client';  // assessmentclient
 
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';

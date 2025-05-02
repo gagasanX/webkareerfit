@@ -1,7 +1,11 @@
+// app/api/assessment/[type]/[id]/update-tier/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth/auth';
 import { prisma } from '@/lib/db';
+
+// Define valid tier types
+type TierType = 'basic' | 'standard' | 'premium';
 
 export async function POST(
   request: NextRequest,
@@ -24,7 +28,8 @@ export async function POST(
     }
 
     // Extract the tier from the request body
-    const { tier, manualProcessing } = await request.json();
+    const data = await request.json();
+    const tier = data.tier as TierType;
     
     if (!tier) {
       return NextResponse.json(
@@ -34,7 +39,7 @@ export async function POST(
     }
 
     // Validate tier
-    const validTiers = ['basic', 'standard', 'premium'];
+    const validTiers: TierType[] = ['basic', 'standard', 'premium'];
     if (!validTiers.includes(tier)) {
       return NextResponse.json(
         { message: 'Invalid tier selection' },
@@ -47,6 +52,9 @@ export async function POST(
       where: {
         id: id,
       },
+      include: {
+        payment: true
+      }
     });
 
     if (!assessment) {
@@ -64,18 +72,17 @@ export async function POST(
       );
     }
 
-    // Determine price based on tier
-    const tierPrices = {
+    // Determine price based on tier - properly typed
+    const tierPrices: Record<TierType, number> = {
       basic: 50,
       standard: 100,
       premium: 250,
     };
 
-    const price = tierPrices[tier as keyof typeof tierPrices];
+    const price = tierPrices[tier];
 
     // Set manualProcessing based on tier
-    // Standard and Premium tiers (RM100 and RM250) use manual processing
-    const useManualProcessing = tier === 'standard' || tier === 'premium';
+    const manualProcessing = tier === 'standard' || tier === 'premium';
 
     // Update the assessment with the selected tier and price
     const updatedAssessment = await prisma.assessment.update({
@@ -85,11 +92,23 @@ export async function POST(
       data: {
         tier: tier,
         price: price,
-        manualProcessing: useManualProcessing
+        manualProcessing,
+        data: {
+          ...(assessment.data as Record<string, any> || {}),
+          tier,
+        },
       },
     });
 
-    console.log(`Updated assessment ${id} with tier: ${tier}, price: ${price}, manualProcessing: ${useManualProcessing}`);
+    // Update any associated payment
+    if (assessment.payment) {
+      await prisma.payment.update({
+        where: { id: assessment.payment.id },
+        data: { amount: price },
+      });
+    }
+
+    console.log(`Updated assessment ${id} with tier: ${tier}, price: ${price}, manualProcessing: ${manualProcessing}`);
 
     return NextResponse.json({
       success: true,

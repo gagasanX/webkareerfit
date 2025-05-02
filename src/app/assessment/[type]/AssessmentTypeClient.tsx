@@ -55,7 +55,7 @@ export function AssessmentTypeClient({ assessmentType }: { assessmentType: strin
     setDebugInfo(`Selected ${tier} tier - RM ${tierPrices[tier as keyof typeof tierPrices]}`);
   };
   
-  // Handle start assessment
+  // Handle start assessment - SIMPLIFIED VERSION
   const handleStartAssessment = async () => {
     if (isProcessing) return;
     
@@ -64,7 +64,7 @@ export function AssessmentTypeClient({ assessmentType }: { assessmentType: strin
     setDebugInfo(`Starting assessment with tier: ${selectedTier}, price: RM ${selectedPrice}`);
     
     try {
-      // Create the assessment
+      // Create the assessment with tier information in a single API call
       setDebugInfo(`Creating assessment with type: ${assessmentType}, tier: ${selectedTier}`);
       const createResponse = await fetch('/api/assessment/create', {
         method: 'POST',
@@ -74,6 +74,8 @@ export function AssessmentTypeClient({ assessmentType }: { assessmentType: strin
         body: JSON.stringify({
           type: assessmentType,
           tier: selectedTier,
+          // Include couponCode if you need it
+          ...(couponCode && { couponCode }),
         }),
       });
       
@@ -84,48 +86,19 @@ export function AssessmentTypeClient({ assessmentType }: { assessmentType: strin
       
       const assessment = await createResponse.json();
       console.log('Assessment created:', assessment);
-      setDebugInfo(`Assessment created with ID: ${assessment.id}, tier: ${assessment.tier}`);
       
-      // IMPORTANT: Update the tier and price regardless of which tier was selected
-      // This ensures the tier is explicitly set for all cases
-      console.log(`Updating assessment tier to: ${selectedTier}`);
-      setDebugInfo(`Updating tier to: ${selectedTier}, price: RM ${selectedPrice}`);
-      
-      const updateTierResponse = await fetch(`/api/assessment/${assessmentType}/${assessment.id}/update-tier`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          tier: selectedTier,
-        }),
-      });
-      
-      if (!updateTierResponse.ok) {
-        console.error('Failed to update tier, but continuing...');
-        setDebugInfo(`Error updating tier: ${updateTierResponse.status}`);
-      } else {
-        const updateResult = await updateTierResponse.json();
-        console.log('Tier update result:', updateResult);
-        setDebugInfo(`Tier updated successfully. Result: ${JSON.stringify(updateResult)}`);
+      // Verify we have a valid assessment ID
+      const assessmentId = assessment.id || assessment.assessmentId;
+      if (!assessmentId) {
+        console.error('No valid ID found in response:', assessment);
+        throw new Error('Invalid assessment ID received from server');
       }
       
-      // Double-check the assessment after update
-      const verifyResponse = await fetch(`/api/assessment/${assessmentType}/${assessment.id}`, {
-        method: 'GET',
-      });
+      setDebugInfo(`Assessment created with ID: ${assessmentId}, tier: ${assessment.tier || selectedTier}, price: RM ${assessment.price || selectedPrice}`);
       
-      if (verifyResponse.ok) {
-        const verifiedAssessment = await verifyResponse.json();
-        setDebugInfo(`Verified assessment: tier=${verifiedAssessment.tier}, price=${verifiedAssessment.price}`);
-      }
-      
-      // Add a slight delay to ensure the database update propagates
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Redirect to payment with cache-busting query parameter
+      // Redirect to payment immediately with cache-busting query parameter
       const now = new Date().getTime();
-      router.push(`/payment/${assessment.id}?t=${now}`);
+      router.push(`/payment/${assessmentId}?t=${now}`);
     } catch (err) {
       console.error('Error starting assessment:', err);
       setError(err instanceof Error ? err.message : 'Failed to start assessment. Please try again.');

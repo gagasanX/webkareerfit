@@ -12,6 +12,7 @@
     "prisma:studio": "prisma studio"
   },
   "dependencies": {
+    "@heroicons/react": "^2.2.0",
     "@prisma/client": "^6.6.0",
     "@react-pdf/renderer": "^4.3.0",
     "@reduxjs/toolkit": "^2.6.1",
