@@ -19,42 +19,63 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: "Invalid user session" }, { status: 401 });
     }
 
-    // Terima dan proses data JSON
+    // Parse JSON data from request
     const data = await request.json();
     const type = data.type as string;
-    const tier = data.tier as TierType;
+    const tier = data.tier as TierType || 'basic';
+    const affiliateCode = data.affiliateCode as string | undefined;
     
-    if (!type || !tier) {
-      return NextResponse.json({ message: "Assessment type and tier are required" }, { status: 400 });
+    if (!type) {
+      return NextResponse.json(
+        { message: "Assessment type is required" },
+        { status: 400 }
+      );
     }
 
-    // Tentukan harga berdasarkan tier
+    // CRITICAL FIX: Explicitly set manualProcessing based on tier
+    const manualProcessing = tier === 'standard' || tier === 'premium';
+    
+    // Set price based on tier with proper typing
     const tierPrices: Record<TierType, number> = {
-      basic: 50.00,
-      standard: 100.00,
-      premium: 250.00
+      'basic': 50,
+      'standard': 100,
+      'premium': 250
     };
     
-    const price = tierPrices[tier];
-    const manualProcessing = tier === 'standard' || tier === 'premium';
+    const price = tierPrices[tier] || 50;
+    
+    console.log(`Creating assessment - Type: ${type}, Tier: ${tier}, Price: ${price}, ManualProcessing: ${manualProcessing}`);
 
-    // Log untuk debugging
-    console.log(`Creating assessment - Type: ${type}, Tier: ${tier}, Price: ${price}`);
+    // Find affiliate user if code provided
+    let affiliateId = null;
+    if (affiliateCode) {
+      const affiliateUser = await prisma.user.findFirst({
+        where: { affiliateCode },
+      });
+      
+      if (affiliateUser) {
+        affiliateId = affiliateUser.id;
+      }
+    }
 
-    // Cipta assessment dengan harga yang betul
+    // Create assessment with manualProcessing flag explicitly set
     const assessment = await prisma.assessment.create({
       data: {
         type,
         userId,
         tier,
         price,
-        manualProcessing,
+        manualProcessing, // Explicitly set this flag
         status: "pending",
-        data: { tier }
+        data: { 
+          tier,
+          affiliateId: affiliateId || null,
+          createdAt: new Date().toISOString()
+        },
       },
     });
 
-    // Cipta rekod payment
+    // Create pending payment
     const payment = await prisma.payment.create({
       data: {
         userId,
@@ -65,17 +86,17 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    // Log kejayaan
-    console.log(`Assessment created successfully - ID: ${assessment.id}, Tier: ${tier}, Price: ${price}`);
+    // Log successful creation
+    console.log(`Assessment created successfully - ID: ${assessment.id}, Tier: ${tier}, Price: ${price}, ManualProcessing: ${manualProcessing}`);
 
-    // Kembalikan respons dengan ID yang jelas
+    // Return the id as both id and assessmentId to ensure frontend can access it
     return NextResponse.json({
+      message: "Assessment created successfully",
       id: assessment.id,
-      assessmentId: assessment.id, // Untuk keserasian
-      tier: assessment.tier,
-      price: assessment.price,
-      status: assessment.status,
-      message: "Assessment created successfully"
+      assessmentId: assessment.id, // Add this for compatibility
+      paymentId: payment.id,
+      tier: tier,
+      price: price,
     });
   } catch (error) {
     console.error("Assessment creation error:", error);

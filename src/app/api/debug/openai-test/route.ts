@@ -1,14 +1,15 @@
-// Create this file: src/app/api/debug/openai-test/route.ts
+// app/api/debug/openai-test/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { openai } from '@/lib/openai';
+import { getOpenAIClient } from '@/lib/openai';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     console.log("Testing OpenAI connection...");
     console.log("API Key set:", !!process.env.OPENAI_API_KEY);
-    console.log("API Key prefix:", process.env.OPENAI_API_KEY?.substring(0, 3) + "..." || "none");
+    console.log("API Key prefix:", process.env.OPENAI_API_KEY?.substring(0, 7) + "..." || "none");
     
-    // Simple test of OpenAI connectivity
+    // Test OpenAI connection
+    const openai = getOpenAIClient();
     const completion = await openai.chat.completions.create({
       model: "gpt-3.5-turbo",
       messages: [{ role: "user", content: "Say hello" }],

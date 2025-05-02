@@ -79,11 +79,30 @@ export async function POST(
     // Get assessment to check package price and processing type
     const assessment = await prisma.assessment.findUnique({
       where: { id },
-      include: { user: true },
+      include: { user: true, payment: true },
     });
 
     if (!assessment) {
       return NextResponse.json({ error: 'Assessment not found' }, { status: 404 });
+    }
+
+    // CRITICAL FIX: Double-check manualProcessing flag based on tier and price
+    // This ensures even if the flag was incorrectly set during creation, it's fixed here
+    const shouldBeManualProcessing = assessment.tier === 'standard' || 
+                                   assessment.tier === 'premium' || 
+                                   assessment.price >= 100;
+                                   
+    // If manualProcessing flag doesn't match what it should be, update it
+    if (assessment.manualProcessing !== shouldBeManualProcessing) {
+      console.log(`Fixing manualProcessing flag for assessment ${assessment.id}: was ${assessment.manualProcessing}, should be ${shouldBeManualProcessing}`);
+      
+      await prisma.assessment.update({
+        where: { id: assessment.id },
+        data: { manualProcessing: shouldBeManualProcessing }
+      });
+      
+      // Update our local reference too
+      assessment.manualProcessing = shouldBeManualProcessing;
     }
 
     // Update assessment with user responses
@@ -101,8 +120,8 @@ export async function POST(
     // Log assessment details for debugging
     console.log(`Assessment submitted: ${id} - Type: ${type}, Tier: ${assessment.tier}, Price: ${assessment.price}, Manual: ${assessment.manualProcessing}`);
 
-    // Determine processing path based on manual processing flag or price
-    if (assessment.manualProcessing || assessment.price >= 100) {
+    // CRITICAL FIX: Determine processing path based on tier/price, not just manualProcessing flag
+    if (assessment.tier === 'standard' || assessment.tier === 'premium' || assessment.price >= 100) {
       // For manual processing packages - queue for manual review
       return await queueForManualReview(updatedAssessment);
     } else {
@@ -204,20 +223,28 @@ async function queueForManualReview(assessment: Assessment) {
       },
     });
 
-    // Determine the appropriate redirect URL based on tier/price
+    // CRITICAL FIX: Determine the appropriate redirect URL based on tier with explicit checks
     let redirectUrl;
     
-    // For premium tier (RM250), use premium-results page
-    if (assessment.price >= 250 || assessment.tier === 'premium') {
+    // Explicit tier checks first, then fall back to price checks
+    if (assessment.tier === 'premium') {
       redirectUrl = `/assessment/${assessment.type}/premium-results/${assessment.id}`;
-      console.log(`Premium tier detected (RM${assessment.price}) - Redirecting to: ${redirectUrl}`);
+      console.log(`Premium tier detected - Redirecting to: ${redirectUrl}`);
     } 
-    // For standard tier (RM100), use standard-results page
-    else if (assessment.price >= 100 || assessment.tier === 'standard') {
+    else if (assessment.tier === 'standard') {
       redirectUrl = `/assessment/${assessment.type}/standard-results/${assessment.id}`;
-      console.log(`Standard tier detected (RM${assessment.price}) - Redirecting to: ${redirectUrl}`);
+      console.log(`Standard tier detected - Redirecting to: ${redirectUrl}`);
     }
-    // Fallback for any other case
+    // Fallback checks based on price
+    else if (assessment.price >= 250) {
+      redirectUrl = `/assessment/${assessment.type}/premium-results/${assessment.id}`;
+      console.log(`Premium price detected (RM${assessment.price}) - Redirecting to: ${redirectUrl}`);
+    } 
+    else if (assessment.price >= 100) {
+      redirectUrl = `/assessment/${assessment.type}/standard-results/${assessment.id}`;
+      console.log(`Standard price detected (RM${assessment.price}) - Redirecting to: ${redirectUrl}`);
+    }
+    // Final fallback
     else {
       redirectUrl = `/assessment/${assessment.type}/results/${assessment.id}`;
       console.log(`Default tier - Redirecting to: ${redirectUrl}`);

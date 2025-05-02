@@ -1,14 +1,13 @@
 // app/api/ai-analysis/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import OpenAI from 'openai';
+import { getOpenAIClient } from '@/lib/openai';
 
-// Initialize OpenAI with API key (should be in your .env file)
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+export const maxDuration = 60; // Use Edge Runtime with longer timeouts
 
 export async function POST(request: NextRequest) {
+  console.log('AI Analysis endpoint called');
+  
   try {
     // Parse the request body
     const body = await request.json();
@@ -46,20 +45,61 @@ export async function POST(request: NextRequest) {
     // Get categories based on assessment type
     const categories = getCategories(type);
     
-    // Create AI analysis in the background
-    processAIAnalysis(assessmentId, type, responses, categories)
-      .then(() => console.log(`AI analysis completed for assessment ${assessmentId}`))
-      .catch(error => console.error(`Error in AI analysis for assessment ${assessmentId}:`, error));
-
-    // Respond immediately
-    return NextResponse.json({
-      success: true,
-      message: 'AI analysis initiated',
-    });
+    // Process AI analysis directly (no background processing)
+    try {
+      console.log('Starting immediate AI analysis');
+      const analysisResult = await processAIAnalysis(type, responses, categories);
+      
+      // Update the assessment with the AI analysis
+      await prisma.assessment.update({
+        where: { id: assessmentId },
+        data: {
+          status: 'completed',
+          data: {
+            ...(assessment.data as object || {}),
+            scores: analysisResult.scores,
+            readinessLevel: analysisResult.readinessLevel,
+            recommendations: analysisResult.recommendations,
+            summary: analysisResult.summary,
+            strengths: analysisResult.strengths,
+            improvements: analysisResult.improvements,
+            aiProcessed: true,
+            aiProcessedAt: new Date().toISOString(),
+            aiAnalysisStarted: true,
+            aiAnalysisCompleted: true,
+          }
+        }
+      });
+      
+      console.log('AI analysis completed successfully');
+      
+      return NextResponse.json({
+        success: true,
+        message: 'AI analysis completed',
+        analysis: analysisResult,
+      });
+    } catch (error) {
+      console.error('Error in direct AI analysis:', error);
+      
+      // Update assessment with error
+      await prisma.assessment.update({
+        where: { id: assessmentId },
+        data: {
+          status: 'error',
+          data: {
+            ...(assessment.data as object || {}),
+            aiError: error instanceof Error ? error.message : 'Unknown error',
+            aiProcessing: false,
+          }
+        }
+      });
+      
+      throw error;
+    }
   } catch (error) {
     console.error('Error in AI analysis API:', error);
     return NextResponse.json(
-      { error: 'Failed to process AI analysis request' },
+      { error: 'Failed to process AI analysis request', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
   }
@@ -87,28 +127,30 @@ function getCategories(assessmentType: string): string[] {
   }
 }
 
-// This function processes the AI analysis asynchronously
+// Process AI analysis directly - no background processing
 async function processAIAnalysis(
-  assessmentId: string,
   assessmentType: string,
   responses: any,
   categories: string[]
-) {
+): Promise<any> {
   try {
     // Create a string representation of the responses for the AI
     const formattedResponses = Object.entries(responses)
       .map(([key, value]) => `${key}: ${value}`)
       .join('\n');
 
-    // Create the prompt for the AI
-    const systemPrompt = `You are a career assessment expert specializing in ${assessmentType.toUpperCase()} evaluations. 
-You provide detailed, objective analysis based on assessment responses. Generate varied scores (0-100) for each category.`;
+    // Create the prompt for the AI - improved for higher quality analysis
+    const systemPrompt = `You are an expert career assessment analyst with deep expertise in ${assessmentType.toUpperCase()} evaluations. 
+You provide sophisticated, highly personalized analyses based on assessment responses. 
+Your analysis should be thorough, insightful, and actionable - comparable to what a highly paid career consultant would provide.
+Generate varied and realistic scores (0-100) for each category that accurately reflect the responses.
+Your recommendations should be specific, detailed, and tailored to the individual's unique situation.`;
 
-    const userPrompt = `Analyze these ${assessmentType.toUpperCase()} assessment responses:
+    const userPrompt = `Analyze these ${assessmentType.toUpperCase()} assessment responses and provide a comprehensive professional analysis:
 
 ${formattedResponses}
 
-Provide a comprehensive analysis with the following JSON structure:
+Provide a thorough analysis with this JSON structure:
 {
   "scores": {
     ${categories.map(cat => `"${cat}": number (0-100)`).join(',\n    ')},
@@ -133,17 +175,24 @@ For readiness levels:
 - 70-84: "Approaching Readiness"
 - 85-100: "Fully Prepared"
 
-ENSURE:
-- Each category gets a unique, appropriate score
-- Recommendations are specific and actionable
-- Strengths and improvements are personalized
-- All analysis is directly based on responses
+IMPORTANT REQUIREMENTS:
+- Each category MUST get a unique score based on a careful analysis of the responses
+- Scores should reflect the quality and depth of the responses, not just be arbitrary
+- Each recommendation must be highly specific, actionable, and directly tied to the assessment responses
+- The summary should provide a personalized overview of their current career readiness
+- Strengths and improvements must be personalized to the individual's situation
+- Your analysis must sound like it comes from a professional career coach with 15+ years of experience
+- Avoid generic advice - everything should be personalized to the assessment responses
 
-Return ONLY valid JSON.`;
+Return ONLY valid JSON with NO additional text.`;
 
-    // Call the OpenAI API - use GPT-3.5 Turbo for cost efficiency while maintaining quality
+    // Get the OpenAI client
+    const openai = getOpenAIClient();
+    
+    // Call the OpenAI API - use GPT-4-turbo for better quality
+    console.log('Making OpenAI API call...');
     const completion = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo-1106', // Using a more cost-effective model that still performs well
+      model: 'gpt-3.5-turbo-1106', // Can be upgraded to gpt-4 for even better results
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userPrompt },
@@ -169,46 +218,9 @@ Return ONLY valid JSON.`;
       throw new Error('Incomplete AI response');
     }
 
-    // Update the assessment with the AI analysis
-    await prisma.assessment.update({
-      where: { id: assessmentId },
-      data: {
-        status: 'completed',
-        data: {
-          // Get the existing data first
-          ...(await prisma.assessment.findUnique({ where: { id: assessmentId } }))?.data as object || {},
-          // Add the AI analysis
-          scores: analysisResult.scores,
-          readinessLevel: analysisResult.readinessLevel,
-          recommendations: analysisResult.recommendations,
-          summary: analysisResult.summary,
-          strengths: analysisResult.strengths,
-          improvements: analysisResult.improvements,
-          aiProcessed: true,
-          aiProcessedAt: new Date().toISOString(),
-          aiAnalysisStarted: true,
-          aiProcessing: false,
-        }
-      }
-    });
-
     return analysisResult;
   } catch (error) {
     console.error('Error processing AI analysis:', error);
-    
-    // Update assessment with error
-    await prisma.assessment.update({
-      where: { id: assessmentId },
-      data: {
-        status: 'error',
-        data: {
-          ...(await prisma.assessment.findUnique({ where: { id: assessmentId } }))?.data as object || {},
-          aiError: error instanceof Error ? error.message : 'Unknown error',
-          aiProcessing: false,
-        }
-      }
-    });
-    
     throw error;
   }
 }

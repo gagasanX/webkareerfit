@@ -1,124 +1,112 @@
-// app/api/assessment/[id]/route.ts
-import { NextResponse } from 'next/server';
+// app/api/assessment/[type]/processing/[id]/route.ts
+import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth/auth';
 import { prisma } from '@/lib/db';
+import { getOpenAIClient } from '@/lib/openai';
 
 export async function GET(
-  request: Request,
-  { params }: { params: { id: string } }
+  request: NextRequest,
+  { params }: { params: { type: string; id: string } }
 ) {
   try {
     const session = await getServerSession(authOptions);
-    
-    if (!session || !session.user?.id) {
-      return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
-      );
-    }
-    
-    const assessmentId = params.id;
-    
-    const assessment = await prisma.assessment.findUnique({
-      where: { id: assessmentId },
-      include: { 
-        payment: true,
-        // You can include other relations here if needed
-      },
-    });
-    
-    if (!assessment) {
-      return NextResponse.json(
-        { error: 'Assessment not found' },
-        { status: 404 }
-      );
-    }
-    
-    // Check if this assessment belongs to the authenticated user
-    if (assessment.userId !== session.user.id) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 403 }
-      );
-    }
-    
-    return NextResponse.json(assessment);
-  } catch (error) {
-    console.error('Error fetching assessment:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch assessment' },
-      { status: 500 }
-    );
-  }
-}
 
-// PUT handler to update assessment
-export async function PUT(
-  request: Request,
-  { params }: { params: { id: string } }
-) {
-  try {
-    const session = await getServerSession(authOptions);
-    
-    if (!session || !session.user?.id) {
-      return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
-      );
+    if (!session?.user?.id) {
+      return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
-    
-    const assessmentId = params.id;
-    const updateData = await request.json();
-    
-    // Get the current assessment
+
+    const { type, id } = params;
+
     const assessment = await prisma.assessment.findUnique({
-      where: { id: assessmentId },
+      where: { id },
     });
-    
+
     if (!assessment) {
       return NextResponse.json(
-        { error: 'Assessment not found' },
+        { message: "Assessment not found" },
         { status: 404 }
       );
     }
-    
-    // Check if this assessment belongs to the authenticated user
+
     if (assessment.userId !== session.user.id) {
       return NextResponse.json(
-        { error: 'Unauthorized' },
+        { message: "Unauthorized access to this assessment" },
         { status: 403 }
       );
     }
-    
-    // Create a safe data object for the update
-    // Avoid using the spread operator directly on assessment.data 
-    // if it could potentially be null or not an object
-    const currentData = assessment.data || {};
-    
-    // Ensure data is an object before spreading
-    const updatedData = typeof currentData === 'object' 
-      ? { ...currentData, ...updateData.data }
-      : updateData.data;
-    
-    // Update assessment
-    const updatedAssessment = await prisma.assessment.update({
-      where: { id: assessmentId },
-      data: {
-        // Only update fields that are provided
-        ...(updateData.status && { status: updateData.status }),
-        ...(updateData.type && { type: updateData.type }),
-        ...(updateData.price && { price: updateData.price }),
-        // Use the safely created data object
-        data: updatedData,
-      },
+
+    // Check if assessment is already processed
+    if (assessment.status === 'completed') {
+      return NextResponse.json({
+        status: 'completed',
+        redirectUrl: `/assessment/${type}/results/${id}`
+      });
+    }
+
+    // Check if assessment is being processed
+    if (assessment.status === 'processing') {
+      return NextResponse.json({
+        status: 'processing'
+      });
+    }
+
+    // Check if assessment is in error state
+    if (assessment.status === 'error') {
+      return NextResponse.json({
+        status: 'error',
+        error: (assessment.data as any)?.aiError || 'Unknown error'
+      });
+    }
+
+    // If the assessment is submitted but not yet processed, trigger processing
+    if (assessment.status === 'submitted') {
+      // For basic tier assessments that need AI processing
+      if (!assessment.manualProcessing) {
+        // Trigger the AI processing in the background by making a request
+        const baseUrl = process.env.NEXTAUTH_URL || request.headers.get('origin') || 'http://localhost:3000';
+        
+        fetch(`${baseUrl}/api/ai-analysis`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            assessmentId: id,
+            type: type,
+            responses: (assessment.data as any)?.answers || {},
+          }),
+        }).catch(err => {
+          console.error('Failed to trigger AI analysis:', err);
+        });
+        
+        // Update status to processing
+        await prisma.assessment.update({
+          where: { id },
+          data: {
+            status: 'processing',
+            data: {
+              ...(assessment.data as any),
+              aiAnalysisStarted: true,
+              aiAnalysisStartedAt: new Date().toISOString(),
+            }
+          }
+        });
+        
+        return NextResponse.json({
+          status: 'processing',
+          message: 'AI analysis initiated'
+        });
+      }
+    }
+
+    return NextResponse.json({
+      status: assessment.status,
     });
-    
-    return NextResponse.json(updatedAssessment);
   } catch (error) {
-    console.error('Error updating assessment:', error);
+    console.error("Error fetching assessment status:", error);
     return NextResponse.json(
-      { error: 'Failed to update assessment' },
+      { message: "Error fetching assessment status", error: String(error) },
       { status: 500 }
     );
   }

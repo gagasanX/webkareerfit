@@ -1,4 +1,3 @@
-// app/assessment/[type]/[id]/AssessmentInstanceClient.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -26,6 +25,9 @@ interface Assessment {
   id: string;
   totalSteps: number;
   questions: Question[];
+  tier: string;
+  price: number;
+  manualProcessing: boolean;
   answers?: Record<string | number, any>;
   currentStep?: number;
 }
@@ -177,6 +179,9 @@ export default function AssessmentInstanceClient() {
       setAssessment(data);
       setQuestions(data.questions || []);
       
+      // Log tier information for debugging
+      setDebugInfo(`Assessment loaded successfully. Tier: ${data.tier}, Price: RM${data.price}, ManualProcessing: ${data.manualProcessing}`);
+      
       // Load saved answers if any
       if (data.answers) {
         setAnswers(data.answers);
@@ -188,7 +193,6 @@ export default function AssessmentInstanceClient() {
       }
       
       setError('');
-      setDebugInfo(`Assessment data loaded successfully. Tier: ${data.tier}`);
     } catch (err) {
       console.error('Error fetching assessment:', err);
       setError('Error loading assessment. Please try again.');
@@ -298,7 +302,7 @@ export default function AssessmentInstanceClient() {
       };
       
       console.log(`Submitting assessment ${id} with formData:`, formDataPayload);
-      setDebugInfo(`Preparing to submit assessment ${id}`);
+      setDebugInfo(`Preparing to submit assessment ${id} - Tier: ${assessment?.tier}, Price: RM${assessment?.price}`);
       
       formData.append('formData', JSON.stringify(formDataPayload));
       
@@ -333,27 +337,34 @@ export default function AssessmentInstanceClient() {
         throw new Error('Invalid response from server');
       }
       
-      // Check for redirectUrl in the response
+      // CRITICAL FIX: Always respect the redirectUrl from the server response
       if (result.redirectUrl) {
         console.log(`REDIRECTING TO: ${result.redirectUrl}`);
         setDebugInfo(`Redirecting to: ${result.redirectUrl}`);
         router.push(result.redirectUrl);
       } else {
-        // Fallback to default redirect
+        // Only as fallback if server didn't provide a redirect URL
         console.log(`NO REDIRECT URL PROVIDED - Using default path`);
         setDebugInfo(`No redirect URL - Using default`);
         
-        // Use tier-based fallback logic
+        // Get up-to-date assessment data directly from API
         const assessmentData = await fetch(`/api/assessment/${type}/${id}`).then(res => res.json());
         const tier = assessmentData.tier || 'basic';
+        const price = assessmentData.price || 0;
         
+        // CRITICAL FIX: Determine redirect based on tier with explicit checks
         let defaultPath;
-        if (tier === 'premium') {
+        
+        // Check tier first
+        if (tier === 'premium' || price >= 250) {
           defaultPath = `/assessment/${type}/premium-results/${id}`;
-        } else if (tier === 'standard') {
+          console.log(`Premium tier/price detected for fallback redirect: ${defaultPath}`);
+        } else if (tier === 'standard' || price >= 100) {
           defaultPath = `/assessment/${type}/standard-results/${id}`;
+          console.log(`Standard tier/price detected for fallback redirect: ${defaultPath}`);
         } else {
           defaultPath = `/assessment/${type}/processing/${id}`;
+          console.log(`Basic tier detected for fallback redirect: ${defaultPath}`);
         }
         
         console.log(`Fallback redirect to: ${defaultPath}`);
