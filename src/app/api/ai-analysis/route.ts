@@ -1,12 +1,18 @@
 // src/app/api/ai-analysis/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import { openai } from '@/lib/openai';
 
-export const runtime = 'edge'; // Keep edge runtime for better performance
+// Remove edge runtime to avoid limitations with external API calls
+// export const runtime = 'edge';
 
 export async function POST(request: NextRequest) {
   try {
+    // Debug environment variables
+    console.log('[AI Analysis] Starting processing with environment:');
+    console.log('[AI Analysis] Make URL configured:', !!process.env.MAKE_WEBHOOK_URL);
+    console.log('[AI Analysis] App URL:', process.env.NEXT_PUBLIC_APP_URL);
+    console.log('[AI Analysis] Secret configured:', !!process.env.MAKE_WEBHOOK_SECRET);
+
     // Parse the request body
     const body = await request.json();
     const { assessmentId, type, responses } = body;
@@ -34,15 +40,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Make.com integration not configured' }, { status: 500 });
     }
     
+    // Application URL for callback, with fallback
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 
+                  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://my.kareerfit.com');
+    
     // Prepare data for Make.com
     const makeData = {
       assessmentId,
       assessmentType: type,
       responses,
       categories: getCategories(type),
-      callbackUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://my.kareerfit.com'}/api/webhook/ai-analysis`,
-      secret: process.env.MAKE_WEBHOOK_SECRET
+      callbackUrl: `${appUrl}/api/webhook/ai-analysis`,
+      secret: process.env.MAKE_WEBHOOK_SECRET || 'E7f9K2pL8dX3qA6rZ0tY5sW1vC4mB9nG8hJ7uT2pR5xV' // Fallback to default if not set
     };
+
+    console.log(`[AI Analysis] Prepared data for Make.com, callback URL: ${makeData.callbackUrl}`);
 
     try {
       // Mark assessment as processing
@@ -59,8 +71,8 @@ export async function POST(request: NextRequest) {
         }
       });
 
-      // Send to Make.com
-      console.log(`[AI Analysis] Sending assessment ${assessmentId} to Make.com for processing`);
+      // Send to Make.com with enhanced error handling
+      console.log(`[AI Analysis] Sending to Make.com URL: ${makeWebhookUrl}`);
       const response = await fetch(makeWebhookUrl, {
         method: 'POST',
         headers: {
@@ -69,8 +81,13 @@ export async function POST(request: NextRequest) {
         body: JSON.stringify(makeData),
       });
 
+      // Log detailed response information
+      const responseText = await response.text();
+      console.log(`[AI Analysis] Make.com response status: ${response.status}`);
+      console.log(`[AI Analysis] Make.com response body: ${responseText}`);
+
       if (!response.ok) {
-        throw new Error(`Make.com responded with status: ${response.status}`);
+        throw new Error(`Make.com responded with status: ${response.status}, body: ${responseText}`);
       }
 
       // Return success to client
@@ -81,6 +98,7 @@ export async function POST(request: NextRequest) {
       });
     } catch (makeError) {
       console.error(`[AI Analysis] Make.com integration error for ${assessmentId}:`, makeError);
+      console.error(`[AI Analysis] Error details:`, makeError instanceof Error ? makeError.message : 'Unknown error');
       
       // Create fallback analysis if Make.com fails
       const fallbackAnalysis = createFallbackAnalysis(responses, type);
@@ -211,7 +229,7 @@ function generateTypeSpecificRecommendations(assessmentType: string) {
           ]
         }
       ];
-    // Add cases for other assessment types
+    // Add cases for other assessment types as needed
     default:
       return [
         {

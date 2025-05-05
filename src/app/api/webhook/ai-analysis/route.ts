@@ -4,19 +4,22 @@ import { prisma } from '@/lib/db';
 
 export async function POST(request: NextRequest) {
   try {
+    console.log('[Webhook] Received callback from Make.com');
+    
     // Extract request data
     const data = await request.json();
+    console.log('[Webhook] Payload received:', JSON.stringify(data).substring(0, 200) + '...');
     
     // Validate required fields
     if (!data.assessmentId || !data.analysisResult) {
-      console.error('[Webhook] Missing required fields', data);
+      console.error('[Webhook] Missing required fields');
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
     }
 
     const { assessmentId, analysisResult, secret } = data;
     
     // Security check - verify webhook is from Make.com
-    const webhookSecret = process.env.MAKE_WEBHOOK_SECRET;
+    const webhookSecret = process.env.MAKE_WEBHOOK_SECRET || 'E7f9K2pL8dX3qA6rZ0tY5sW1vC4mB9nG8hJ7uT2pR5xV';
     if (webhookSecret && secret !== webhookSecret) {
       console.error('[Webhook] Invalid webhook secret');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -32,7 +35,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Assessment not found' }, { status: 404 });
     }
 
-    console.log(`[Webhook] Received analysis for assessment ${assessmentId}`);
+    console.log(`[Webhook] Processing analysis for assessment ${assessmentId}`);
     
     // Update assessment with the AI analysis
     await prisma.assessment.update({
@@ -55,6 +58,8 @@ export async function POST(request: NextRequest) {
         }
       }
     });
+
+    console.log(`[Webhook] Successfully updated assessment ${assessmentId}`);
 
     return NextResponse.json({
       success: true,
