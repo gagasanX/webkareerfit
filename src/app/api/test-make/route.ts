@@ -1,4 +1,3 @@
-// src/app/api/test-make/route.ts
 export async function GET() {
     const makeWebhookUrl = "https://hook.eu2.make.com/0e9o8dt2o21q1peoam3mur10u4xe";
     const testData = {
