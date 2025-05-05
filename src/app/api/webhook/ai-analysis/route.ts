@@ -47,11 +47,11 @@ export async function POST(request: NextRequest) {
           summary: analysisResult.summary,
           strengths: analysisResult.strengths,
           improvements: analysisResult.improvements,
-          categoryAnalysis: analysisResult.categoryAnalysis,
           aiProcessed: true,
           aiProcessedAt: new Date().toISOString(),
           aiAnalysisStarted: true,
           aiProcessing: false,
+          analysisStatus: 'completed'
         }
       }
     });

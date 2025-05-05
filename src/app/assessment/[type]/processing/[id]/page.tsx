@@ -14,7 +14,7 @@ export default function ProcessingPage({ params }: { params: { type: string, id:
   useEffect(() => {
     const checkStatus = async () => {
       try {
-        const response = await fetch(`/api/assessment/${params.type}/${params.id}/process`);
+        const response = await fetch(`/api/assessment/${params.type}/${params.id}/check-status`);
         const data = await response.json();
         
         // Update status
@@ -38,18 +38,17 @@ export default function ProcessingPage({ params }: { params: { type: string, id:
           return;
         }
         
-        // If still processing, update progress and trigger processing
+        // If still processing, update progress
         if (data.analysisStatus === 'pending' || data.analysisStatus === 'processing') {
-          // If pending, trigger processing with POST request
-          if (data.analysisStatus === 'pending') {
-            await fetch(`/api/assessment/${params.type}/${params.id}/process`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' }
-            });
-          }
-          
           // Increment progress for visual feedback
           setProgress(prev => Math.min(prev + 5, 95));
+          
+          // If pending, initiate processing
+          if (data.analysisStatus === 'pending') {
+            await fetch(`/api/assessment/${params.type}/${params.id}/process`, {
+              method: 'GET' // Changed to GET since we're triggering via the GET endpoint now
+            });
+          }
         }
       } catch (err) {
         console.error('Error checking processing status:', err);

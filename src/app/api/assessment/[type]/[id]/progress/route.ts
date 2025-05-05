@@ -37,35 +37,6 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized access' }, { status: 403 });
     }
     
-    // Check if this is a manual processing tier
-    const isManualProcessing = 
-      assessment.tier === 'standard' || 
-      assessment.tier === 'premium' || 
-      assessment.price >= 100;
-    
-    if (isManualProcessing) {
-      return NextResponse.json({
-        success: false,
-        error: 'This assessment requires manual processing',
-        status: assessment.status,
-        manualProcessing: true,
-        redirectUrl: assessment.tier === 'premium' 
-          ? `/assessment/${assessmentType}/premium-results/${assessmentId}`
-          : `/assessment/${assessmentType}/standard-results/${assessmentId}`
-      });
-    }
-    
-    // Check if OpenAI is configured
-    if (!isOpenAIConfigured()) {
-      console.error('OpenAI is not configured properly');
-      return NextResponse.json({
-        success: false,
-        error: 'AI processing service is currently unavailable',
-        status: 'error',
-        openaiConfigured: false
-      }, { status: 500 });
-    }
-    
     // Check current status
     const assessmentData = assessment.data as Record<string, any> || {};
     const currentStatus = assessmentData.analysisStatus || 'pending';
@@ -106,25 +77,53 @@ export async function GET(
       });
     }
     
-    // Mark as processing and start analysis
+    // Mark as pending and initiate analysis via the ai-analysis endpoint
     await prisma.assessment.update({
       where: { id: assessmentId },
       data: {
         status: 'processing',
         data: {
           ...assessmentData,
-          analysisStatus: 'processing',
+          analysisStatus: 'pending',
           processingStartedAt: new Date().toISOString()
         }
       }
     });
     
-    return NextResponse.json({
-      success: true,
-      status: 'processing',
-      analysisStatus: 'processing',
-      message: 'AI processing has started'
-    });
+    // Now call the AI analysis endpoint to start processing
+    try {
+      const aiResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'https://my.kareerfit.com'}/api/ai-analysis`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          assessmentId,
+          type: assessmentType,
+          responses: assessmentData.responses || {}
+        }),
+      });
+      
+      if (!aiResponse.ok) {
+        throw new Error(`Failed to start AI analysis: ${aiResponse.status}`);
+      }
+      
+      const aiResult = await aiResponse.json();
+      
+      return NextResponse.json({
+        success: true,
+        status: 'processing',
+        analysisStatus: 'processing',
+        message: 'AI processing has started via Make.com'
+      });
+    } catch (aiError) {
+      console.error('Error initiating AI analysis:', aiError);
+      return NextResponse.json({
+        success: false,
+        error: 'Failed to start AI analysis',
+        details: aiError instanceof Error ? aiError.message : 'Unknown error'
+      }, { status: 500 });
+    }
   } catch (error) {
     console.error('Error checking assessment status:', error);
     return NextResponse.json({ 
