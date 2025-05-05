@@ -1,18 +1,19 @@
-// lib/openai.ts
+// src/lib/openai.ts
 import { OpenAI } from 'openai';
 
-// Export a function that creates a new instance each time
-// This avoids stale connections in serverless environments
-export function getOpenAIClient() {
-  const apiKey = process.env.OPENAI_API_KEY;
-  
-  if (!apiKey) {
-    throw new Error('OPENAI_API_KEY environment variable is not set');
-  }
-  
-  return new OpenAI({
-    apiKey,
-    // Add timeout to prevent hanging connections
-    timeout: 30000, // 30 seconds
-  });
+// Create and export OpenAI instance
+export const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY || '',
+  timeout: 15000,
+  maxRetries: 2,
+});
+
+// Helper functions
+export function getOpenAIInstance() {
+  return openai;
+}
+
+export function isOpenAIConfigured(): boolean {
+  return !!process.env.OPENAI_API_KEY && 
+         process.env.OPENAI_API_KEY.startsWith('sk-');
 }

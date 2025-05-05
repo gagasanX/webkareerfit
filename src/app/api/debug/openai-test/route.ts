@@ -1,34 +1,47 @@
+// app/api/debug/openai-test/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { createOpenAIClient, testOpenAIConnection } from '@/lib/openai-client';
+import { getOpenAIInstance, isOpenAIConfigured } from '@/lib/openai';
 
 export async function GET(request: NextRequest) {
   try {
-    console.log("[openai-test] Testing OpenAI connection...");
+    console.log("Testing OpenAI connection...");
     
-    // Check if API key is set
-    const apiKey = process.env.OPENAI_API_KEY;
-    console.log("[openai-test] API Key set:", !!apiKey);
-    console.log("[openai-test] API Key prefix:", apiKey?.substring(0, 7) + "..." || "none");
+    // Check if OpenAI is configured
+    const apiKeyConfigured = isOpenAIConfigured();
+    console.log("API Key configured:", apiKeyConfigured);
     
-    // Test connection
-    const result = await testOpenAIConnection();
+    if (!apiKeyConfigured) {
+      return NextResponse.json({
+        success: false,
+        error: 'OpenAI API key is not configured',
+        apiKeyConfigured: false
+      }, { status: 500 });
+    }
+    
+    // Try to get the OpenAI instance
+    const openai = getOpenAIInstance();
+    
+    // Simple test of OpenAI connectivity
+    const completion = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      messages: [{ role: "user", content: "Say hello" }],
+      max_tokens: 10
+    });
     
     return NextResponse.json({
-      ...result,
-      timestamp: new Date().toISOString(),
-      environment: process.env.NODE_ENV,
-      vercelEnv: process.env.VERCEL_ENV || 'not-vercel'
+      success: true,
+      response: completion.choices[0]?.message?.content,
+      model: completion.model,
+      apiKeyWorking: true
     });
   } catch (error) {
-    console.error("[openai-test] Error:", error);
+    console.error("OpenAI test error:", error);
     
     return NextResponse.json({
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
-      apiKeySet: !!process.env.OPENAI_API_KEY,
-      timestamp: new Date().toISOString(),
-      environment: process.env.NODE_ENV,
-      vercelEnv: process.env.VERCEL_ENV || 'not-vercel'
+      apiKeyWorking: false,
+      apiKeySet: isOpenAIConfigured()
     }, { status: 500 });
   }
 }

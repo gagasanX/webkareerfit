@@ -1,123 +1,120 @@
+// app/assessment/[type]/processing/[id]/page.tsx
 'use client';
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
-export default function ProcessingClient({ 
-  assessmentId, 
-  assessmentType 
-}: { 
-  assessmentId: string; 
-  assessmentType: string; 
-}) {
-  const router = useRouter();
+export default function ProcessingPage({ params }: { params: { type: string, id: string } }) {
   const [status, setStatus] = useState('processing');
   const [error, setError] = useState<string | null>(null);
-  const [loadingPercent, setLoadingPercent] = useState(0);
-
+  const [progress, setProgress] = useState(0);
+  const router = useRouter();
+  
   useEffect(() => {
     const checkStatus = async () => {
       try {
-        const response = await fetch(`/api/assessment/${assessmentType}/processing/${assessmentId}`);
-        
-        if (!response.ok) {
-          throw new Error(`Failed to check status: ${response.status}`);
-        }
-        
+        const response = await fetch(`/api/assessment/${params.type}/${params.id}/process`);
         const data = await response.json();
         
-        setStatus(data.status);
+        // Update status
+        setStatus(data.analysisStatus || data.status || 'processing');
         
-        if (data.status === 'completed' && data.redirectUrl) {
-          router.push(data.redirectUrl);
-        } else if (data.status === 'error') {
-          setError(data.error || 'An error occurred during analysis.');
-        } else if (data.status === 'processing') {
-          // Increment loading percentage for visual feedback
-          setLoadingPercent(prev => (prev < 95 ? prev + 5 : prev));
+        // If there's an error, show it
+        if (data.error) {
+          setError(data.error);
+          return;
+        }
+        
+        // If completed, redirect to results
+        if (data.analysisStatus === 'completed' || data.status === 'completed') {
+          router.push(`/assessment/${params.type}/results/${params.id}`);
+          return;
+        }
+        
+        // If manual processing, redirect to appropriate page
+        if (data.manualProcessing) {
+          router.push(data.redirectUrl || `/assessment/${params.type}/standard-results/${params.id}`);
+          return;
+        }
+        
+        // If still processing, update progress and trigger processing
+        if (data.analysisStatus === 'pending' || data.analysisStatus === 'processing') {
+          // If pending, trigger processing with POST request
+          if (data.analysisStatus === 'pending') {
+            await fetch(`/api/assessment/${params.type}/${params.id}/process`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' }
+            });
+          }
+          
+          // Increment progress for visual feedback
+          setProgress(prev => Math.min(prev + 5, 95));
         }
       } catch (err) {
-        console.error('Error checking assessment status:', err);
+        console.error('Error checking processing status:', err);
+        setError('Failed to check processing status. Please try refreshing the page.');
       }
     };
     
-    // Check immediately and then every 3 seconds
+    // Check status immediately
     checkStatus();
-    const interval = setInterval(checkStatus, 3000);
     
-    // Update loading percentage continuously
-    const loadingInterval = setInterval(() => {
-      setLoadingPercent(prev => (prev < 95 ? prev + 1 : prev));
-    }, 800);
+    // Then set up an interval to check every 3 seconds
+    const intervalId = setInterval(checkStatus, 3000);
     
-    return () => {
-      clearInterval(interval);
-      clearInterval(loadingInterval);
-    };
-  }, [assessmentId, assessmentType, router]);
-
-  if (error) {
-    return (
-      <div className="max-w-md mx-auto mt-8 p-6 bg-white rounded-lg shadow-lg">
-        <div className="text-red-500 mb-4 text-center">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        </div>
-        <h2 className="text-xl font-bold text-center mb-4">Analysis Error</h2>
-        <p className="text-gray-600 text-center mb-6">{error}</p>
-        <div className="flex justify-center">
-          <button
-            onClick={() => {
-              setStatus('processing');
-              setError(null);
-              fetch(`/api/debug/assessments`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ 
-                  id: assessmentId, 
-                  action: 'reset-ai' 
-                }),
-              })
-              .then(() => router.refresh())
-              .catch(err => console.error(err));
-            }}
-            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg"
-          >
-            Try Again
-          </button>
-        </div>
-      </div>
-    );
-  }
-
+    // Clean up on unmount
+    return () => clearInterval(intervalId);
+  }, [params.id, params.type, router]);
+  
   return (
-    <div className="max-w-md mx-auto mt-8 p-6 bg-white rounded-lg shadow-lg text-center">
-      <div className="flex justify-center mb-6">
-        <div className="w-16 h-16 border-4 border-t-transparent border-blue-500 rounded-full animate-spin"></div>
-      </div>
-      
-      <h2 className="text-xl font-bold mb-4">Processing Your Assessment</h2>
-      
-      <div className="mb-6">
-        <div className="w-full bg-gray-200 rounded-full h-2.5">
-          <div 
-            className="bg-blue-600 h-2.5 rounded-full" 
-            style={{ width: `${loadingPercent}%` }}
-          ></div>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-12 px-4">
+      <div className="max-w-4xl mx-auto bg-white rounded-xl shadow-md overflow-hidden">
+        <div className="bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] p-6 text-white">
+          <h1 className="text-2xl font-bold">Processing Your Assessment</h1>
+          <p className="opacity-80">Please wait while our AI analyzes your responses</p>
         </div>
-        <p className="text-sm text-gray-500 mt-2">{loadingPercent}% Complete</p>
+        
+        <div className="p-8 text-center">
+          {status === 'error' ? (
+            <div className="text-red-500 mb-6">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <h2 className="text-xl font-bold mt-4 mb-2">Processing Error</h2>
+              <p className="text-gray-700">{error || 'An error occurred while processing your assessment.'}</p>
+              <div className="mt-6">
+                <Link 
+                  href={`/assessment/${params.type}/results/${params.id}`}
+                  className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  View Available Results
+                </Link>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="flex flex-col items-center justify-center mb-8">
+                <div className="w-20 h-20 border-4 border-t-transparent border-[#7e43f1] rounded-full animate-spin"></div>
+                <p className="mt-4 text-gray-600">Processing your assessment...</p>
+              </div>
+              
+              <div className="w-full max-w-md mx-auto bg-gray-200 rounded-full h-2.5 mb-6">
+                <div 
+                  className="bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] h-2.5 rounded-full" 
+                  style={{ width: `${progress}%` }}
+                ></div>
+              </div>
+              
+              <div className="bg-blue-50 p-4 rounded-lg max-w-md mx-auto">
+                <p className="text-blue-700 text-sm">
+                  Our AI is carefully analyzing your responses to provide personalized insights. This typically takes 1-2 minutes to complete.
+                </p>
+              </div>
+            </>
+          )}
+        </div>
       </div>
-      
-      <p className="text-gray-600 mb-4">
-        Our AI is analyzing your responses to create a personalized assessment report.
-      </p>
-      
-      <p className="text-sm text-gray-500">
-        This may take up to 1-2 minutes. Please do not close this page.
-      </p>
     </div>
   );
 }
