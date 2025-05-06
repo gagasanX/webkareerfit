@@ -1,4 +1,4 @@
-// app/assessment/[type]/processing/[id]/page.tsx
+// app/assessment/[type]/processing/[id]/page.tsx - UPDATED for chunk progress
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -9,6 +9,7 @@ export default function ProcessingPage({ params }: { params: { type: string, id:
   const [status, setStatus] = useState('processing');
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
+  const [chunkProgress, setChunkProgress] = useState<{current: number, total: number, percent: number} | null>(null);
   const router = useRouter();
   
   useEffect(() => {
@@ -26,6 +27,14 @@ export default function ProcessingPage({ params }: { params: { type: string, id:
           return;
         }
         
+        // Check chunk progress
+        if (data.chunkProgress) {
+          setChunkProgress(data.chunkProgress);
+        }
+        
+        // Update progress
+        setProgress(data.progress || 0);
+        
         // If completed, redirect to results
         if (data.analysisStatus === 'completed' || data.status === 'completed') {
           router.push(`/assessment/${params.type}/results/${params.id}`);
@@ -36,19 +45,6 @@ export default function ProcessingPage({ params }: { params: { type: string, id:
         if (data.manualProcessing) {
           router.push(data.redirectUrl || `/assessment/${params.type}/standard-results/${params.id}`);
           return;
-        }
-        
-        // If still processing, update progress
-        if (data.analysisStatus === 'pending' || data.analysisStatus === 'processing') {
-          // Increment progress for visual feedback
-          setProgress(prev => Math.min(prev + 5, 95));
-          
-          // If pending, initiate processing
-          if (data.analysisStatus === 'pending') {
-            await fetch(`/api/assessment/${params.type}/${params.id}/process`, {
-              method: 'GET' // Changed to GET since we're triggering via the GET endpoint now
-            });
-          }
         }
       } catch (err) {
         console.error('Error checking processing status:', err);
@@ -95,7 +91,11 @@ export default function ProcessingPage({ params }: { params: { type: string, id:
             <>
               <div className="flex flex-col items-center justify-center mb-8">
                 <div className="w-20 h-20 border-4 border-t-transparent border-[#7e43f1] rounded-full animate-spin"></div>
-                <p className="mt-4 text-gray-600">Processing your assessment...</p>
+                <p className="mt-4 text-gray-600">
+                  {chunkProgress ? 
+                    `Processing step ${chunkProgress.current + 1} of ${chunkProgress.total}...` : 
+                    'Processing your assessment...'}
+                </p>
               </div>
               
               <div className="w-full max-w-md mx-auto bg-gray-200 rounded-full h-2.5 mb-6">
@@ -104,6 +104,14 @@ export default function ProcessingPage({ params }: { params: { type: string, id:
                   style={{ width: `${progress}%` }}
                 ></div>
               </div>
+              
+              {chunkProgress && (
+                <div className="mb-6 text-sm">
+                  <span className="font-medium text-blue-600">
+                    {chunkProgress.percent}% complete
+                  </span>
+                </div>
+              )}
               
               <div className="bg-blue-50 p-4 rounded-lg max-w-md mx-auto">
                 <p className="text-blue-700 text-sm">
