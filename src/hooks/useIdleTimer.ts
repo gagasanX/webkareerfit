@@ -7,18 +7,23 @@ type UseIdleTimerOptions = {
   timeout?: number;
   onIdle?: () => void;
   debounce?: number;
+  enabled?: boolean;
 };
 
 export default function useIdleTimer({
   timeout = 7200000, // 2 hours in milliseconds
   onIdle = () => signOut({ callbackUrl: '/login' }),
   debounce = 500,
+  enabled = true,
 }: UseIdleTimerOptions = {}) {
+  // Always define refs, regardless of enabled state
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const idleTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Function to reset the timer
   const resetTimer = () => {
+    if (!enabled) return;
+    
     // Clear existing timeouts
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
@@ -37,6 +42,8 @@ export default function useIdleTimer({
 
   // Debounced function to handle user activity
   const handleUserActivity = () => {
+    if (!enabled) return;
+    
     if (idleTimerRef.current) {
       clearTimeout(idleTimerRef.current);
     }
@@ -47,6 +54,8 @@ export default function useIdleTimer({
   };
 
   useEffect(() => {
+    if (!enabled) return;
+    
     // Events to track user activity
     const events = [
       'mousedown',
@@ -93,5 +102,7 @@ export default function useIdleTimer({
         window.removeEventListener(event, handleUserActivity);
       });
     };
-  }, [timeout, onIdle, debounce]);
+  }, [timeout, onIdle, debounce, enabled]); // Added enabled to dependencies
+  
+  return null;
 }

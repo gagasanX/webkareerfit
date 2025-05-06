@@ -435,9 +435,9 @@ export default function DashboardClient() {
             <AffiliateIcon />
           </Link>
           <Link 
-            href="/payment" 
+            href="/billing" 
             className="text-gray-400 hover:text-[#7e43f1] p-3 rounded-xl hover:bg-purple-50 transition-colors"
-            aria-label="Payments"
+            aria-label="Billing"
           >
             <PaymentIcon />
           </Link>
