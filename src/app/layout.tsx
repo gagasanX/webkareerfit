@@ -1,5 +1,6 @@
 import Providers from './providers';
-import './globals.css'
+import './globals.css';
+import ActivityMonitor from '@/components/ActivityMonitor';
 
 export default function RootLayout({
   children,
@@ -10,6 +11,7 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <Providers>
+          <ActivityMonitor />
           {children}
         </Providers>
       </body>

@@ -10,7 +10,6 @@ export async function middleware(request: NextRequest) {
 
   // List of public paths that don't require authentication
   const publicPaths = [
-    '/',
     '/login',
     '/register',
     '/about',
@@ -37,6 +36,9 @@ export async function middleware(request: NextRequest) {
     path.endsWith('.jpg') ||
     path.endsWith('.svg');
 
+  // Special handling for homepage
+  const isHomepage = path === '/';
+
   // Get the token, if it exists
   const token = await getToken({
     req: request,
@@ -46,12 +48,23 @@ export async function middleware(request: NextRequest) {
   // Debug token
   if (token) {
     console.log("Token found for path:", path, "- Role:", token.role, "- Admin:", token.isAdmin, "- Clerk:", token.isClerk);
+    
+    // Redirect from homepage to dashboard if user is authenticated
+    if (isHomepage) {
+      if (token.isAdmin) {
+        return NextResponse.redirect(new URL('/admin/dashboard', request.url));
+      } else if (token.isClerk) {
+        return NextResponse.redirect(new URL('/clerk/dashboard', request.url));
+      } else {
+        return NextResponse.redirect(new URL('/dashboard', request.url));
+      }
+    }
   } else {
     console.log("No token found for path:", path);
   }
 
-  // Public paths should always be accessible without redirects
-  if (isPublicPath) {
+  // Public paths (other than homepage) should always be accessible without redirects
+  if (isPublicPath || isHomepage) {
     // For auth pages, check if already logged in and redirect to appropriate dashboard if true
     if (token) {
       if ((path === '/admin-auth/login' || path === '/admin-auth/register') && token.isAdmin) {
