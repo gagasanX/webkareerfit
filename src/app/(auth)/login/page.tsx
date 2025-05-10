@@ -1,13 +1,12 @@
 'use client';
 
-import { useState, Suspense } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { signIn } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
 import Header from '@/components/ui/Header';
 import Footer from '@/components/ui/Footer';
-import { get } from '@vercel/edge-config';
 
 // Separate component that uses useSearchParams
 function LoginForm() {
@@ -176,19 +175,61 @@ function LoginFormFallback() {
   );
 }
 
-// Main LoginPage component with Edge Config check
-export default async function LoginPage() {
-  // Baca login_enabled dari Edge Config dengan fallback
-  let loginEnabled: boolean;
-  try {
-    const configValue = await get('login_enabled');
-    // Fix: Explicitly convert the value to boolean type using a type guard
-    loginEnabled = typeof configValue === 'boolean' ? configValue : true;
-  } catch (error) {
-    console.error('Failed to read Edge Config:', error);
-    loginEnabled = true; // Fallback ke true kalau Edge Config gagal
+// Main LoginPage component - FIXED: removed async and moved Edge Config to useEffect
+export default function LoginPage() {
+  // State untuk menyimpan login enabled status
+  const [loginEnabled, setLoginEnabled] = useState(true); // Default ke true
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Pindahkan logic async ke useEffect
+  useEffect(() => {
+    // Fungsi untuk memeriksa login_enabled dari Edge Config
+    async function checkLoginStatus() {
+      try {
+        // Import @vercel/edge-config secara dinamis untuk menghindari error
+        const EdgeConfig = await import('@vercel/edge-config').catch(() => null);
+        
+        if (EdgeConfig?.get) {
+          const configValue = await EdgeConfig.get('login_enabled').catch(() => null);
+          // Ubah nilai hanya jika kita mendapat respons yang valid
+          if (configValue !== null && configValue !== undefined) {
+            setLoginEnabled(typeof configValue === 'boolean' ? configValue : true);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to read Edge Config:', error);
+        // Tetap menggunakan default value (true) jika ada error
+      } finally {
+        // Set loading ke false dalam semua kasus
+        setIsLoading(false);
+      }
+    }
+
+    // Panggil fungsi check
+    checkLoginStatus();
+  }, []);
+
+  // Tampilkan loading state sementara memeriksa Edge Config
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex flex-col">
+        <Header />
+        <main className="flex-grow flex items-center justify-center p-6">
+          <div className="w-full max-w-md text-center">
+            <div className="bg-white rounded-xl shadow-xl p-6">
+              <h2 className="text-2xl font-bold text-gray-800">Loading...</h2>
+              <div className="mt-4 flex justify-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#7e43f1]"></div>
+              </div>
+            </div>
+          </div>
+        </main>
+        <Footer />
+      </div>
+    );
   }
 
+  // Tampilkan halaman maintenance jika login dinonaktifkan
   if (!loginEnabled) {
     return (
       <div className="min-h-screen flex flex-col">
@@ -206,6 +247,7 @@ export default async function LoginPage() {
     );
   }
 
+  // Tampilkan halaman login normal
   return (
     <div className="min-h-screen flex flex-col">
       <Header />

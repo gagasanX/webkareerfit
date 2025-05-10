@@ -18,16 +18,18 @@ export async function middleware(request: NextRequest) {
     '/api/auth/signout',
     '/api/auth/session',
     '/api/auth/csrf',
+    '/api/auth/callback/credentials',
+    '/api/auth/providers',
     '/admin-auth/login',
     '/admin-auth/register',
     '/clerk-auth/login',
     '/clerk-auth/register'
   ];
 
-  // Check if the current path is a public path (more specific check)
+  // Check if the current path is a public path
   const isPublicPath = publicPaths.includes(path) || 
     path.startsWith('/api/auth/') ||
-    path.includes('_next/') || 
+    path.includes('/_next/') || 
     path.includes('/static/') || 
     path.includes('/assets/') ||
     path.includes('/images/') ||
@@ -45,7 +47,7 @@ export async function middleware(request: NextRequest) {
     secret: process.env.NEXTAUTH_SECRET,
   });
 
-  // Debug token
+  // Debug token info
   if (token) {
     console.log("Token found for path:", path, "- Role:", token.role, "- Admin:", token.isAdmin, "- Clerk:", token.isClerk);
     
@@ -63,9 +65,9 @@ export async function middleware(request: NextRequest) {
     console.log("No token found for path:", path);
   }
 
-  // Public paths (other than homepage) should always be accessible without redirects
+  // Public paths (other than homepage) should always be accessible
   if (isPublicPath || isHomepage) {
-    // For auth pages, check if already logged in and redirect to appropriate dashboard if true
+    // For auth pages, redirect to appropriate dashboard if already logged in
     if (token) {
       if ((path === '/admin-auth/login' || path === '/admin-auth/register') && token.isAdmin) {
         console.log("Admin already logged in, redirecting to admin dashboard");
@@ -88,8 +90,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // At this point, we're dealing with protected routes
-  // Redirect to login if accessing a protected route without being authenticated
+  // Protected routes - redirect to login if not authenticated
   if (!token) {
     console.log("No auth token for protected path:", path);
     
@@ -107,35 +108,28 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Special protected routes that require specific roles
-
+  // Role-based access control
+  
   // Admin route protection
   if (path.startsWith('/admin')) {
-    const isAdmin = token?.isAdmin === true;
-    if (!isAdmin) {
+    if (!token.isAdmin) {
       console.log("Non-admin attempting to access admin route:", path);
-      // User is authenticated but not an admin, redirect to dashboard
       return NextResponse.redirect(new URL('/dashboard', request.url));
     }
   }
 
   // Clerk route protection
   if (path.startsWith('/clerk')) {
-    const isClerkOrAdmin = token?.isClerk === true || token?.isAdmin === true;
-
-    if (!isClerkOrAdmin) {
+    if (!token.isClerk && !token.isAdmin) {
       console.log("Non-clerk attempting to access clerk route:", path);
-      // User is authenticated but not a clerk or admin, redirect to dashboard
       return NextResponse.redirect(new URL('/dashboard', request.url));
     }
   }
 
   // Affiliate page protection
   if (path.startsWith('/affiliate') && path !== '/affiliate/join') {
-    const isAffiliate = token?.isAffiliate === true;
-    if (!isAffiliate) {
+    if (!token.isAffiliate) {
       console.log("Non-affiliate attempting to access affiliate route:", path);
-      // User is authenticated but not an affiliate, redirect to join page
       return NextResponse.redirect(new URL('/affiliate/join', request.url));
     }
   }
@@ -145,7 +139,7 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Match all paths except for API routes that don't need protection
+    // Match all paths except for specific exclusions
     '/((?!api/(?!auth).*|_next/static|_next/image|favicon.ico).*)',
   ],
 };
