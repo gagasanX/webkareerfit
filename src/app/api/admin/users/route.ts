@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth/auth';
 import { prisma } from '@/lib/db';
-import * as bcrypt from 'bcrypt';
+import bcrypt from 'bcryptjs';
 
 // GET - Fetch users with pagination and filters
 export async function GET(request: NextRequest) {
