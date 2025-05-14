@@ -43,3 +43,6 @@ git add .
 git commit -m "Fix AI analysis stuck issue"
 git push
 vercel --prod
+
+# Tree ni guna ni
+tree -a ./src/app

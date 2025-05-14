@@ -105,7 +105,6 @@ export const authOptions: NextAuthOptions = {
           console.log("✅ AUTHORIZE: Password verified successfully");
 
           // Determine role statuses with explicit Boolean conversion
-          // Cast the role to UserRole type to ensure type safety
           const userRole = (user.role || 'USER') as UserRole;
           const isAdmin = Boolean(user.isAdmin);
           const isClerk = Boolean(userRole === 'CLERK' || userRole === 'ADMIN' || user.isClerk || isAdmin);
@@ -168,7 +167,7 @@ export const authOptions: NextAuthOptions = {
     strategy: "jwt",
     maxAge: 30 * 24 * 60 * 60 // 30 days
   },
-  debug: process.env.NODE_ENV === 'development' && process.env.NEXTAUTH_DEBUG !== 'false',
+  debug: process.env.NODE_ENV === 'development',
   secret: process.env.NEXTAUTH_SECRET || "your-fallback-secret-for-development",
   logger: {
     error(code, metadata) {
@@ -178,7 +177,7 @@ export const authOptions: NextAuthOptions = {
       console.warn(`[Auth] Warning: ${code}`);
     },
     debug(code, metadata) {
-      if (process.env.NEXTAUTH_DEBUG !== 'false') {
+      if (process.env.NODE_ENV === 'development') {
         console.log(`[Auth] Debug: ${code}`, metadata);
       }
     }

@@ -1,9 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
-import axios from 'axios';
-
-// Microservice URL from environment variables
-const PROCESSOR_URL = process.env.ASSESSMENT_PROCESSOR_URL || 'https://processor.kareerfit.com';
 
 export async function POST(
   request: NextRequest,
@@ -24,107 +20,48 @@ export async function POST(
     }
     
     const assessmentData = assessment.data as any || {};
-    const responses = assessmentData.responses || assessmentData.answers || {};
     
-    // 2. Update assessment status to processing
+    // Define chunks based on assessment type (legacy approach)
+    const chunks = [
+      { type: 'scores', status: 'pending' },
+      { type: 'recommendations', status: 'pending' },
+      { type: 'strengths', status: 'pending' },
+      { type: 'improvements', status: 'pending' }
+    ];
+    
+    // Update assessment with chunk info
     await prisma.assessment.update({
       where: { id },
       data: {
         data: {
           ...assessmentData,
+          microserviceProcessing: false,
+          current_chunk: 0,
+          total_chunks: chunks.length,
+          chunk_results: chunks,
           aiAnalysisStarted: true,
           aiProcessing: true,
           processingStartedAt: new Date().toISOString(),
           analysisStatus: 'processing',
-          processing_status: 'processing',
-          microserviceProcessing: true
+          processing_status: 'processing'
         }
       }
     });
     
-    // 3. Application URL for webhook callback
+    // Application URL for internal processing
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 
       (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://my.kareerfit.com');
     
-    // 4. Send assessment data to microservice for processing
-    try {
-      console.log(`[Initiate Analysis] Sending to microservice: ${PROCESSOR_URL}`);
-      
-      const response = await axios.post(`${PROCESSOR_URL}/api/process-assessment`, {
-        assessmentId: id,
-        assessmentType: type,
-        data: responses,
-        webhookUrl: `${appUrl}/api/webhook/ai-analysis`
-      }, {
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': process.env.PROCESSOR_API_KEY || ''
-        },
-        timeout: 8000 // 8 seconds timeout to respect Vercel limits
-      });
-      
-      console.log(`[Initiate Analysis] Microservice response:`, response.data);
-      
-      // 5. Update assessment with microservice processing ID (if provided)
-      if (response.data.processingId) {
-        await prisma.assessment.update({
-          where: { id },
-          data: {
-            data: {
-              ...assessmentData,
-              microserviceProcessingId: response.data.processingId
-            }
-          }
-        });
-      }
-      
-      return NextResponse.json({ 
-        success: true, 
-        message: 'Analysis initiated on external processor',
-        processingId: response.data.processingId || null
-      });
-      
-    } catch (microserviceError) {
-      console.error(`[Initiate Analysis] Microservice error:`, microserviceError);
-      
-      // 6. Fallback to legacy chunking method if microservice fails
-      console.log(`[Initiate Analysis] Microservice failed, falling back to legacy chunking`);
-      
-      // Define chunks based on assessment type (legacy approach)
-      const chunks = [
-        { type: 'scores', status: 'pending' },
-        { type: 'recommendations', status: 'pending' },
-        { type: 'strengths', status: 'pending' },
-        { type: 'improvements', status: 'pending' }
-      ];
-      
-      // Update assessment with chunk info
-      await prisma.assessment.update({
-        where: { id },
-        data: {
-          data: {
-            ...assessmentData,
-            microserviceProcessing: false,
-            microserviceError: microserviceError instanceof Error ? microserviceError.message : 'Unknown error',
-            current_chunk: 0,
-            total_chunks: chunks.length,
-            chunk_results: chunks
-          }
-        }
-      });
-      
-      // Start processing first chunk asynchronously (legacy approach)
-      fetch(`${appUrl}/api/assessment/${type}/${id}/process-chunk?chunk=0`, {
-        method: 'POST',
-      }).catch(err => console.error('Error starting first chunk:', err));
-      
-      return NextResponse.json({ 
-        success: true, 
-        message: 'Microservice unavailable, falling back to legacy processing', 
-        totalChunks: chunks.length,
-        usingFallback: true
-      });
-    }
+    // Start processing first chunk asynchronously (legacy approach)
+    fetch(`${appUrl}/api/assessment/${type}/${id}/process-chunk?chunk=0`, {
+      method: 'POST',
+    }).catch(err => console.error('Error starting first chunk:', err));
+    
+    return NextResponse.json({ 
+      success: true, 
+      message: 'Analysis initiated using legacy processing', 
+      totalChunks: chunks.length
+    });
     
   } catch (error) {
     console.error('[Initiate Analysis] Error:', error);
