@@ -175,7 +175,7 @@ function LoginFormFallback() {
   );
 }
 
-// Main LoginPage component - FIXED: removed async and moved Edge Config to useEffect
+// Main LoginPage component
 export default function LoginPage() {
   // State untuk menyimpan login enabled status
   const [loginEnabled, setLoginEnabled] = useState(true); // Default ke true
@@ -186,18 +186,48 @@ export default function LoginPage() {
     // Fungsi untuk memeriksa login_enabled dari Edge Config
     async function checkLoginStatus() {
       try {
-        // Import @vercel/edge-config secara dinamis untuk menghindari error
-        const EdgeConfig = await import('@vercel/edge-config').catch(() => null);
+        // Deteksi Vercel environment secara lebih robust
+        const isVercelEnvironment = 
+          typeof process !== 'undefined' && 
+          (process.env.VERCEL || process.env.VERCEL_ENV || process.env.NEXT_PUBLIC_VERCEL_ENV);
+          
+        let edgeConfigValue = true; // Default value
         
-        if (EdgeConfig?.get) {
-          const configValue = await EdgeConfig.get('login_enabled').catch(() => null);
-          // Ubah nilai hanya jika kita mendapat respons yang valid
-          if (configValue !== null && configValue !== undefined) {
-            setLoginEnabled(typeof configValue === 'boolean' ? configValue : true);
+        // Hanya jalankan Edge Config di Vercel environment
+        if (isVercelEnvironment) {
+          try {
+            // Import secara dinamis untuk menghindari error di non-Vercel environment
+            const { createClient } = await import('@vercel/edge-config');
+            
+            if (process.env.EDGE_CONFIG) {
+              const edgeConfig = createClient(process.env.EDGE_CONFIG);
+              const configValue = await edgeConfig.get('login_enabled').catch(() => null);
+              
+              if (configValue !== null && configValue !== undefined) {
+                edgeConfigValue = typeof configValue === 'boolean' ? configValue : true;
+              }
+            }
+          } catch (importErr) {
+            console.error('Error importing or using Edge Config:', importErr);
+            // Fallback to default value
+          }
+        } else {
+          // Di environment non-Vercel, gunakan mock dari local file jika tersedia
+          try {
+            const { EdgeConfig: MockEdgeConfig } = await import('@/lib/edge-config-mock');
+            if (MockEdgeConfig?.get) {
+              const configValue = await MockEdgeConfig.get('login_enabled');
+              edgeConfigValue = typeof configValue === 'boolean' ? configValue : true;
+            }
+          } catch (mockErr) {
+            console.log('No mock Edge Config available, using default value');
+            // Fallback to default value
           }
         }
+        
+        setLoginEnabled(edgeConfigValue);
       } catch (error) {
-        console.error('Failed to read Edge Config:', error);
+        console.error('Failed to check login status:', error);
         // Tetap menggunakan default value (true) jika ada error
       } finally {
         // Set loading ke false dalam semua kasus

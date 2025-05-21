@@ -87,7 +87,6 @@ export async function POST(
     }
 
     // CRITICAL FIX: Double-check manualProcessing flag based on tier and price
-    // This ensures even if the flag was incorrectly set during creation, it's fixed here
     const shouldBeManualProcessing = assessment.tier === 'standard' || 
                                    assessment.tier === 'premium' || 
                                    assessment.price >= 100;
@@ -137,10 +136,10 @@ export async function POST(
   }
 }
 
-// Process with AI (typically RM50 tier)
+// Process with AI (typically RM50 tier) - SIMPLIFIED VERSION
 async function processWithAI(assessment: Assessment, type: string) {
   try {
-    console.log(`Starting AI processing for assessment ${assessment.id} (${type})`);
+    console.log(`Starting simplified AI processing for assessment ${assessment.id} (${type})`);
     
     // Update status to processing
     await prisma.assessment.update({
@@ -159,9 +158,9 @@ async function processWithAI(assessment: Assessment, type: string) {
     const assessmentData = assessment.data as AssessmentData | null;
     const responses = assessmentData?.responses || {};
 
-    // Call your existing AI analysis endpoint
+    // Call the simplified AI analysis endpoint and WAIT for results (synchronous)
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || '';
-    console.log(`Calling AI analysis endpoint: ${apiUrl}/api/ai-analysis for assessment ${assessment.id}`);
+    console.log(`Calling simplified AI analysis endpoint: ${apiUrl}/api/ai-analysis for assessment ${assessment.id}`);
     
     const aiResponse = await fetch(`${apiUrl}/api/ai-analysis`, {
       method: 'POST',
@@ -179,12 +178,17 @@ async function processWithAI(assessment: Assessment, type: string) {
       throw new Error(`AI processing failed: ${errorData.error || aiResponse.status}`);
     }
 
-    const redirectUrl = `/assessment/${type}/processing/${assessment.id}`;
-    console.log(`AI processing initiated, redirecting to: ${redirectUrl}`);
+    // Parse the AI response
+    const aiResponseData = await aiResponse.json();
+    
+    console.log(`AI processing completed successfully for assessment ${assessment.id}`);
+    
+    // Direct to results page immediately (not processing page)
+    const redirectUrl = `/assessment/${type}/results/${assessment.id}`;
     
     return NextResponse.json({
       success: true,
-      message: 'Assessment submitted for AI processing',
+      message: 'Assessment processed successfully',
       redirectUrl: redirectUrl,
     });
   } catch (error: unknown) {
