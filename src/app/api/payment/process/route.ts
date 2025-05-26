@@ -1,8 +1,11 @@
-// app/api/payment/process/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { prisma } from '@/lib/db';
 import { authOptions } from '@/lib/auth/auth';
+import { 
+  validateCoupon,
+  formatCurrency 
+} from '@/lib/utils/priceCalculation';
 
 // Define extended session user type
 type ExtendedUser = {
@@ -79,40 +82,60 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Process discount/coupon if provided
-    let finalAmount = assessment.price; // Default to full price
+    // Use assessment price as base price (which may already be discounted)
+    let finalAmount = Number(assessment.price);
     let appliedCoupon = null;
+    let discountInfo = null;
 
+    // Process additional coupon if provided (for double discount scenarios)
     if (data.couponCode) {
       const coupon = await prisma.coupon.findUnique({
         where: { code: data.couponCode },
       });
 
-      if (!coupon || new Date() > coupon.expiresAt || coupon.currentUses >= coupon.maxUses) {
+      if (!coupon) {
         return NextResponse.json(
-          { error: 'Invalid or expired coupon code' },
+          { error: 'Invalid coupon code' },
           { status: 400 }
         );
       }
 
-      // Apply discount
-      const discountAmount = (assessment.price * coupon.discountPercentage) / 100;
+      // Validate coupon
+      const validation = validateCoupon(coupon, finalAmount);
       
-      // If there's a maximum discount limit
-      if (coupon.maxDiscount && discountAmount > coupon.maxDiscount) {
-        finalAmount -= coupon.maxDiscount;
-      } else {
-        finalAmount -= discountAmount;
+      if (!validation.isValid) {
+        return NextResponse.json(
+          { error: validation.message },
+          { status: 400 }
+        );
       }
 
-      finalAmount = Math.max(0, finalAmount); // Ensure amount is not negative
+      const discountCalc = validation.discountCalculation!;
+      finalAmount = discountCalc.finalPrice;
       appliedCoupon = coupon;
+      discountInfo = discountCalc;
+
+      console.log('Additional coupon applied:', {
+        originalAmount: discountCalc.originalPrice,
+        finalAmount: discountCalc.finalPrice,
+        savings: discountCalc.savings
+      });
     }
 
-    // Verify the amount matches what client sent
-    if (Math.abs(finalAmount - data.amount) > 0.01) { // Small tolerance for floating point issues
+    // Verify the amount matches what client sent (with small tolerance for floating point)
+    if (Math.abs(finalAmount - data.amount) > 0.01) {
+      console.error('Amount mismatch:', {
+        calculated: finalAmount,
+        provided: data.amount,
+        difference: Math.abs(finalAmount - data.amount)
+      });
+      
       return NextResponse.json(
-        { error: 'Invalid payment amount' },
+        { 
+          error: 'Invalid payment amount',
+          expected: finalAmount,
+          provided: data.amount
+        },
         { status: 400 }
       );
     }
@@ -126,7 +149,7 @@ export async function POST(req: NextRequest) {
           method: data.paymentMethod,
           amount: finalAmount,
           status: 'pending', // Reset to pending if retry payment
-          couponId: appliedCoupon?.id || null,
+          couponId: appliedCoupon?.id || assessment.payment.couponId, // Keep existing coupon if no new one
           updatedAt: new Date(),
         },
       });
@@ -143,7 +166,7 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // If coupon is being used, increment its usage count
+    // If new coupon is being used, increment its usage count
     if (appliedCoupon) {
       await prisma.coupon.update({
         where: { id: appliedCoupon.id },
@@ -173,7 +196,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Track referral if applicable
+    // Track referral if applicable (use original assessment price for commission calculation)
     const referrer = (session.user as ExtendedUser).referredBy;
     if (referrer) {
       const referrerUser = await prisma.user.findUnique({
@@ -181,8 +204,9 @@ export async function POST(req: NextRequest) {
       });
 
       if (referrerUser && referrerUser.isAffiliate) {
-        // Calculate commission (10% of the original price, not the discounted price)
-        const commissionAmount = assessment.price * 0.1;
+        // Calculate commission (10% of the original assessment price, not the discounted price)
+        const originalPrice = await getOriginalAssessmentPrice(assessment.type, assessment.tier);
+        const commissionAmount = Math.round(originalPrice * 0.1 * 100) / 100; // Proper rounding
 
         // Create affiliate transaction
         await prisma.affiliateTransaction.create({
@@ -211,11 +235,26 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({
+    const response: any = {
       success: true,
       paymentId: payment.id,
       paymentUrl: simulatedPaymentResponse.redirectUrl,
-    });
+      finalAmount: finalAmount,
+      formattedAmount: formatCurrency(finalAmount),
+    };
+
+    // Include discount information if coupon was applied
+    if (discountInfo) {
+      response.discountInfo = {
+        originalPrice: discountInfo.originalPrice,
+        discount: discountInfo.savings,
+        discountPercentage: discountInfo.discountPercentage,
+        formattedOriginalPrice: formatCurrency(discountInfo.originalPrice),
+        formattedDiscount: formatCurrency(discountInfo.savings),
+      };
+    }
+
+    return NextResponse.json(response);
   } catch (error) {
     console.error('Error processing payment:', error);
     return NextResponse.json(
@@ -223,4 +262,15 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+// Helper function to get original assessment price
+async function getOriginalAssessmentPrice(assessmentType: string, tier?: string): Promise<number> {
+  const { getAssessmentBasePrice, getTierPrice } = await import('@/lib/utils/priceCalculation');
+  
+  if (tier) {
+    return getTierPrice(tier);
+  }
+  
+  return getAssessmentBasePrice(assessmentType);
 }

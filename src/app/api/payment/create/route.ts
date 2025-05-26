@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth/auth';
 import { prisma } from '@/lib/db';
 import { createBillplzPayment } from '@/lib/payment/billplz';
+import { formatCurrency } from '@/lib/utils/priceCalculation';
 
 export async function POST(request: NextRequest) {
   try {
@@ -33,15 +34,19 @@ export async function POST(request: NextRequest) {
     // Billplz sahaja - tidak perlu semak gateway
     const gateway = 'billplz';
     
-    if (!assessmentId || !amount || !method) {
+    if (!assessmentId || amount === undefined || !method) {
       console.log('Missing required fields:', { assessmentId, amount, method });
       return NextResponse.json({ message: 'Missing required fields' }, { status: 400 });
     }
     
-    // Validate amount is a positive number
-    if (isNaN(amount) || amount <= 0) {
+    // Validate amount is a positive number with proper precision
+    const numericAmount = Number(amount);
+    if (isNaN(numericAmount) || numericAmount < 0) {
       return NextResponse.json({ message: 'Invalid amount' }, { status: 400 });
     }
+    
+    // Round amount to 2 decimal places for currency
+    const finalAmount = Math.round(numericAmount * 100) / 100;
     
     // Verify assessment exists and belongs to user
     const assessment = await prisma.assessment.findUnique({
@@ -55,6 +60,22 @@ export async function POST(request: NextRequest) {
     
     if (assessment.userId !== userId) {
       return NextResponse.json({ message: 'You do not own this assessment' }, { status: 403 });
+    }
+    
+    // Verify amount matches assessment price (with small tolerance for floating point)
+    const assessmentPrice = Number(assessment.price);
+    if (Math.abs(finalAmount - assessmentPrice) > 0.01) {
+      console.error('Amount mismatch:', {
+        assessmentPrice,
+        providedAmount: finalAmount,
+        difference: Math.abs(finalAmount - assessmentPrice)
+      });
+      
+      return NextResponse.json({ 
+        message: 'Amount does not match assessment price',
+        expected: assessmentPrice,
+        provided: finalAmount
+      }, { status: 400 });
     }
     
     // Get user details for payment
@@ -71,58 +92,82 @@ export async function POST(request: NextRequest) {
       ? await prisma.payment.update({
           where: { id: assessment.payment.id },
           data: {
-            amount: amount,
+            amount: finalAmount,
             method: method,
-            status: 'pending'
+            status: 'pending',
+            updatedAt: new Date(),
           }
         })
       : await prisma.payment.create({
           data: {
             userId: userId,
             assessmentId: assessmentId,
-            amount: amount,
+            amount: finalAmount,
             method: method,
             status: 'pending'
           }
         });
     
-    // Create payment with Billplz
-    let paymentUrl: string;
-    let gatewayPaymentId: string;
-    
-    const paymentDescription = `Payment for ${assessment.type.toUpperCase()} Assessment`;
-    const returnUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/payment/status`;
-    const callbackUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/payment/webhook/${gateway}`;
-    
-    // Billplz integration
-    const billplzResponse = await createBillplzPayment({
-      amount: amount,
-      description: paymentDescription,
-      name: user.name || 'User',
-      email: user.email || '',
-      phone: user.phone || '',
-      paymentId: paymentRecord.id,
-      redirectUrl: returnUrl,
-      callbackUrl: callbackUrl
-    });
-    
-    paymentUrl = billplzResponse.url;
-    gatewayPaymentId = billplzResponse.id;
-    
-    // Update payment record with gateway payment ID
-    await prisma.payment.update({
-      where: { id: paymentRecord.id },
-      data: {
-        gatewayPaymentId: gatewayPaymentId
-      }
-    });
-    
-    return NextResponse.json({
-      success: true,
-      paymentId: paymentRecord.id,
-      gatewayPaymentId: gatewayPaymentId,
-      paymentUrl: paymentUrl
-    });
+    // Only create payment gateway integration if amount > 0
+    if (finalAmount > 0) {
+      // Create payment with Billplz
+      let paymentUrl: string;
+      let gatewayPaymentId: string;
+      
+      const paymentDescription = `Payment for ${assessment.type.toUpperCase()} Assessment`;
+      const returnUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/payment/status`;
+      const callbackUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/payment/webhook/${gateway}`;
+      
+      // Billplz integration
+      const billplzResponse = await createBillplzPayment({
+        amount: finalAmount,
+        description: paymentDescription,
+        name: user.name || 'User',
+        email: user.email || '',
+        phone: user.phone || '',
+        paymentId: paymentRecord.id,
+        redirectUrl: returnUrl,
+        callbackUrl: callbackUrl
+      });
+      
+      paymentUrl = billplzResponse.url;
+      gatewayPaymentId = billplzResponse.id;
+      
+      // Update payment record with gateway payment ID
+      await prisma.payment.update({
+        where: { id: paymentRecord.id },
+        data: {
+          gatewayPaymentId: gatewayPaymentId
+        }
+      });
+      
+      return NextResponse.json({
+        success: true,
+        paymentId: paymentRecord.id,
+        gatewayPaymentId: gatewayPaymentId,
+        paymentUrl: paymentUrl,
+        amount: finalAmount,
+        formattedAmount: formatCurrency(finalAmount)
+      });
+    } else {
+      // Free assessment - no payment gateway needed
+      await prisma.payment.update({
+        where: { id: paymentRecord.id },
+        data: {
+          status: 'completed',
+          method: 'coupon'
+        }
+      });
+      
+      return NextResponse.json({
+        success: true,
+        paymentId: paymentRecord.id,
+        paymentUrl: null, // No payment URL needed for free
+        amount: 0,
+        formattedAmount: formatCurrency(0),
+        message: 'Assessment is free - no payment required'
+      });
+    }
   } catch (error) {
     console.error('Error creating payment:', error);
     return NextResponse.json({ 

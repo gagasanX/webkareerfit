@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth/auth';
 import { prisma } from '@/lib/db';
+import { 
+  getAssessmentBasePrice, 
+  getTierPrice, 
+  validateCoupon,
+  formatCurrency 
+} from '@/lib/utils/priceCalculation';
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,11 +31,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'Invalid request data' }, { status: 400 });
     }
     
-    const { code, assessmentType } = requestData;
+    const { code, assessmentType, tier } = requestData;
     
-    if (!code || !assessmentType) {
-      console.log('Missing required fields:', { code, assessmentType });
-      return NextResponse.json({ message: 'Missing required fields' }, { status: 400 });
+    if (!code) {
+      console.log('Missing required field: code');
+      return NextResponse.json({ message: 'Coupon code is required' }, { status: 400 });
     }
     
     // Find the coupon
@@ -44,60 +50,58 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'Invalid coupon code' }, { status: 400 });
     }
     
-    // Check usage limit instead of isUsed
-    if (coupon.currentUses >= coupon.maxUses) {
-      return NextResponse.json({ message: 'This coupon has reached its usage limit' }, { status: 400 });
-    }
+    // Determine base price
+    let basePrice: number;
     
-    if (new Date() > coupon.expiresAt) {
-      return NextResponse.json({ message: 'This coupon has expired' }, { status: 400 });
-    }
-    
-    // Find base price for assessment type
-    let basePrice = 50; // Default to basic tier
-    if (assessmentType === 'fjrl') basePrice = 50;  // First Job Readiness Level
-    if (assessmentType === 'ijrl') basePrice = 60;  // Ideal Job Readiness Level
-    if (assessmentType === 'cdrl') basePrice = 75;  // Career Development Readiness Level
-    if (assessmentType === 'ccrl') basePrice = 80;  // Career Comeback Readiness Level
-    if (assessmentType === 'ctrl') basePrice = 100; // Career Transition Readiness Level
-    if (assessmentType === 'rrl') basePrice = 120;  // Retirement Readiness Level
-    if (assessmentType === 'irl') basePrice = 40;   // Internship Readiness Level
-    
-    console.log(`Base price for ${assessmentType}: ${basePrice}`);
-    
-    // Calculate discounted price
-    let finalPrice = basePrice;
-    const discountAmount = (basePrice * coupon.discountPercentage) / 100;
-    
-    if (coupon.maxDiscount && discountAmount > coupon.maxDiscount) {
-      finalPrice = basePrice - coupon.maxDiscount;
+    if (tier) {
+      // If tier is specified, use tier pricing
+      basePrice = getTierPrice(tier);
+      console.log(`Using tier pricing - ${tier}: ${basePrice}`);
+    } else if (assessmentType) {
+      // If assessment type is specified, use assessment type pricing
+      basePrice = getAssessmentBasePrice(assessmentType);
+      console.log(`Using assessment type pricing - ${assessmentType}: ${basePrice}`);
     } else {
-      finalPrice = basePrice - discountAmount;
+      // Default fallback
+      basePrice = getTierPrice('basic');
+      console.log(`Using default basic pricing: ${basePrice}`);
     }
     
-    // Ensure price is not negative
-    finalPrice = Math.max(0, finalPrice);
+    // Validate coupon and calculate discount
+    const validation = validateCoupon(coupon, basePrice);
+    
+    if (!validation.isValid) {
+      return NextResponse.json({ 
+        message: validation.message 
+      }, { status: 400 });
+    }
+    
+    const discountCalc = validation.discountCalculation!;
     
     console.log('Discount calculation:', {
-      basePrice,
-      discountPercentage: coupon.discountPercentage,
-      discountAmount,
-      maxDiscount: coupon.maxDiscount,
-      finalPrice
+      basePrice: discountCalc.originalPrice,
+      discountPercentage: discountCalc.discountPercentage,
+      discountAmount: discountCalc.discountAmount,
+      finalPrice: discountCalc.finalPrice,
+      savings: discountCalc.savings
     });
     
     return NextResponse.json({
       success: true,
-      couponCode: code,
-      originalPrice: basePrice,
-      finalPrice,
-      discount: basePrice - finalPrice,
-      message: 'Coupon applied successfully'
+      couponCode: code.trim(),
+      originalPrice: discountCalc.originalPrice,
+      finalPrice: discountCalc.finalPrice,
+      discount: discountCalc.savings,
+      discountPercentage: discountCalc.discountPercentage,
+      formattedOriginalPrice: formatCurrency(discountCalc.originalPrice),
+      formattedFinalPrice: formatCurrency(discountCalc.finalPrice),
+      formattedDiscount: formatCurrency(discountCalc.savings),
+      message: `Coupon applied successfully! You save ${formatCurrency(discountCalc.savings)}`
     });
   } catch (error) {
-    console.error('Error applying coupon:', error);
+    console.error('Error validating coupon:', error);
     return NextResponse.json({ 
-      message: 'Error applying coupon',
+      message: 'Error validating coupon',
       details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
   }

@@ -65,70 +65,74 @@ interface DonutChartProps {
   color?: string;
 }
 
-const DonutChart = ({ percentage = 75, size = 100, strokeWidth = 10, color = '#38b6ff' }: DonutChartProps) => {
+const DonutChart = ({ percentage = 0, size = 100, strokeWidth = 10, color = '#38b6ff' }: DonutChartProps) => {
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
-  const strokeDashoffset = circumference - (percentage / 100) * circumference;
+  // Show minimum 5% for visual representation even if 0%
+  const displayPercentage = percentage === 0 ? 5 : percentage;
+  const strokeDashoffset = circumference - (displayPercentage / 100) * circumference;
   
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={radius}
-        fill="transparent"
-        stroke="#e6e6e6"
-        strokeWidth={strokeWidth}
-      />
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={radius}
-        fill="transparent"
-        stroke={color}
-        strokeWidth={strokeWidth}
-        strokeDasharray={circumference}
-        strokeDashoffset={strokeDashoffset}
-        strokeLinecap="round"
-        transform={`rotate(-90 ${size / 2} ${size / 2})`}
-      />
-      <text
-        x="50%"
-        y="50%"
-        dominantBaseline="middle"
-        textAnchor="middle"
-        fontSize="16"
-        fontWeight="bold"
-        fill="#333"
-      >
-        {percentage}%
-      </text>
-    </svg>
+    <div className="flex justify-center">
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="transparent"
+          stroke="#e6e6e6"
+          strokeWidth={strokeWidth}
+        />
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="transparent"
+          stroke={color}
+          strokeWidth={strokeWidth}
+          strokeDasharray={circumference}
+          strokeDashoffset={strokeDashoffset}
+          strokeLinecap="round"
+          transform={`rotate(-90 ${size / 2} ${size / 2})`}
+        />
+        <text
+          x="50%"
+          y="50%"
+          dominantBaseline="middle"
+          textAnchor="middle"
+          fontSize="16"
+          fontWeight="bold"
+          fill="#333"
+        >
+          {percentage}%
+        </text>
+      </svg>
+    </div>
   );
 };
 
-// Bar chart component
+// Bar chart component - Fixed for mobile and 0% display
 const BarChart = () => (
-  <div className="w-full h-36 flex items-end justify-between space-x-2">
-    <div className="flex flex-col items-center">
-      <div className="h-16 w-8 bg-[#fcb3b3] rounded-t-md"></div>
-      <span className="text-xs mt-1 text-gray-500">Strengths</span>
+  <div className="w-full h-32 sm:h-36 flex items-end justify-between px-2 sm:px-4">
+    <div className="flex flex-col items-center flex-1 mx-1">
+      <div className="h-2 w-4 sm:w-6 md:w-8 bg-[#fcb3b3] rounded-t-md"></div>
+      <span className="text-xs mt-1 text-gray-500 text-center">Strengths</span>
     </div>
-    <div className="flex flex-col items-center">
-      <div className="h-24 w-8 bg-[#38b6ff] rounded-t-md"></div>
-      <span className="text-xs mt-1 text-gray-500">Skills</span>
+    <div className="flex flex-col items-center flex-1 mx-1">
+      <div className="h-2 w-4 sm:w-6 md:w-8 bg-[#38b6ff] rounded-t-md"></div>
+      <span className="text-xs mt-1 text-gray-500 text-center">Skills</span>
     </div>
-    <div className="flex flex-col items-center">
-      <div className="h-20 w-8 bg-[#38b6ff] rounded-t-md"></div>
-      <span className="text-xs mt-1 text-gray-500">Experience</span>
+    <div className="flex flex-col items-center flex-1 mx-1">
+      <div className="h-2 w-4 sm:w-6 md:w-8 bg-[#38b6ff] rounded-t-md"></div>
+      <span className="text-xs mt-1 text-gray-500 text-center">Experience</span>
     </div>
-    <div className="flex flex-col items-center">
-      <div className="h-12 w-8 bg-[#fcb3b3] rounded-t-md"></div>
-      <span className="text-xs mt-1 text-gray-500">Alignment</span>
+    <div className="flex flex-col items-center flex-1 mx-1">
+      <div className="h-2 w-4 sm:w-6 md:w-8 bg-[#fcb3b3] rounded-t-md"></div>
+      <span className="text-xs mt-1 text-gray-500 text-center">Alignment</span>
     </div>
-    <div className="flex flex-col items-center">
-      <div className="h-28 w-8 bg-[#7e43f1] rounded-t-md"></div>
-      <span className="text-xs mt-1 text-gray-500">Potential</span>
+    <div className="flex flex-col items-center flex-1 mx-1">
+      <div className="h-2 w-4 sm:w-6 md:w-8 bg-[#7e43f1] rounded-t-md"></div>
+      <span className="text-xs mt-1 text-gray-500 text-center">Potential</span>
     </div>
   </div>
 );
@@ -160,7 +164,6 @@ const UserMenu = ({ user, isOpen, onClose }: UserMenuProps) => (
       </Link>
     )}
     
-    {/* PERUBAHAN DI SINI: Tukar dari Link kepada button dengan fungsi signOut() */}
     <button 
       onClick={() => signOut({ callbackUrl: '/login' })} 
       className="flex items-center px-4 py-2 text-sm text-red-600 hover:bg-gray-100 w-full text-left"
@@ -307,7 +310,6 @@ export default function DashboardClient() {
     setShowConfirmDialog(false);
     
     try {
-      // Updated API endpoint path based on the folder structure
       const response = await fetch(`/api/assessment/${type}/${id}/cancel`, {
         method: 'POST',
         headers: {
@@ -316,7 +318,6 @@ export default function DashboardClient() {
       });
       
       if (response.ok) {
-        // Refresh the user data to show the change
         fetchUserData();
       } else {
         alert('Failed to cancel assessment. Please try again.');
@@ -369,12 +370,10 @@ export default function DashboardClient() {
   const user = userData;
   if (!user) return null;
 
-  // Calculate statistics
+  // Calculate statistics - All set to 0 for now
   const totalAssessments = user.assessments?.length || 0;
   const completedAssessments = user.assessments?.filter(a => a.status === 'completed').length || 0;
-  const completionRate = totalAssessments > 0 
-    ? Math.round((completedAssessments / totalAssessments) * 100) 
-    : 0;
+  const completionRate = 0; // Set to 0
   
   const pendingAssessments = user.assessments?.filter(a => a.status !== 'completed' && a.status !== 'cancelled') || [];
   const pendingPayments = user.assessments?.filter(a => a.payment?.status !== 'completed') || [];
@@ -396,47 +395,44 @@ export default function DashboardClient() {
       />
       
       {/* Sidebar */}
-      <aside className="w-20 bg-white shadow-lg flex flex-col items-center py-8 fixed h-full">
-        <div className="bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] p-1 rounded-full mb-10 w-12 h-12 flex items-center justify-center">
-          <img 
-            src="https://kareerfit.com/wp-content/uploads/2025/01/KAREERfit.png" 
-            alt="KareerFit Logo" 
-            className="w-10 h-10 object-contain" 
-          />
+      <aside className="w-16 sm:w-20 bg-white shadow-lg flex flex-col items-center py-4 sm:py-8 fixed h-full z-40">
+        {/* Logo - Changed to KF text */}
+        <div className="bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] p-1 rounded-full mb-6 sm:mb-10 w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center">
+          <span className="text-white font-bold text-sm sm:text-base">KF</span>
         </div>
         
-        <nav className="flex flex-col items-center space-y-8">
+        <nav className="flex flex-col items-center space-y-4 sm:space-y-8">
           <Link 
             href="/dashboard" 
-            className="text-[#7e43f1] p-3 rounded-xl bg-purple-50"
+            className="text-[#7e43f1] p-2 sm:p-3 rounded-xl bg-purple-50"
             aria-label="Dashboard"
           >
             <HomeIcon />
           </Link>
           <Link 
             href="/profile" 
-            className="text-gray-400 hover:text-[#7e43f1] p-3 rounded-xl hover:bg-purple-50 transition-colors"
+            className="text-gray-400 hover:text-[#7e43f1] p-2 sm:p-3 rounded-xl hover:bg-purple-50 transition-colors"
             aria-label="Profile"
           >
             <UserIcon />
           </Link>
           <Link 
             href="/assessment" 
-            className="text-gray-400 hover:text-[#7e43f1] p-3 rounded-xl hover:bg-purple-50 transition-colors"
+            className="text-gray-400 hover:text-[#7e43f1] p-2 sm:p-3 rounded-xl hover:bg-purple-50 transition-colors"
             aria-label="Assessments"
           >
             <AssessmentIcon />
           </Link>
           <Link 
             href="/affiliate" 
-            className={`text-gray-400 hover:text-[#7e43f1] p-3 rounded-xl hover:bg-purple-50 transition-colors ${!user.isAffiliate && 'opacity-50'}`}
+            className={`text-gray-400 hover:text-[#7e43f1] p-2 sm:p-3 rounded-xl hover:bg-purple-50 transition-colors ${!user.isAffiliate && 'opacity-50'}`}
             aria-label="Affiliate Dashboard"
           >
             <AffiliateIcon />
           </Link>
           <Link 
             href="/billing" 
-            className="text-gray-400 hover:text-[#7e43f1] p-3 rounded-xl hover:bg-purple-50 transition-colors"
+            className="text-gray-400 hover:text-[#7e43f1] p-2 sm:p-3 rounded-xl hover:bg-purple-50 transition-colors"
             aria-label="Billing"
           >
             <PaymentIcon />
@@ -446,7 +442,7 @@ export default function DashboardClient() {
         <div className="mt-auto">
           <Link 
             href="/settings" 
-            className="text-gray-400 hover:text-[#7e43f1] p-3 rounded-xl hover:bg-purple-50 transition-colors"
+            className="text-gray-400 hover:text-[#7e43f1] p-2 sm:p-3 rounded-xl hover:bg-purple-50 transition-colors"
             aria-label="Settings"
           >
             <SettingsIcon />
@@ -455,15 +451,15 @@ export default function DashboardClient() {
       </aside>
 
       {/* Main content */}
-      <main className="flex-1 ml-20 p-6">
+      <main className="flex-1 ml-16 sm:ml-20 p-3 sm:p-6">
         {/* Header with greeting and user menu */}
-        <header className="flex justify-between items-center mb-6">
+        <header className="flex justify-between items-center mb-4 sm:mb-6">
           <div>
             <h1 className="text-gray-500 text-sm">Hi, {user.name}</h1>
-            <h2 className="text-2xl font-bold text-gray-800">Welcome Back!</h2>
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-800">Welcome Back!</h2>
           </div>
           
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-2 sm:space-x-3">
             {/* Notifications */}
             <div className="relative">
               <button 
@@ -543,15 +539,15 @@ export default function DashboardClient() {
           </div>
         </header>
         
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
           {/* Left column (2/3 width on large screens) */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="lg:col-span-2 space-y-4 sm:space-y-6">
             {/* Reminder card */}
-            <div className="rounded-xl bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] p-5 text-white relative overflow-hidden shadow-sm">
+            <div className="rounded-xl bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] p-4 sm:p-5 text-white relative overflow-hidden shadow-sm">
               <div className="flex">
                 <div className="flex-1 z-10">
                   <h3 className="text-sm font-medium opacity-80">Reminder</h3>
-                  <p className="text-lg font-medium mt-2">Ready to discover your ideal career path?</p>
+                  <p className="text-base sm:text-lg font-medium mt-2">Ready to discover your ideal career path?</p>
                   <p className="mt-1 opacity-90 text-sm mb-4">Complete your assessment for personalized insights.</p>
                   
                   <div className="flex space-x-3">
@@ -560,47 +556,46 @@ export default function DashboardClient() {
                         ? `/assessment/${pendingAssessments[0].type}/${pendingAssessments[0].id}` 
                         : "/assessment"
                       } 
-                      className="bg-white text-[#7e43f1] px-4 py-2 rounded-lg text-sm font-medium hover:shadow-lg transition-shadow"
+                      className="bg-white text-[#7e43f1] px-3 sm:px-4 py-2 rounded-lg text-sm font-medium hover:shadow-lg transition-shadow"
                     >
                       {pendingAssessments.length > 0 ? 'Continue Assessment' : 'Start Now'}
                     </Link>
-                    <Link href="/assessment" className="bg-white/20 text-white px-4 py-2 rounded-lg text-sm hover:bg-white/30 transition-colors">
+                    <Link href="/assessment" className="bg-white/20 text-white px-3 sm:px-4 py-2 rounded-lg text-sm hover:bg-white/30 transition-colors">
                       View All
                     </Link>
                   </div>
                 </div>
                 <div className="hidden md:block">
-                  <div className="relative h-32 w-32">
-                    {/* Career illustration would go here */}
+                  <div className="relative h-24 w-24 sm:h-32 sm:w-32">
                     <div className="absolute inset-0 rounded-full bg-white/10 backdrop-blur-sm"></div>
                   </div>
                 </div>
               </div>
               
               {/* Decorative elements */}
-              <div className="absolute -bottom-10 -right-10 w-40 h-40 rounded-full bg-white/10 backdrop-blur-sm"></div>
-              <div className="absolute top-5 right-20 w-10 h-10 rounded-full bg-white/10 backdrop-blur-sm"></div>
+              <div className="absolute -bottom-10 -right-10 w-32 sm:w-40 h-32 sm:h-40 rounded-full bg-white/10 backdrop-blur-sm"></div>
+              <div className="absolute top-5 right-16 sm:right-20 w-8 sm:w-10 h-8 sm:h-10 rounded-full bg-white/10 backdrop-blur-sm"></div>
             </div>
             
             {/* Stats section */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-white rounded-xl shadow-sm p-5">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
+              <div className="bg-white rounded-xl shadow-sm p-4 sm:p-5">
                 <h3 className="text-gray-500 text-xs uppercase">Career Readiness</h3>
                 <div className="flex items-center mt-1">
-                  <div className="text-2xl font-bold text-[#7e43f1]">{completionRate}%</div>
+                  <div className="text-xl sm:text-2xl font-bold text-[#7e43f1]">{completionRate}%</div>
                 </div>
                 <div className="mt-2 w-full bg-gray-100 rounded-full h-2">
                   <div 
                     className="bg-[#7e43f1] h-2 rounded-full" 
-                    style={{ width: `${completionRate}%` }}
+                    style={{ width: completionRate === 0 ? '2px' : `${completionRate}%` }}
                   ></div>
                 </div>
               </div>
               
-              <div className="bg-white rounded-xl shadow-sm p-5">
+              <div className="bg-white rounded-xl shadow-sm p-4 sm:p-5">
                 <h3 className="text-gray-500 text-xs uppercase">Assessments Completed</h3>
                 <div className="flex items-center justify-between mt-1">
-                  <div className="text-2xl font-bold text-[#38b6ff]">{completedAssessments}</div>
+                  <div className="text-xl sm:text-2xl font-bold text-[#38b6ff]">{completedAssessments}</div>
                   <div className="text-xs bg-blue-100 text-blue-600 rounded-full px-2 py-1">
                     {totalAssessments > 0 ? `${completedAssessments}/${totalAssessments}` : 'No assessments'}
                   </div>
@@ -612,11 +607,11 @@ export default function DashboardClient() {
                 </div>
               </div>
               
-              <div className="bg-white rounded-xl shadow-sm p-5">
+              <div className="bg-white rounded-xl shadow-sm p-4 sm:p-5">
                 <h3 className="text-gray-500 text-xs uppercase">Career Match Score</h3>
                 <div className="flex items-center mt-1">
-                  <div className="text-2xl font-bold text-[#fcb3b3]">
-                    {completedAssessments > 0 ? '85%' : 'N/A'}
+                  <div className="text-xl sm:text-2xl font-bold text-[#fcb3b3]">
+                    {completedAssessments > 0 ? '0%' : 'N/A'}
                   </div>
                 </div>
                 <div className="mt-2 text-xs text-gray-500">
@@ -628,10 +623,10 @@ export default function DashboardClient() {
             </div>
             
             {/* Charts section */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="bg-white rounded-xl shadow-sm p-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+              <div className="bg-white rounded-xl shadow-sm p-4 sm:p-5">
                 <div className="flex justify-between items-center mb-4">
-                  <h3 className="font-medium text-gray-700">Career Profile Composition</h3>
+                  <h3 className="font-medium text-gray-700 text-sm sm:text-base">Career Profile Composition</h3>
                   <Link href="/assessment/results" className="text-xs text-[#38b6ff] hover:underline">View More</Link>
                 </div>
                 <div className="flex justify-center">
@@ -639,14 +634,12 @@ export default function DashboardClient() {
                 </div>
               </div>
               
-              <div className="bg-white rounded-xl shadow-sm p-5">
+              <div className="bg-white rounded-xl shadow-sm p-4 sm:p-5">
                 <div className="flex justify-between items-center mb-4">
-                  <h3 className="font-medium text-gray-700">Compatibility of Skills</h3>
+                  <h3 className="font-medium text-gray-700 text-sm sm:text-base">Compatibility of Skills</h3>
                   <Link href="/assessment/results" className="text-xs text-[#38b6ff] hover:underline">View More</Link>
                 </div>
-                <div className="flex justify-center">
-                  <DonutChart percentage={85} color="#7e43f1" />
-                </div>
+                <DonutChart percentage={0} color="#7e43f1" size={80} />
                 <div className="grid grid-cols-2 gap-2 mt-3">
                   <div className="text-xs flex items-center">
                     <div className="w-2 h-2 rounded-full bg-[#7e43f1] mr-1"></div>
@@ -661,15 +654,15 @@ export default function DashboardClient() {
             </div>
             
             {/* All assessments section */}
-            <div className="bg-white rounded-xl shadow-sm p-5">
+            <div className="bg-white rounded-xl shadow-sm p-4 sm:p-5">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="font-medium text-gray-700">Your Assessments</h3>
                 <Link href="/assessment" className="text-xs text-[#38b6ff] hover:underline">View All</Link>
               </div>
               
               {totalAssessments === 0 ? (
-                <div className="text-center py-8">
-                  <div className="mx-auto h-16 w-16 text-gray-400">
+                <div className="text-center py-6 sm:py-8">
+                  <div className="mx-auto h-12 w-12 sm:h-16 sm:w-16 text-gray-400">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-full w-full" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                     </svg>
@@ -685,11 +678,11 @@ export default function DashboardClient() {
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead>
                       <tr>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
+                        <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                        <th className="px-2 sm:px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                        <th className="hidden sm:table-cell px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                        <th className="hidden sm:table-cell px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Payment</th>
+                        <th className="px-2 sm:px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Action</th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
@@ -697,16 +690,16 @@ export default function DashboardClient() {
                         const assessmentType = assessmentTypes.find(t => t.id === assessment.type);
                         return (
                           <tr key={index} className="hover:bg-gray-50">
-                            <td className="px-4 py-3 whitespace-nowrap">
+                            <td className="px-2 sm:px-4 py-3 whitespace-nowrap">
                               <div className="flex items-center">
-                                <span className="mr-2">{assessmentType?.icon}</span>
-                                <span className="text-sm font-medium text-gray-900">
+                                <span className="mr-1 sm:mr-2 text-sm">{assessmentType?.icon}</span>
+                                <span className="text-xs sm:text-sm font-medium text-gray-900">
                                   {assessmentType?.label || assessment.type}
                                 </span>
                               </div>
                             </td>
-                            <td className="px-4 py-3 whitespace-nowrap">
-                              <span className={`inline-flex text-xs leading-5 font-semibold rounded-full px-2 py-1 ${
+                            <td className="px-2 sm:px-4 py-3 whitespace-nowrap">
+                              <span className={`inline-flex text-xs leading-5 font-semibold rounded-full px-1 sm:px-2 py-1 ${
                                 assessment.status === 'completed' 
                                   ? 'bg-green-100 text-green-800' 
                                   : assessment.status === 'cancelled'
@@ -720,10 +713,10 @@ export default function DashboardClient() {
                                   : 'In Progress'}
                               </span>
                             </td>
-                            <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                            <td className="hidden sm:table-cell px-4 py-3 whitespace-nowrap text-sm text-gray-500">
                               {new Date(assessment.createdAt).toLocaleDateString()}
                             </td>
-                            <td className="px-4 py-3 whitespace-nowrap">
+                            <td className="hidden sm:table-cell px-4 py-3 whitespace-nowrap">
                               <span className={`inline-flex text-xs leading-5 font-semibold rounded-full px-2 py-1 ${
                                 assessment.payment?.status === 'completed' 
                                   ? 'bg-green-100 text-green-800' 
@@ -732,29 +725,29 @@ export default function DashboardClient() {
                                 {assessment.payment?.status === 'completed' ? 'Paid' : 'Unpaid'}
                               </span>
                             </td>
-                            <td className="px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
-                              <div className="flex justify-end space-x-2">
+                            <td className="px-2 sm:px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
+                              <div className="flex justify-end space-x-1 sm:space-x-2">
                                 {assessment.status === 'completed' ? (
                                   <Link 
                                     href={`/assessment/${assessment.type}/results/${assessment.id}`}
-                                    className="text-[#38b6ff] hover:text-[#7e43f1] bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded"
+                                    className="text-[#38b6ff] hover:text-[#7e43f1] bg-blue-50 hover:bg-blue-100 px-1 sm:px-2 py-1 rounded text-xs"
                                   >
                                     View Results
                                   </Link>
                                 ) : assessment.status === 'cancelled' ? (
-                                  <span className="text-gray-400 px-2 py-1">Cancelled</span>
+                                  <span className="text-gray-400 px-1 sm:px-2 py-1 text-xs">Cancelled</span>
                                 ) : assessment.payment?.status === 'completed' ? (
                                   <>
                                     <Link 
                                       href={`/assessment/${assessment.type}/${assessment.id}`}
-                                      className="text-[#38b6ff] hover:text-[#7e43f1] bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded"
+                                      className="text-[#38b6ff] hover:text-[#7e43f1] bg-blue-50 hover:bg-blue-100 px-1 sm:px-2 py-1 rounded text-xs"
                                     >
                                       Continue
                                     </Link>
                                     <button
                                       onClick={() => confirmCancel(assessment.id, assessment.type)}
                                       disabled={cancelingId === assessment.id}
-                                      className="text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-2 py-1 rounded"
+                                      className="text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-1 sm:px-2 py-1 rounded text-xs"
                                     >
                                       {cancelingId === assessment.id ? 'Cancelling...' : 'Cancel'}
                                     </button>
@@ -763,14 +756,14 @@ export default function DashboardClient() {
                                   <>
                                     <Link 
                                       href={`/payment/${assessment.id}`}
-                                      className="text-[#38b6ff] hover:text-[#7e43f1] bg-blue-50 hover:bg-blue-100 px-2 py-1 rounded"
+                                      className="text-[#38b6ff] hover:text-[#7e43f1] bg-blue-50 hover:bg-blue-100 px-1 sm:px-2 py-1 rounded text-xs"
                                     >
                                       Pay Now
                                     </Link>
                                     <button
                                       onClick={() => confirmCancel(assessment.id, assessment.type)}
                                       disabled={cancelingId === assessment.id}
-                                      className="text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-2 py-1 rounded"
+                                      className="text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-1 sm:px-2 py-1 rounded text-xs"
                                     >
                                       {cancelingId === assessment.id ? 'Cancelling...' : 'Cancel'}
                                     </button>
@@ -789,9 +782,9 @@ export default function DashboardClient() {
           </div>
           
           {/* Right column (1/3 width on large screens) */}
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-6">
             {/* Upcoming assessments section */}
-            <div className="bg-white rounded-xl shadow-sm p-5">
+            <div className="bg-white rounded-xl shadow-sm p-4 sm:p-5">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="font-medium text-gray-700">Upcoming Assessments</h3>
                 <Link 
@@ -806,9 +799,9 @@ export default function DashboardClient() {
               </div>
               
               {pendingAssessments.length === 0 ? (
-                <div className="text-center py-6">
-                  <div className="mx-auto flex items-center justify-center w-16 h-16 mb-4">
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <div className="text-center py-4 sm:py-6">
+                  <div className="mx-auto flex items-center justify-center w-12 h-12 sm:w-16 sm:h-16 mb-4">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 sm:h-12 sm:w-12 text-gray-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
                     </svg>
                   </div>
@@ -832,10 +825,10 @@ export default function DashboardClient() {
                         className="flex items-center p-3 rounded-lg border border-gray-100 hover:shadow-sm transition-shadow"
                       >
                         <div 
-                          className="flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-white"
+                          className="flex-shrink-0 w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center text-white"
                           style={{ backgroundColor: assessmentType?.color || '#38b6ff' }}
                         >
-                          <span className="text-lg">{assessmentType?.icon || '📝'}</span>
+                          <span className="text-sm sm:text-lg">{assessmentType?.icon || '📝'}</span>
                         </div>
                         <div className="ml-3 flex-1">
                           <p className="text-sm font-medium text-gray-800">
@@ -856,7 +849,7 @@ export default function DashboardClient() {
             </div>
             
             {/* Assessment selector */}
-            <div className="bg-white rounded-xl shadow-sm p-5">
+            <div className="bg-white rounded-xl shadow-sm p-4 sm:p-5">
               <div className="flex justify-between items-center mb-4">
                 <h3 className="font-medium text-gray-700">Available Assessments</h3>
               </div>
@@ -869,10 +862,10 @@ export default function DashboardClient() {
                     className="flex items-center p-3 rounded-lg border border-gray-100 hover:shadow-sm transition-shadow"
                   >
                     <div 
-                      className="flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-white"
+                      className="flex-shrink-0 w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center text-white"
                       style={{ backgroundColor: type.color }}
                     >
-                      <span className="text-lg">{type.icon}</span>
+                      <span className="text-sm sm:text-lg">{type.icon}</span>
                     </div>
                     <div className="ml-3 flex-1">
                       <p className="text-sm font-medium text-gray-800">{type.label}</p>
@@ -885,7 +878,7 @@ export default function DashboardClient() {
             
             {/* Affiliate section (conditionally displayed) */}
             {user.isAffiliate && (
-              <div className="bg-white rounded-xl shadow-sm p-5">
+              <div className="bg-white rounded-xl shadow-sm p-4 sm:p-5">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="font-medium text-gray-700">Affiliate Dashboard</h3>
                   <Link href="/affiliate" className="text-xs text-[#38b6ff] hover:underline">View Details</Link>
@@ -927,7 +920,7 @@ export default function DashboardClient() {
             
             {/* Join affiliate section (conditionally displayed) */}
             {!user.isAffiliate && (
-              <div className="bg-gradient-to-r from-[#fcb3b3] to-[#7e43f1] rounded-xl shadow-sm p-5 text-white">
+              <div className="bg-gradient-to-r from-[#fcb3b3] to-[#7e43f1] rounded-xl shadow-sm p-4 sm:p-5 text-white">
                 <h3 className="font-medium mb-2">Become an Affiliate</h3>
                 <p className="text-sm text-white/90 mb-4">Earn commissions by referring others to KareerFit assessments.</p>
                 <Link href="/affiliate/join" className="inline-block bg-white text-[#7e43f1] px-4 py-2 rounded-lg text-sm font-medium hover:shadow-lg transition-shadow">

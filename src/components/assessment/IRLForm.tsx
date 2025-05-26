@@ -39,9 +39,8 @@ export default function IRLForm({ assessmentId, assessmentType, onSubmit, initia
   
   // Add useSession hook
   const { data: session, status } = useSession();
-  const router = useRouter();
   
-  const [currentStep, setCurrentStep] = useState(1);
+  // Add analyzing step to possible states
   const [step, setStep] = useState<'form' | 'preview' | 'processing' | 'analyzing'>('form');
   const [formData, setFormData] = useState<FormDataType>(initialData || {
     personalInfo: {
@@ -65,36 +64,9 @@ export default function IRLForm({ assessmentId, assessmentType, onSubmit, initia
   const [progressPercentage, setProgressPercentage] = useState(0);
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const router = useRouter();
 
-  // Calculate progress percentage
-  useEffect(() => {
-    let completedFields = 0;
-    const totalFields = 13; // 5 personal fields + qualification + 7 assessment sections
-    
-    // Count completed personal info fields
-    if (formData.personalInfo.name) completedFields++;
-    if (formData.personalInfo.email) completedFields++;
-    if (formData.personalInfo.phone) completedFields++;
-    if (formData.personalInfo.personality) completedFields++;
-    if (formData.personalInfo.jobPosition) completedFields++;
-    if (formData.qualification) completedFields++;
-    
-    // Count assessment fields
-    if (formData.coreSkillsAndKnowledge) completedFields++;
-    if (formData.emotionalIntelligence) completedFields++;
-    if (formData.socialIntelligence) completedFields++;
-    if (formData.competencyAndKnowHow) completedFields++;
-    if (formData.strategicThinkingAndGoalSetting) completedFields++;
-    if (formData.professionalPresentationAndPreparedness) completedFields++;
-    if (formData.continuousLearningAndGrowthMindset) completedFields++;
-    
-    const percentage = (completedFields / totalFields) * 100;
-    setProgressPercentage(percentage);
-    
-    // Also update based on current step for the progress bar
-    setProgressPercentage((currentStep / 5) * 100);
-  }, [formData, currentStep]);
-
+  // Update form data
   const updateFormData = (section: string, field: string, value: string) => {
     if (section === 'personalInfo') {
       setFormData({
@@ -112,6 +84,34 @@ export default function IRLForm({ assessmentId, assessmentType, onSubmit, initia
     }
   };
 
+  // Calculate progress percentage
+  useEffect(() => {
+    let completedFields = 0;
+
+    // Count completed personal info fields
+    if (formData.personalInfo.name) completedFields++;
+    if (formData.personalInfo.email) completedFields++;
+    if (formData.personalInfo.phone) completedFields++;
+    if (formData.personalInfo.personality) completedFields++;
+    if (formData.personalInfo.jobPosition) completedFields++;
+    if (formData.qualification) completedFields++;
+
+    // Count other sections
+    if (formData.coreSkillsAndKnowledge) completedFields++;
+    if (formData.emotionalIntelligence) completedFields++;
+    if (formData.socialIntelligence) completedFields++;
+    if (formData.competencyAndKnowHow) completedFields++;
+    if (formData.strategicThinkingAndGoalSetting) completedFields++;
+    if (formData.professionalPresentationAndPreparedness) completedFields++;
+    if (formData.continuousLearningAndGrowthMindset) completedFields++;
+
+    // Calculate percentage (7 assessment sections + 6 personal info fields)
+    const totalFields = 13;
+    const percentage = (completedFields / totalFields) * 100;
+    setProgressPercentage(percentage);
+  }, [formData]);
+
+  // Handle input changes for all form fields
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     if (name.includes('.')) {
@@ -125,12 +125,14 @@ export default function IRLForm({ assessmentId, assessmentType, onSubmit, initia
     }
   };
 
+  // Handle file upload changes
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setResumeFile(e.target.files[0]);
     }
   };
 
+  // Move to preview after initial form submission
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -145,6 +147,7 @@ export default function IRLForm({ assessmentId, assessmentType, onSubmit, initia
     window.scrollTo(0, 0);
   };
 
+  // Final submission after preview - updated with analyzing step
   const handleFinalSubmit = async () => {
     console.log('Final submit function called');
     
@@ -230,12 +233,10 @@ export default function IRLForm({ assessmentId, assessmentType, onSubmit, initia
     }
   };
 
-  const nextStep = () => {
-    setCurrentStep(currentStep + 1);
-  };
-
-  const prevStep = () => {
-    setCurrentStep(currentStep - 1);
+  // Go back to edit form
+  const handleBackToForm = () => {
+    setStep('form');
+    window.scrollTo(0, 0);
   };
 
   // Render the preview section
@@ -317,13 +318,13 @@ export default function IRLForm({ assessmentId, assessmentType, onSubmit, initia
               {error}
             </div>
           )}
-          
+        
           {/* Buttons for navigation/submission */}
           <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-end">
             <button 
               type="button" 
               className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none"
-              onClick={() => setStep('form')}
+              onClick={handleBackToForm}
               disabled={isSubmitting}
             >
               Edit Responses
@@ -346,834 +347,15 @@ export default function IRLForm({ assessmentId, assessmentType, onSubmit, initia
     );
   };
 
-  const renderStep = () => {
-    switch (currentStep) {
-      case 1:
-        return (
-          <div className="space-y-6">
-            <h2 className="text-xl font-semibold text-gray-900">Personal Information</h2>
-            <div>
-              <label htmlFor="personalInfo.name" className="block text-sm font-medium text-gray-700">
-                Full Name *
-              </label>
-              <input
-                type="text"
-                name="personalInfo.name"
-                id="personalInfo.name"
-                value={formData.personalInfo.name}
-                onChange={handleInputChange}
-                required
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
-              />
-            </div>
-            <div>
-              <label htmlFor="personalInfo.email" className="block text-sm font-medium text-gray-700">
-                Email *
-              </label>
-              <input
-                type="email"
-                name="personalInfo.email"
-                id="personalInfo.email"
-                value={formData.personalInfo.email}
-                onChange={handleInputChange}
-                required
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
-              />
-            </div>
-            <div>
-              <label htmlFor="personalInfo.phone" className="block text-sm font-medium text-gray-700">
-                Phone Number *
-              </label>
-              <input
-                type="tel"
-                name="personalInfo.phone"
-                id="personalInfo.phone"
-                value={formData.personalInfo.phone}
-                onChange={handleInputChange}
-                required
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
-              />
-            </div>
-            <div>
-              <label htmlFor="personalInfo.personality" className="block text-sm font-medium text-gray-700">
-                Describe your personality *
-              </label>
-              <textarea
-                name="personalInfo.personality"
-                id="personalInfo.personality"
-                rows={4}
-                value={formData.personalInfo.personality}
-                onChange={handleInputChange}
-                required
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
-                placeholder="Tell us about your personality traits, work style, and how you interact with others..."
-              />
-            </div>
-            <div>
-              <label htmlFor="personalInfo.jobPosition" className="block text-sm font-medium text-gray-700">
-                Job and position applying for? (e.g.: Junior Web Designer, Entry Level) *
-              </label>
-              <input
-                type="text"
-                name="personalInfo.jobPosition"
-                id="personalInfo.jobPosition"
-                value={formData.personalInfo.jobPosition}
-                onChange={handleInputChange}
-                required
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
-                placeholder="e.g.: Junior Web Designer, Entry Level"
-              />
-            </div>
-            <div>
-              <label htmlFor="qualification" className="block text-sm font-medium text-gray-700">
-                Highest qualification *
-              </label>
-              <select
-                id="qualification"
-                name="qualification"
-                value={formData.qualification}
-                onChange={handleInputChange}
-                required
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
-              >
-                <option value="">Select...</option>
-                <option value="SPM, STPM, or equivalent">SPM, STPM, or equivalent (Foundation, Certificate, etc)</option>
-                <option value="Diploma or Advanced Diploma">Diploma or Advanced Diploma</option>
-                <option value="Undergraduate Degree">Undergraduate Degree</option>
-                <option value="Postgraduate Degree">Postgraduate Degree</option>
-              </select>
-            </div>
-            <div>
-              <label htmlFor="resume" className="block text-sm font-medium text-gray-700">
-                Upload Resume *
-              </label>
-              <div className="mt-1 flex items-center">
-                <input
-                  type="file"
-                  id="resume"
-                  name="resume"
-                  ref={fileInputRef}
-                  onChange={handleFileChange}
-                  accept=".pdf,.doc,.docx"
-                  className="hidden"
-                  required
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="inline-flex items-center"
-                >
-                  {resumeFile ? resumeFile.name : 'Choose File'}
-                </Button>
-                {resumeFile && (
-                  <button
-                    type="button"
-                    onClick={() => setResumeFile(null)}
-                    className="ml-2 text-sm text-red-600 hover:text-red-500"
-                  >
-                    Remove
-                  </button>
-                )}
-              </div>
-              <p className="mt-1 text-sm text-gray-500">PDF, DOC, or DOCX. Maximum 5MB.</p>
-            </div>
-
-            <div className="mt-6 flex justify-end">
-              <Button type="button" onClick={nextStep}>
-                Next Step
-              </Button>
-            </div>
-          </div>
-        );
-      case 2:
-        return (
-          <div className="space-y-6">
-            <h2 className="text-xl font-semibold text-gray-900">Core Skills and Knowledge</h2>
-            
-            <div className="bg-white p-6 rounded-lg border shadow-sm">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Core Skills and Knowledge</h3>
-              <p className="text-sm text-gray-500 mb-4">Choose 1 statement that resonates with you.</p>
-              <div className="space-y-3">
-                <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                  formData.coreSkillsAndKnowledge === "I have a clear understanding of the technical requirements and job-specific knowledge for the role."
-                    ? 'border-primary-500 bg-primary-50' 
-                    : 'border-gray-200 bg-white hover:bg-gray-50'
-                }`}>
-                  <input
-                    type="radio"
-                    name="coreSkillsAndKnowledge"
-                    value="I have a clear understanding of the technical requirements and job-specific knowledge for the role."
-                    checked={formData.coreSkillsAndKnowledge === "I have a clear understanding of the technical requirements and job-specific knowledge for the role."}
-                    onChange={handleInputChange}
-                    className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                    required
-                  />
-                  <span className="ml-3 text-gray-700">I have a clear understanding of the technical requirements and job-specific knowledge for the role.</span>
-                </label>
-                
-                <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                  formData.coreSkillsAndKnowledge === "My problem-solving abilities enable me to address challenges logically and effectively."
-                    ? 'border-primary-500 bg-primary-50' 
-                    : 'border-gray-200 bg-white hover:bg-gray-50'
-                }`}>
-                  <input
-                    type="radio"
-                    name="coreSkillsAndKnowledge"
-                    value="My problem-solving abilities enable me to address challenges logically and effectively."
-                    checked={formData.coreSkillsAndKnowledge === "My problem-solving abilities enable me to address challenges logically and effectively."}
-                    onChange={handleInputChange}
-                    className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                  />
-                  <span className="ml-3 text-gray-700">My problem-solving abilities enable me to address challenges logically and effectively.</span>
-                </label>
-                
-                <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                  formData.coreSkillsAndKnowledge === "I have a strong foundation in industry-related tools, technologies, or methodologies."
-                    ? 'border-primary-500 bg-primary-50' 
-                    : 'border-gray-200 bg-white hover:bg-gray-50'
-                }`}>
-                  <input
-                    type="radio"
-                    name="coreSkillsAndKnowledge"
-                    value="I have a strong foundation in industry-related tools, technologies, or methodologies."
-                    checked={formData.coreSkillsAndKnowledge === "I have a strong foundation in industry-related tools, technologies, or methodologies."}
-                    onChange={handleInputChange}
-                    className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                  />
-                  <span className="ml-3 text-gray-700">I have a strong foundation in industry-related tools, technologies, or methodologies.</span>
-                </label>
-                
-                <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                  formData.coreSkillsAndKnowledge === "I can apply critical thinking to analyze complex situations and develop appropriate solutions."
-                    ? 'border-primary-500 bg-primary-50' 
-                    : 'border-gray-200 bg-white hover:bg-gray-50'
-                }`}>
-                  <input
-                    type="radio"
-                    name="coreSkillsAndKnowledge"
-                    value="I can apply critical thinking to analyze complex situations and develop appropriate solutions."
-                    checked={formData.coreSkillsAndKnowledge === "I can apply critical thinking to analyze complex situations and develop appropriate solutions."}
-                    onChange={handleInputChange}
-                    className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                  />
-                  <span className="ml-3 text-gray-700">I can apply critical thinking to analyze complex situations and develop appropriate solutions.</span>
-                </label>
-                
-                <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                  formData.coreSkillsAndKnowledge === "I consistently seek opportunities to update my skills and stay relevant in my field."
-                    ? 'border-primary-500 bg-primary-50' 
-                    : 'border-gray-200 bg-white hover:bg-gray-50'
-                }`}>
-                  <input
-                    type="radio"
-                    name="coreSkillsAndKnowledge"
-                    value="I consistently seek opportunities to update my skills and stay relevant in my field."
-                    checked={formData.coreSkillsAndKnowledge === "I consistently seek opportunities to update my skills and stay relevant in my field."}
-                    onChange={handleInputChange}
-                    className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                  />
-                  <span className="ml-3 text-gray-700">I consistently seek opportunities to update my skills and stay relevant in my field.</span>
-                </label>
-              </div>
-            </div>
-
-            <div className="mt-6 flex justify-between">
-              <Button type="button" variant="outline" onClick={prevStep}>
-                Previous Step
-              </Button>
-              <Button type="button" onClick={nextStep}>
-                Next Step
-              </Button>
-            </div>
-          </div>
-        );
-      case 3:
-        return (
-          <div className="space-y-6">
-            <h2 className="text-xl font-semibold text-gray-900">Emotional and Social Intelligence</h2>
-            
-            <div className="space-y-8">
-              {/* Emotional Intelligence */}
-              <div className="bg-white p-6 rounded-lg border shadow-sm">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Emotional Intelligence</h3>
-                <p className="text-sm text-gray-500 mb-4">Choose 1 statement that resonates with you.</p>
-                <div className="space-y-3">
-                  <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                    formData.emotionalIntelligence === "I understand my strengths and weaknesses and how they impact my professional interactions."
-                      ? 'border-primary-500 bg-primary-50' 
-                      : 'border-gray-200 bg-white hover:bg-gray-50'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="emotionalIntelligence"
-                      value="I understand my strengths and weaknesses and how they impact my professional interactions."
-                      checked={formData.emotionalIntelligence === "I understand my strengths and weaknesses and how they impact my professional interactions."}
-                      onChange={handleInputChange}
-                      className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                      required
-                    />
-                    <span className="ml-3 text-gray-700">I understand my strengths and weaknesses and how they impact my professional interactions.</span>
-                  </label>
-                  
-                  <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                    formData.emotionalIntelligence === "I can regulate my emotions under pressure to maintain focus and professionalism."
-                      ? 'border-primary-500 bg-primary-50' 
-                      : 'border-gray-200 bg-white hover:bg-gray-50'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="emotionalIntelligence"
-                      value="I can regulate my emotions under pressure to maintain focus and professionalism."
-                      checked={formData.emotionalIntelligence === "I can regulate my emotions under pressure to maintain focus and professionalism."}
-                      onChange={handleInputChange}
-                      className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                    />
-                    <span className="ml-3 text-gray-700">I can regulate my emotions under pressure to maintain focus and professionalism.</span>
-                  </label>
-                  
-                  <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                    formData.emotionalIntelligence === "I empathize with others' perspectives and build positive relationships in the workplace."
-                      ? 'border-primary-500 bg-primary-50' 
-                      : 'border-gray-200 bg-white hover:bg-gray-50'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="emotionalIntelligence"
-                      value="I empathize with others' perspectives and build positive relationships in the workplace."
-                      checked={formData.emotionalIntelligence === "I empathize with others' perspectives and build positive relationships in the workplace."}
-                      onChange={handleInputChange}
-                      className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                    />
-                    <span className="ml-3 text-gray-700">I empathize with others' perspectives and build positive relationships in the workplace.</span>
-                  </label>
-                  
-                  <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                    formData.emotionalIntelligence === "I handle constructive criticism with an open mind and use it for personal growth."
-                      ? 'border-primary-500 bg-primary-50' 
-                      : 'border-gray-200 bg-white hover:bg-gray-50'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="emotionalIntelligence"
-                      value="I handle constructive criticism with an open mind and use it for personal growth."
-                      checked={formData.emotionalIntelligence === "I handle constructive criticism with an open mind and use it for personal growth."}
-                      onChange={handleInputChange}
-                      className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                    />
-                    <span className="ml-3 text-gray-700">I handle constructive criticism with an open mind and use it for personal growth.</span>
-                  </label>
-                  
-                  <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                    formData.emotionalIntelligence === "I demonstrate resilience and adaptability when faced with unexpected challenges or changes."
-                      ? 'border-primary-500 bg-primary-50' 
-                      : 'border-gray-200 bg-white hover:bg-gray-50'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="emotionalIntelligence"
-                      value="I demonstrate resilience and adaptability when faced with unexpected challenges or changes."
-                      checked={formData.emotionalIntelligence === "I demonstrate resilience and adaptability when faced with unexpected challenges or changes."}
-                      onChange={handleInputChange}
-                      className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                    />
-                    <span className="ml-3 text-gray-700">I demonstrate resilience and adaptability when faced with unexpected challenges or changes.</span>
-                  </label>
-                </div>
-              </div>
-
-              {/* Social Intelligence */}
-              <div className="bg-white p-6 rounded-lg border shadow-sm">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Social Intelligence</h3>
-                <p className="text-sm text-gray-500 mb-4">Choose 1 statement that resonates with you.</p>
-                <div className="space-y-3">
-                  <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                    formData.socialIntelligence === "I can work collaboratively with diverse teams to achieve common goals."
-                      ? 'border-primary-500 bg-primary-50' 
-                      : 'border-gray-200 bg-white hover:bg-gray-50'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="socialIntelligence"
-                      value="I can work collaboratively with diverse teams to achieve common goals."
-                      checked={formData.socialIntelligence === "I can work collaboratively with diverse teams to achieve common goals."}
-                      onChange={handleInputChange}
-                      className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                      required
-                    />
-                    <span className="ml-3 text-gray-700">I can work collaboratively with diverse teams to achieve common goals.</span>
-                  </label>
-                  
-                  <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                    formData.socialIntelligence === "I effectively navigate workplace dynamics and manage conflicts constructively."
-                      ? 'border-primary-500 bg-primary-50' 
-                      : 'border-gray-200 bg-white hover:bg-gray-50'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="socialIntelligence"
-                      value="I effectively navigate workplace dynamics and manage conflicts constructively."
-                      checked={formData.socialIntelligence === "I effectively navigate workplace dynamics and manage conflicts constructively."}
-                      onChange={handleInputChange}
-                      className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                    />
-                    <span className="ml-3 text-gray-700">I effectively navigate workplace dynamics and manage conflicts constructively.</span>
-                  </label>
-                  
-                  <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                    formData.socialIntelligence === "I am aware of cultural sensitivities and respect differences in professional environments."
-                      ? 'border-primary-500 bg-primary-50' 
-                      : 'border-gray-200 bg-white hover:bg-gray-50'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="socialIntelligence"
-                      value="I am aware of cultural sensitivities and respect differences in professional environments."
-                      checked={formData.socialIntelligence === "I am aware of cultural sensitivities and respect differences in professional environments."}
-                      onChange={handleInputChange}
-                      className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                    />
-                    <span className="ml-3 text-gray-700">I am aware of cultural sensitivities and respect differences in professional environments.</span>
-                  </label>
-                  
-                  <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                    formData.socialIntelligence === "I communicate ideas clearly and persuasively, both verbally and in writing."
-                      ? 'border-primary-500 bg-primary-50' 
-                      : 'border-gray-200 bg-white hover:bg-gray-50'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="socialIntelligence"
-                      value="I communicate ideas clearly and persuasively, both verbally and in writing."
-                      checked={formData.socialIntelligence === "I communicate ideas clearly and persuasively, both verbally and in writing."}
-                      onChange={handleInputChange}
-                      className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                    />
-                    <span className="ml-3 text-gray-700">I communicate ideas clearly and persuasively, both verbally and in writing.</span>
-                  </label>
-                  
-                  <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                    formData.socialIntelligence === "I build and maintain professional networks that support my career development."
-                      ? 'border-primary-500 bg-primary-50' 
-                      : 'border-gray-200 bg-white hover:bg-gray-50'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="socialIntelligence"
-                      value="I build and maintain professional networks that support my career development."
-                      checked={formData.socialIntelligence === "I build and maintain professional networks that support my career development."}
-                      onChange={handleInputChange}
-                      className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                    />
-                    <span className="ml-3 text-gray-700">I build and maintain professional networks that support my career development.</span>
-                  </label>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-6 flex justify-between">
-              <Button type="button" variant="outline" onClick={prevStep}>
-                Previous Step
-              </Button>
-              <Button type="button" onClick={nextStep}>
-                Next Step
-              </Button>
-            </div>
-          </div>
-        );
-      case 4:
-        return (
-          <div className="space-y-6">
-            <h2 className="text-xl font-semibold text-gray-900">Competency and Strategic Thinking</h2>
-            
-            <div className="space-y-8">
-              {/* Competency and Know-How */}
-              <div className="bg-white p-6 rounded-lg border shadow-sm">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Competency and Know-How</h3>
-                <p className="text-sm text-gray-500 mb-4">Choose 1 statement that resonates with you.</p>
-                <div className="space-y-3">
-                  <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                    formData.competencyAndKnowHow === "I can independently manage tasks and responsibilities to meet job expectations."
-                      ? 'border-primary-500 bg-primary-50' 
-                      : 'border-gray-200 bg-white hover:bg-gray-50'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="competencyAndKnowHow"
-                      value="I can independently manage tasks and responsibilities to meet job expectations."
-                      checked={formData.competencyAndKnowHow === "I can independently manage tasks and responsibilities to meet job expectations."}
-                      onChange={handleInputChange}
-                      className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                      required
-                    />
-                    <span className="ml-3 text-gray-700">I can independently manage tasks and responsibilities to meet job expectations.</span>
-                  </label>
-                  
-                  <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                    formData.competencyAndKnowHow === "I demonstrate precision and attention to detail in my work outputs."
-                      ? 'border-primary-500 bg-primary-50' 
-                      : 'border-gray-200 bg-white hover:bg-gray-50'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="competencyAndKnowHow"
-                      value="I demonstrate precision and attention to detail in my work outputs."
-                      checked={formData.competencyAndKnowHow === "I demonstrate precision and attention to detail in my work outputs."}
-                      onChange={handleInputChange}
-                      className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                    />
-                    <span className="ml-3 text-gray-700">I demonstrate precision and attention to detail in my work outputs.</span>
-                  </label>
-                  
-                  <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                    formData.competencyAndKnowHow === "I can integrate theoretical knowledge into practical scenarios effectively."
-                      ? 'border-primary-500 bg-primary-50' 
-                      : 'border-gray-200 bg-white hover:bg-gray-50'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="competencyAndKnowHow"
-                      value="I can integrate theoretical knowledge into practical scenarios effectively."
-                      checked={formData.competencyAndKnowHow === "I can integrate theoretical knowledge into practical scenarios effectively."}
-                      onChange={handleInputChange}
-                      className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                    />
-                    <span className="ml-3 text-gray-700">I can integrate theoretical knowledge into practical scenarios effectively.</span>
-                  </label>
-                  
-                  <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                    formData.competencyAndKnowHow === "I am skilled at optimizing processes to improve efficiency and outcomes."
-                      ? 'border-primary-500 bg-primary-50' 
-                      : 'border-gray-200 bg-white hover:bg-gray-50'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="competencyAndKnowHow"
-                      value="I am skilled at optimizing processes to improve efficiency and outcomes."
-                      checked={formData.competencyAndKnowHow === "I am skilled at optimizing processes to improve efficiency and outcomes."}
-                      onChange={handleInputChange}
-                      className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                    />
-                    <span className="ml-3 text-gray-700">I am skilled at optimizing processes to improve efficiency and outcomes.</span>
-                  </label>
-                  
-                  <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                    formData.competencyAndKnowHow === "I continuously evaluate my performance to identify and implement improvements."
-                      ? 'border-primary-500 bg-primary-50' 
-                      : 'border-gray-200 bg-white hover:bg-gray-50'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="competencyAndKnowHow"
-                      value="I continuously evaluate my performance to identify and implement improvements."
-                      checked={formData.competencyAndKnowHow === "I continuously evaluate my performance to identify and implement improvements."}
-                      onChange={handleInputChange}
-                      className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                    />
-                    <span className="ml-3 text-gray-700">I continuously evaluate my performance to identify and implement improvements.</span>
-                  </label>
-                </div>
-              </div>
-
-              {/* Strategic Thinking and Goal Setting */}
-              <div className="bg-white p-6 rounded-lg border shadow-sm">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Strategic Thinking and Goal Setting</h3>
-                <p className="text-sm text-gray-500 mb-4">Choose 1 statement that resonates with you.</p>
-                <div className="space-y-3">
-                  <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                    formData.strategicThinkingAndGoalSetting === "I can set realistic goals and create actionable plans to achieve them."
-                      ? 'border-primary-500 bg-primary-50' 
-                      : 'border-gray-200 bg-white hover:bg-gray-50'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="strategicThinkingAndGoalSetting"
-                      value="I can set realistic goals and create actionable plans to achieve them."
-                      checked={formData.strategicThinkingAndGoalSetting === "I can set realistic goals and create actionable plans to achieve them."}
-                      onChange={handleInputChange}
-                      className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                      required
-                    />
-                    <span className="ml-3 text-gray-700">I can set realistic goals and create actionable plans to achieve them.</span>
-                  </label>
-                  
-                  <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                    formData.strategicThinkingAndGoalSetting === "I prioritize tasks effectively to meet deadlines without compromising quality."
-                      ? 'border-primary-500 bg-primary-50' 
-                      : 'border-gray-200 bg-white hover:bg-gray-50'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="strategicThinkingAndGoalSetting"
-                      value="I prioritize tasks effectively to meet deadlines without compromising quality."
-                      checked={formData.strategicThinkingAndGoalSetting === "I prioritize tasks effectively to meet deadlines without compromising quality."}
-                      onChange={handleInputChange}
-                      className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                    />
-                    <span className="ml-3 text-gray-700">I prioritize tasks effectively to meet deadlines without compromising quality.</span>
-                  </label>
-                  
-                  <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                    formData.strategicThinkingAndGoalSetting === "I consider the broader implications of my actions in achieving organizational goals."
-                      ? 'border-primary-500 bg-primary-50' 
-                      : 'border-gray-200 bg-white hover:bg-gray-50'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="strategicThinkingAndGoalSetting"
-                      value="I consider the broader implications of my actions in achieving organizational goals."
-                      checked={formData.strategicThinkingAndGoalSetting === "I consider the broader implications of my actions in achieving organizational goals."}
-                      onChange={handleInputChange}
-                      className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                    />
-                    <span className="ml-3 text-gray-700">I consider the broader implications of my actions in achieving organizational goals.</span>
-                  </label>
-                  
-                  <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                    formData.strategicThinkingAndGoalSetting === "I adapt my strategies when unforeseen obstacles or opportunities arise."
-                      ? 'border-primary-500 bg-primary-50' 
-                      : 'border-gray-200 bg-white hover:bg-gray-50'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="strategicThinkingAndGoalSetting"
-                      value="I adapt my strategies when unforeseen obstacles or opportunities arise."
-                      checked={formData.strategicThinkingAndGoalSetting === "I adapt my strategies when unforeseen obstacles or opportunities arise."}
-                      onChange={handleInputChange}
-                      className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                    />
-                    <span className="ml-3 text-gray-700">I adapt my strategies when unforeseen obstacles or opportunities arise.</span>
-                  </label>
-                  
-                  <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                    formData.strategicThinkingAndGoalSetting === "I align my career aspirations with the organization's vision and mission."
-                      ? 'border-primary-500 bg-primary-50' 
-                      : 'border-gray-200 bg-white hover:bg-gray-50'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="strategicThinkingAndGoalSetting"
-                      value="I align my career aspirations with the organization's vision and mission."
-                      checked={formData.strategicThinkingAndGoalSetting === "I align my career aspirations with the organization's vision and mission."}
-                      onChange={handleInputChange}
-                      className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                    />
-                    <span className="ml-3 text-gray-700">I align my career aspirations with the organization's vision and mission.</span>
-                  </label>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-6 flex justify-between">
-              <Button type="button" variant="outline" onClick={prevStep}>
-                Previous Step
-              </Button>
-              <Button type="button" onClick={nextStep}>
-                Next Step
-              </Button>
-            </div>
-          </div>
-        );
-      case 5:
-        return (
-          <div className="space-y-6">
-            <h2 className="text-xl font-semibold text-gray-900">Professional Development</h2>
-            
-            <div className="space-y-8">
-              {/* Professional Presentation and Preparedness */}
-              <div className="bg-white p-6 rounded-lg border shadow-sm">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Professional Presentation and Preparedness</h3>
-                <p className="text-sm text-gray-500 mb-4">Choose 1 statement that resonates with you.</p>
-                <div className="space-y-3">
-                  <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                    formData.professionalPresentationAndPreparedness === "My resume and portfolio effectively showcase my skills, achievements, and experiences."
-                      ? 'border-primary-500 bg-primary-50' 
-                      : 'border-gray-200 bg-white hover:bg-gray-50'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="professionalPresentationAndPreparedness"
-                      value="My resume and portfolio effectively showcase my skills, achievements, and experiences."
-                      checked={formData.professionalPresentationAndPreparedness === "My resume and portfolio effectively showcase my skills, achievements, and experiences."}
-                      onChange={handleInputChange}
-                      className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                      required
-                    />
-                    <span className="ml-3 text-gray-700">My resume and portfolio effectively showcase my skills, achievements, and experiences.</span>
-                  </label>
-                  
-                  <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                    formData.professionalPresentationAndPreparedness === "I articulate my qualifications and career aspirations confidently during interviews."
-                      ? 'border-primary-500 bg-primary-50' 
-                      : 'border-gray-200 bg-white hover:bg-gray-50'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="professionalPresentationAndPreparedness"
-                      value="I articulate my qualifications and career aspirations confidently during interviews."
-                      checked={formData.professionalPresentationAndPreparedness === "I articulate my qualifications and career aspirations confidently during interviews."}
-                      onChange={handleInputChange}
-                      className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                    />
-                    <span className="ml-3 text-gray-700">I articulate my qualifications and career aspirations confidently during interviews.</span>
-                  </label>
-                  
-                  <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                    formData.professionalPresentationAndPreparedness === "I demonstrate professional etiquette in all communication, whether written or verbal."
-                      ? 'border-primary-500 bg-primary-50' 
-                      : 'border-gray-200 bg-white hover:bg-gray-50'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="professionalPresentationAndPreparedness"
-                      value="I demonstrate professional etiquette in all communication, whether written or verbal."
-                      checked={formData.professionalPresentationAndPreparedness === "I demonstrate professional etiquette in all communication, whether written or verbal."}
-                      onChange={handleInputChange}
-                      className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                    />
-                    <span className="ml-3 text-gray-700">I demonstrate professional etiquette in all communication, whether written or verbal.</span>
-                  </label>
-                  
-                  <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                    formData.professionalPresentationAndPreparedness === "I prepare thoroughly for interviews, including researching the company and role."
-                      ? 'border-primary-500 bg-primary-50' 
-                      : 'border-gray-200 bg-white hover:bg-gray-50'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="professionalPresentationAndPreparedness"
-                      value="I prepare thoroughly for interviews, including researching the company and role."
-                      checked={formData.professionalPresentationAndPreparedness === "I prepare thoroughly for interviews, including researching the company and role."}
-                      onChange={handleInputChange}
-                      className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                    />
-                    <span className="ml-3 text-gray-700">I prepare thoroughly for interviews, including researching the company and role.</span>
-                  </label>
-                  
-                  <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                    formData.professionalPresentationAndPreparedness === "My appearance and demeanor consistently reflect a professional standard."
-                      ? 'border-primary-500 bg-primary-50' 
-                      : 'border-gray-200 bg-white hover:bg-gray-50'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="professionalPresentationAndPreparedness"
-                      value="My appearance and demeanor consistently reflect a professional standard."
-                      checked={formData.professionalPresentationAndPreparedness === "My appearance and demeanor consistently reflect a professional standard."}
-                      onChange={handleInputChange}
-                      className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                    />
-                    <span className="ml-3 text-gray-700">My appearance and demeanor consistently reflect a professional standard.</span>
-                  </label>
-                </div>
-              </div>
-
-              {/* Continuous Learning and Growth Mindset */}
-              <div className="bg-white p-6 rounded-lg border shadow-sm">
-                <h3 className="text-lg font-medium text-gray-900 mb-4">Continuous Learning and Growth Mindset</h3>
-                <p className="text-sm text-gray-500 mb-4">Choose 1 statement that resonates with you.</p>
-                <div className="space-y-3">
-                  <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                    formData.continuousLearningAndGrowthMindset === "I actively seek learning opportunities to enhance my skills and knowledge."
-                      ? 'border-primary-500 bg-primary-50' 
-                      : 'border-gray-200 bg-white hover:bg-gray-50'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="continuousLearningAndGrowthMindset"
-                      value="I actively seek learning opportunities to enhance my skills and knowledge."
-                      checked={formData.continuousLearningAndGrowthMindset === "I actively seek learning opportunities to enhance my skills and knowledge."}
-                      onChange={handleInputChange}
-                      className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                      required
-                    />
-                    <span className="ml-3 text-gray-700">I actively seek learning opportunities to enhance my skills and knowledge.</span>
-                  </label>
-                  
-                  <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                    formData.continuousLearningAndGrowthMindset === "I am open to feedback and view it as a tool for continuous improvement."
-                      ? 'border-primary-500 bg-primary-50' 
-                      : 'border-gray-200 bg-white hover:bg-gray-50'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="continuousLearningAndGrowthMindset"
-                      value="I am open to feedback and view it as a tool for continuous improvement."
-                      checked={formData.continuousLearningAndGrowthMindset === "I am open to feedback and view it as a tool for continuous improvement."}
-                      onChange={handleInputChange}
-                      className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                    />
-                    <span className="ml-3 text-gray-700">I am open to feedback and view it as a tool for continuous improvement.</span>
-                  </label>
-                  
-                  <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                    formData.continuousLearningAndGrowthMindset === "I explore new technologies, trends, and methods relevant to my desired field."
-                      ? 'border-primary-500 bg-primary-50' 
-                      : 'border-gray-200 bg-white hover:bg-gray-50'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="continuousLearningAndGrowthMindset"
-                      value="I explore new technologies, trends, and methods relevant to my desired field."
-                      checked={formData.continuousLearningAndGrowthMindset === "I explore new technologies, trends, and methods relevant to my desired field."}
-                      onChange={handleInputChange}
-                      className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                    />
-                    <span className="ml-3 text-gray-700">I explore new technologies, trends, and methods relevant to my desired field.</span>
-                  </label>
-                  
-                  <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                    formData.continuousLearningAndGrowthMindset === "I take initiative in pursuing certifications, training, or projects to expand my expertise."
-                      ? 'border-primary-500 bg-primary-50' 
-                      : 'border-gray-200 bg-white hover:bg-gray-50'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="continuousLearningAndGrowthMindset"
-                      value="I take initiative in pursuing certifications, training, or projects to expand my expertise."
-                      checked={formData.continuousLearningAndGrowthMindset === "I take initiative in pursuing certifications, training, or projects to expand my expertise."}
-                      onChange={handleInputChange}
-                      className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                    />
-                    <span className="ml-3 text-gray-700">I take initiative in pursuing certifications, training, or projects to expand my expertise.</span>
-                  </label>
-                  
-                  <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                    formData.continuousLearningAndGrowthMindset === "I embrace challenges as opportunities to develop and grow professionally."
-                      ? 'border-primary-500 bg-primary-50' 
-                      : 'border-gray-200 bg-white hover:bg-gray-50'
-                  }`}>
-                    <input
-                      type="radio"
-                      name="continuousLearningAndGrowthMindset"
-                      value="I embrace challenges as opportunities to develop and grow professionally."
-                      checked={formData.continuousLearningAndGrowthMindset === "I embrace challenges as opportunities to develop and grow professionally."}
-                      onChange={handleInputChange}
-                      className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                    />
-                    <span className="ml-3 text-gray-700">I embrace challenges as opportunities to develop and grow professionally.</span>
-                  </label>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-6 flex justify-between">
-              <Button type="button" variant="outline" onClick={prevStep}>
-                Previous Step
-              </Button>
-              <Button 
-                type="button" 
-                onClick={handleFormSubmit}
-                className="bg-primary-600 hover:bg-primary-700"
-              >
-                Review Assessment
-              </Button>
-            </div>
-          </div>
-        );
-      default:
-        return null;
-    }
+  // Render loading state during processing
+  const renderProcessing = () => {
+    return (
+      <div className="min-h-[50vh] flex flex-col items-center justify-center">
+        <div className="w-16 h-16 border-4 border-t-transparent border-[#7e43f1] rounded-full animate-spin"></div>
+        <p className="mt-4 text-lg font-medium text-gray-800">Analyzing your assessment...</p>
+        <p className="mt-2 text-gray-600">This may take a minute. We're processing your responses and analyzing your resume.</p>
+      </div>
+    );
   };
 
   return (
@@ -1196,45 +378,806 @@ export default function IRLForm({ assessmentId, assessmentType, onSubmit, initia
                 The Internship Readiness Level (IRL) assesses an individual's preparedness for entering the professional world through internships, focusing on their skills, adaptability, work ethic, and alignment with career goals.
               </p>
               
-              {/* Progress steps */}
-              <div className="mb-8 mt-6">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-xs text-gray-500">Personal Info</div>
-                  <div className="text-xs text-gray-500">Core Skills</div>
-                  <div className="text-xs text-gray-500">Intelligence</div>
-                  <div className="text-xs text-gray-500">Competency</div>
-                  <div className="text-xs text-gray-500">Development</div>
-                </div>
-                <div className="relative">
-                  <div className="overflow-hidden h-2 text-xs flex rounded bg-gray-200">
-                    <div
-                      style={{ width: `${(currentStep / 5) * 100}%` }}
-                      className="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-primary-600 transition-all duration-300"
-                    ></div>
-                  </div>
-                  <div className="flex justify-between -mt-2">
-                    {[1, 2, 3, 4, 5].map((step) => (
-                      <div
-                        key={step}
-                        className={`w-5 h-5 rounded-full ${
-                          currentStep >= step ? 'bg-primary-600' : 'bg-gray-200'
-                        } flex items-center justify-center text-xs text-white font-bold`}
-                      >
-                        {step}
-                      </div>
-                    ))}
-                  </div>
-                </div>
+              {/* Progress bar */}
+              <div className="w-full bg-gray-200 rounded-full h-2.5 mt-4">
+                <div 
+                  className="bg-primary-600 h-2.5 rounded-full transition-all duration-300" 
+                  style={{ width: `${progressPercentage}%` }}
+                ></div>
+              </div>
+              <div className="mt-1 text-xs text-gray-500 text-right">
+                {Math.round(progressPercentage)}% complete
               </div>
               
-              {renderStep()}
+              <div className="mt-8 space-y-10">
+                {/* Personal Information Section */}
+                <div className="space-y-6">
+                  <h3 className="text-xl font-semibold text-gray-900 pb-2 border-b">Personal Information</h3>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <label htmlFor="personalInfo.name" className="block text-sm font-medium text-gray-700">
+                        Name *
+                      </label>
+                      <input
+                        type="text"
+                        name="personalInfo.name"
+                        id="personalInfo.name"
+                        value={formData.personalInfo.name}
+                        onChange={handleInputChange}
+                        required
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="personalInfo.email" className="block text-sm font-medium text-gray-700">
+                        Email *
+                      </label>
+                      <input
+                        type="email"
+                        name="personalInfo.email"
+                        id="personalInfo.email"
+                        value={formData.personalInfo.email}
+                        onChange={handleInputChange}
+                        required
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="personalInfo.phone" className="block text-sm font-medium text-gray-700">
+                        Phone *
+                      </label>
+                      <input
+                        type="tel"
+                        name="personalInfo.phone"
+                        id="personalInfo.phone"
+                        value={formData.personalInfo.phone}
+                        onChange={handleInputChange}
+                        required
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="qualification" className="block text-sm font-medium text-gray-700">
+                        Highest Qualification *
+                      </label>
+                      <select
+                        id="qualification"
+                        name="qualification"
+                        value={formData.qualification}
+                        onChange={handleInputChange}
+                        required
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                      >
+                        <option value="">Select...</option>
+                        <option value="SPM, STPM, or equivalent">SPM, STPM, or equivalent (Foundation, Certificate, etc)</option>
+                        <option value="Diploma or Advanced Diploma">Diploma or Advanced Diploma</option>
+                        <option value="Undergraduate Degree">Undergraduate Degree</option>
+                        <option value="Postgraduate Degree">Postgraduate Degree</option>
+                      </select>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label htmlFor="personalInfo.jobPosition" className="block text-sm font-medium text-gray-700">
+                      Job and position applying for? (e.g.: Junior Web Designer, Entry Level) *
+                    </label>
+                    <input
+                      type="text"
+                      name="personalInfo.jobPosition"
+                      id="personalInfo.jobPosition"
+                      value={formData.personalInfo.jobPosition}
+                      onChange={handleInputChange}
+                      required
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                      placeholder="e.g.: Junior Web Designer, Entry Level"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label htmlFor="personalInfo.personality" className="block text-sm font-medium text-gray-700">
+                      Describe your personality *
+                    </label>
+                    <textarea
+                      name="personalInfo.personality"
+                      id="personalInfo.personality"
+                      rows={4}
+                      value={formData.personalInfo.personality}
+                      onChange={handleInputChange}
+                      required
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                      placeholder="Tell us about your personality traits, work style, and how you interact with others..."
+                    />
+                  </div>
+                  
+                  <div>
+                    <label htmlFor="resume" className="block text-sm font-medium text-gray-700">
+                      Upload Resume *
+                    </label>
+                    <div className="mt-1 flex items-center">
+                      <input
+                        type="file"
+                        id="resume"
+                        name="resume"
+                        ref={fileInputRef}
+                        onChange={handleFileChange}
+                        accept=".pdf,.doc,.docx"
+                        className="hidden"
+                        required
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="inline-flex items-center"
+                      >
+                        {resumeFile ? resumeFile.name : 'Choose File'}
+                      </Button>
+                      {resumeFile && (
+                        <button
+                          type="button"
+                          onClick={() => setResumeFile(null)}
+                          className="ml-2 text-sm text-red-600 hover:text-red-500"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                    <p className="mt-1 text-sm text-gray-500">PDF, DOC, or DOCX. Maximum 5MB.</p>
+                  </div>
+                </div>
+                
+                {/* Core Skills and Knowledge Section */}
+                <div className="space-y-4">
+                  <h3 className="text-xl font-semibold text-gray-900 pb-2 border-b">Core Skills and Knowledge</h3>
+                  <p className="text-sm text-gray-500 mb-4">Choose 1 statement that resonates with you.</p>
+                  
+                  <div className="bg-gray-50 p-5 rounded-lg border space-y-3">
+                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
+                      formData.coreSkillsAndKnowledge === "I have a clear understanding of the technical requirements and job-specific knowledge for the role."
+                        ? 'border-primary-500 bg-primary-50' 
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="coreSkillsAndKnowledge"
+                        value="I have a clear understanding of the technical requirements and job-specific knowledge for the role."
+                        checked={formData.coreSkillsAndKnowledge === "I have a clear understanding of the technical requirements and job-specific knowledge for the role."}
+                        onChange={handleInputChange}
+                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                        required
+                      />
+                      <span className="ml-3 text-gray-700">I have a clear understanding of the technical requirements and job-specific knowledge for the role.</span>
+                    </label>
+                    
+                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
+                      formData.coreSkillsAndKnowledge === "My problem-solving abilities enable me to address challenges logically and effectively."
+                        ? 'border-primary-500 bg-primary-50' 
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="coreSkillsAndKnowledge"
+                        value="My problem-solving abilities enable me to address challenges logically and effectively."
+                        checked={formData.coreSkillsAndKnowledge === "My problem-solving abilities enable me to address challenges logically and effectively."}
+                        onChange={handleInputChange}
+                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                      />
+                      <span className="ml-3 text-gray-700">My problem-solving abilities enable me to address challenges logically and effectively.</span>
+                    </label>
+                    
+                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
+                      formData.coreSkillsAndKnowledge === "I have a strong foundation in industry-related tools, technologies, or methodologies."
+                        ? 'border-primary-500 bg-primary-50' 
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="coreSkillsAndKnowledge"
+                        value="I have a strong foundation in industry-related tools, technologies, or methodologies."
+                        checked={formData.coreSkillsAndKnowledge === "I have a strong foundation in industry-related tools, technologies, or methodologies."}
+                        onChange={handleInputChange}
+                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                      />
+                      <span className="ml-3 text-gray-700">I have a strong foundation in industry-related tools, technologies, or methodologies.</span>
+                    </label>
+                    
+                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
+                      formData.coreSkillsAndKnowledge === "I can apply critical thinking to analyze complex situations and develop appropriate solutions."
+                        ? 'border-primary-500 bg-primary-50' 
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="coreSkillsAndKnowledge"
+                        value="I can apply critical thinking to analyze complex situations and develop appropriate solutions."
+                        checked={formData.coreSkillsAndKnowledge === "I can apply critical thinking to analyze complex situations and develop appropriate solutions."}
+                        onChange={handleInputChange}
+                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                      />
+                      <span className="ml-3 text-gray-700">I can apply critical thinking to analyze complex situations and develop appropriate solutions.</span>
+                    </label>
+                    
+                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
+                      formData.coreSkillsAndKnowledge === "I consistently seek opportunities to update my skills and stay relevant in my field."
+                        ? 'border-primary-500 bg-primary-50' 
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="coreSkillsAndKnowledge"
+                        value="I consistently seek opportunities to update my skills and stay relevant in my field."
+                        checked={formData.coreSkillsAndKnowledge === "I consistently seek opportunities to update my skills and stay relevant in my field."}
+                        onChange={handleInputChange}
+                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                      />
+                      <span className="ml-3 text-gray-700">I consistently seek opportunities to update my skills and stay relevant in my field.</span>
+                    </label>
+                  </div>
+                </div>
+                
+                {/* Emotional Intelligence */}
+                <div className="space-y-4">
+                  <h3 className="text-xl font-semibold text-gray-900 pb-2 border-b">Emotional Intelligence</h3>
+                  <p className="text-sm text-gray-500 mb-4">Choose 1 statement that resonates with you.</p>
+                  
+                  <div className="bg-gray-50 p-5 rounded-lg border space-y-3">
+                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
+                      formData.emotionalIntelligence === "I understand my strengths and weaknesses and how they impact my professional interactions."
+                        ? 'border-primary-500 bg-primary-50' 
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="emotionalIntelligence"
+                        value="I understand my strengths and weaknesses and how they impact my professional interactions."
+                        checked={formData.emotionalIntelligence === "I understand my strengths and weaknesses and how they impact my professional interactions."}
+                        onChange={handleInputChange}
+                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                        required
+                      />
+                      <span className="ml-3 text-gray-700">I understand my strengths and weaknesses and how they impact my professional interactions.</span>
+                    </label>
+                    
+                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
+                      formData.emotionalIntelligence === "I can regulate my emotions under pressure to maintain focus and professionalism."
+                        ? 'border-primary-500 bg-primary-50' 
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="emotionalIntelligence"
+                        value="I can regulate my emotions under pressure to maintain focus and professionalism."
+                        checked={formData.emotionalIntelligence === "I can regulate my emotions under pressure to maintain focus and professionalism."}
+                        onChange={handleInputChange}
+                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                      />
+                      <span className="ml-3 text-gray-700">I can regulate my emotions under pressure to maintain focus and professionalism.</span>
+                    </label>
+                    
+                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
+                      formData.emotionalIntelligence === "I empathize with others' perspectives and build positive relationships in the workplace."
+                        ? 'border-primary-500 bg-primary-50' 
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="emotionalIntelligence"
+                        value="I empathize with others' perspectives and build positive relationships in the workplace."
+                        checked={formData.emotionalIntelligence === "I empathize with others' perspectives and build positive relationships in the workplace."}
+                        onChange={handleInputChange}
+                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                      />
+                      <span className="ml-3 text-gray-700">I empathize with others' perspectives and build positive relationships in the workplace.</span>
+                    </label>
+                    
+                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
+                      formData.emotionalIntelligence === "I handle constructive criticism with an open mind and use it for personal growth."
+                        ? 'border-primary-500 bg-primary-50' 
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="emotionalIntelligence"
+                        value="I handle constructive criticism with an open mind and use it for personal growth."
+                        checked={formData.emotionalIntelligence === "I handle constructive criticism with an open mind and use it for personal growth."}
+                        onChange={handleInputChange}
+                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                      />
+                      <span className="ml-3 text-gray-700">I handle constructive criticism with an open mind and use it for personal growth.</span>
+                    </label>
+                    
+                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
+                      formData.emotionalIntelligence === "I demonstrate resilience and adaptability when faced with unexpected challenges or changes."
+                        ? 'border-primary-500 bg-primary-50' 
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="emotionalIntelligence"
+                        value="I demonstrate resilience and adaptability when faced with unexpected challenges or changes."
+                        checked={formData.emotionalIntelligence === "I demonstrate resilience and adaptability when faced with unexpected challenges or changes."}
+                        onChange={handleInputChange}
+                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                      />
+                      <span className="ml-3 text-gray-700">I demonstrate resilience and adaptability when faced with unexpected challenges or changes.</span>
+                    </label>
+                  </div>
+                </div>
+                
+                {/* Social Intelligence */}
+                <div className="space-y-4">
+                  <h3 className="text-xl font-semibold text-gray-900 pb-2 border-b">Social Intelligence</h3>
+                  <p className="text-sm text-gray-500 mb-4">Choose 1 statement that resonates with you.</p>
+                  
+                  <div className="bg-gray-50 p-5 rounded-lg border space-y-3">
+                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
+                      formData.socialIntelligence === "I can work collaboratively with diverse teams to achieve common goals."
+                        ? 'border-primary-500 bg-primary-50' 
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="socialIntelligence"
+                        value="I can work collaboratively with diverse teams to achieve common goals."
+                        checked={formData.socialIntelligence === "I can work collaboratively with diverse teams to achieve common goals."}
+                        onChange={handleInputChange}
+                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                        required
+                      />
+                      <span className="ml-3 text-gray-700">I can work collaboratively with diverse teams to achieve common goals.</span>
+                    </label>
+                    
+                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
+                      formData.socialIntelligence === "I effectively navigate workplace dynamics and manage conflicts constructively."
+                        ? 'border-primary-500 bg-primary-50' 
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="socialIntelligence"
+                        value="I effectively navigate workplace dynamics and manage conflicts constructively."
+                        checked={formData.socialIntelligence === "I effectively navigate workplace dynamics and manage conflicts constructively."}
+                        onChange={handleInputChange}
+                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                      />
+                      <span className="ml-3 text-gray-700">I effectively navigate workplace dynamics and manage conflicts constructively.</span>
+                    </label>
+                    
+                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
+                      formData.socialIntelligence === "I am aware of cultural sensitivities and respect differences in professional environments."
+                        ? 'border-primary-500 bg-primary-50' 
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="socialIntelligence"
+                        value="I am aware of cultural sensitivities and respect differences in professional environments."
+                        checked={formData.socialIntelligence === "I am aware of cultural sensitivities and respect differences in professional environments."}
+                        onChange={handleInputChange}
+                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                      />
+                      <span className="ml-3 text-gray-700">I am aware of cultural sensitivities and respect differences in professional environments.</span>
+                    </label>
+                    
+                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
+                      formData.socialIntelligence === "I communicate ideas clearly and persuasively, both verbally and in writing."
+                        ? 'border-primary-500 bg-primary-50' 
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="socialIntelligence"
+                        value="I communicate ideas clearly and persuasively, both verbally and in writing."
+                        checked={formData.socialIntelligence === "I communicate ideas clearly and persuasively, both verbally and in writing."}
+                        onChange={handleInputChange}
+                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                      />
+                      <span className="ml-3 text-gray-700">I communicate ideas clearly and persuasively, both verbally and in writing.</span>
+                    </label>
+                    
+                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
+                      formData.socialIntelligence === "I build and maintain professional networks that support my career development."
+                        ? 'border-primary-500 bg-primary-50' 
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="socialIntelligence"
+                        value="I build and maintain professional networks that support my career development."
+                        checked={formData.socialIntelligence === "I build and maintain professional networks that support my career development."}
+                        onChange={handleInputChange}
+                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                      />
+                      <span className="ml-3 text-gray-700">I build and maintain professional networks that support my career development.</span>
+                    </label>
+                  </div>
+                </div>
+                
+                {/* Competency and Know-How */}
+                <div className="space-y-4">
+                  <h3 className="text-xl font-semibold text-gray-900 pb-2 border-b">Competency and Know-How</h3>
+                  <p className="text-sm text-gray-500 mb-4">Choose 1 statement that resonates with you.</p>
+                  
+                  <div className="bg-gray-50 p-5 rounded-lg border space-y-3">
+                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
+                      formData.competencyAndKnowHow === "I can independently manage tasks and responsibilities to meet job expectations."
+                        ? 'border-primary-500 bg-primary-50' 
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="competencyAndKnowHow"
+                        value="I can independently manage tasks and responsibilities to meet job expectations."
+                        checked={formData.competencyAndKnowHow === "I can independently manage tasks and responsibilities to meet job expectations."}
+                        onChange={handleInputChange}
+                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                        required
+                      />
+                      <span className="ml-3 text-gray-700">I can independently manage tasks and responsibilities to meet job expectations.</span>
+                    </label>
+                    
+                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
+                      formData.competencyAndKnowHow === "I demonstrate precision and attention to detail in my work outputs."
+                        ? 'border-primary-500 bg-primary-50' 
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="competencyAndKnowHow"
+                        value="I demonstrate precision and attention to detail in my work outputs."
+                        checked={formData.competencyAndKnowHow === "I demonstrate precision and attention to detail in my work outputs."}
+                        onChange={handleInputChange}
+                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                      />
+                      <span className="ml-3 text-gray-700">I demonstrate precision and attention to detail in my work outputs.</span>
+                    </label>
+                    
+                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
+                      formData.competencyAndKnowHow === "I can integrate theoretical knowledge into practical scenarios effectively."
+                        ? 'border-primary-500 bg-primary-50' 
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="competencyAndKnowHow"
+                        value="I can integrate theoretical knowledge into practical scenarios effectively."
+                        checked={formData.competencyAndKnowHow === "I can integrate theoretical knowledge into practical scenarios effectively."}
+                        onChange={handleInputChange}
+                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                      />
+                      <span className="ml-3 text-gray-700">I can integrate theoretical knowledge into practical scenarios effectively.</span>
+                    </label>
+                    
+                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
+                      formData.competencyAndKnowHow === "I am skilled at optimizing processes to improve efficiency and outcomes."
+                        ? 'border-primary-500 bg-primary-50' 
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="competencyAndKnowHow"
+                        value="I am skilled at optimizing processes to improve efficiency and outcomes."
+                        checked={formData.competencyAndKnowHow === "I am skilled at optimizing processes to improve efficiency and outcomes."}
+                        onChange={handleInputChange}
+                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                      />
+                      <span className="ml-3 text-gray-700">I am skilled at optimizing processes to improve efficiency and outcomes.</span>
+                    </label>
+                    
+                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
+                      formData.competencyAndKnowHow === "I continuously evaluate my performance to identify and implement improvements."
+                        ? 'border-primary-500 bg-primary-50' 
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="competencyAndKnowHow"
+                        value="I continuously evaluate my performance to identify and implement improvements."
+                        checked={formData.competencyAndKnowHow === "I continuously evaluate my performance to identify and implement improvements."}
+                        onChange={handleInputChange}
+                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                      />
+                      <span className="ml-3 text-gray-700">I continuously evaluate my performance to identify and implement improvements.</span>
+                    </label>
+                  </div>
+                </div>
+                
+                {/* Strategic Thinking and Goal Setting */}
+                <div className="space-y-4">
+                  <h3 className="text-xl font-semibold text-gray-900 pb-2 border-b">Strategic Thinking and Goal Setting</h3>
+                  <p className="text-sm text-gray-500 mb-4">Choose 1 statement that resonates with you.</p>
+                  
+                  <div className="bg-gray-50 p-5 rounded-lg border space-y-3">
+                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
+                      formData.strategicThinkingAndGoalSetting === "I can set realistic goals and create actionable plans to achieve them."
+                        ? 'border-primary-500 bg-primary-50' 
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="strategicThinkingAndGoalSetting"
+                        value="I can set realistic goals and create actionable plans to achieve them."
+                        checked={formData.strategicThinkingAndGoalSetting === "I can set realistic goals and create actionable plans to achieve them."}
+                        onChange={handleInputChange}
+                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                        required
+                      />
+                      <span className="ml-3 text-gray-700">I can set realistic goals and create actionable plans to achieve them.</span>
+                    </label>
+                    
+                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
+                      formData.strategicThinkingAndGoalSetting === "I prioritize tasks effectively to meet deadlines without compromising quality."
+                        ? 'border-primary-500 bg-primary-50' 
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="strategicThinkingAndGoalSetting"
+                        value="I prioritize tasks effectively to meet deadlines without compromising quality."
+                        checked={formData.strategicThinkingAndGoalSetting === "I prioritize tasks effectively to meet deadlines without compromising quality."}
+                        onChange={handleInputChange}
+                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                      />
+                      <span className="ml-3 text-gray-700">I prioritize tasks effectively to meet deadlines without compromising quality.</span>
+                    </label>
+                    
+                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
+                      formData.strategicThinkingAndGoalSetting === "I consider the broader implications of my actions in achieving organizational goals."
+                        ? 'border-primary-500 bg-primary-50' 
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="strategicThinkingAndGoalSetting"
+                        value="I consider the broader implications of my actions in achieving organizational goals."
+                        checked={formData.strategicThinkingAndGoalSetting === "I consider the broader implications of my actions in achieving organizational goals."}
+                        onChange={handleInputChange}
+                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                      />
+                      <span className="ml-3 text-gray-700">I consider the broader implications of my actions in achieving organizational goals.</span>
+                    </label>
+                    
+                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
+                      formData.strategicThinkingAndGoalSetting === "I adapt my strategies when unforeseen obstacles or opportunities arise."
+                        ? 'border-primary-500 bg-primary-50' 
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="strategicThinkingAndGoalSetting"
+                        value="I adapt my strategies when unforeseen obstacles or opportunities arise."
+                        checked={formData.strategicThinkingAndGoalSetting === "I adapt my strategies when unforeseen obstacles or opportunities arise."}
+                        onChange={handleInputChange}
+                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                      />
+                      <span className="ml-3 text-gray-700">I adapt my strategies when unforeseen obstacles or opportunities arise.</span>
+                    </label>
+                    
+                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
+                      formData.strategicThinkingAndGoalSetting === "I align my career aspirations with the organization's vision and mission."
+                        ? 'border-primary-500 bg-primary-50' 
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="strategicThinkingAndGoalSetting"
+                        value="I align my career aspirations with the organization's vision and mission."
+                        checked={formData.strategicThinkingAndGoalSetting === "I align my career aspirations with the organization's vision and mission."}
+                        onChange={handleInputChange}
+                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                      />
+                      <span className="ml-3 text-gray-700">I align my career aspirations with the organization's vision and mission.</span>
+                    </label>
+                  </div>
+                </div>
+                
+                {/* Professional Presentation and Preparedness */}
+                <div className="space-y-4">
+                  <h3 className="text-xl font-semibold text-gray-900 pb-2 border-b">Professional Presentation and Preparedness</h3>
+                  <p className="text-sm text-gray-500 mb-4">Choose 1 statement that resonates with you.</p>
+                  
+                  <div className="bg-gray-50 p-5 rounded-lg border space-y-3">
+                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
+                      formData.professionalPresentationAndPreparedness === "My resume and portfolio effectively showcase my skills, achievements, and experiences."
+                        ? 'border-primary-500 bg-primary-50' 
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="professionalPresentationAndPreparedness"
+                        value="My resume and portfolio effectively showcase my skills, achievements, and experiences."
+                        checked={formData.professionalPresentationAndPreparedness === "My resume and portfolio effectively showcase my skills, achievements, and experiences."}
+                        onChange={handleInputChange}
+                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                        required
+                      />
+                      <span className="ml-3 text-gray-700">My resume and portfolio effectively showcase my skills, achievements, and experiences.</span>
+                    </label>
+                    
+                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
+                      formData.professionalPresentationAndPreparedness === "I articulate my qualifications and career aspirations confidently during interviews."
+                        ? 'border-primary-500 bg-primary-50' 
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="professionalPresentationAndPreparedness"
+                        value="I articulate my qualifications and career aspirations confidently during interviews."
+                        checked={formData.professionalPresentationAndPreparedness === "I articulate my qualifications and career aspirations confidently during interviews."}
+                        onChange={handleInputChange}
+                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                      />
+                      <span className="ml-3 text-gray-700">I articulate my qualifications and career aspirations confidently during interviews.</span>
+                    </label>
+                    
+                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
+                      formData.professionalPresentationAndPreparedness === "I demonstrate professional etiquette in all communication, whether written or verbal."
+                        ? 'border-primary-500 bg-primary-50' 
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="professionalPresentationAndPreparedness"
+                        value="I demonstrate professional etiquette in all communication, whether written or verbal."
+                        checked={formData.professionalPresentationAndPreparedness === "I demonstrate professional etiquette in all communication, whether written or verbal."}
+                        onChange={handleInputChange}
+                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                      />
+                      <span className="ml-3 text-gray-700">I demonstrate professional etiquette in all communication, whether written or verbal.</span>
+                    </label>
+                    
+                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
+                      formData.professionalPresentationAndPreparedness === "I prepare thoroughly for interviews, including researching the company and role."
+                        ? 'border-primary-500 bg-primary-50' 
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="professionalPresentationAndPreparedness"
+                        value="I prepare thoroughly for interviews, including researching the company and role."
+                        checked={formData.professionalPresentationAndPreparedness === "I prepare thoroughly for interviews, including researching the company and role."}
+                        onChange={handleInputChange}
+                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                      />
+                      <span className="ml-3 text-gray-700">I prepare thoroughly for interviews, including researching the company and role.</span>
+                    </label>
+                    
+                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
+                      formData.professionalPresentationAndPreparedness === "My appearance and demeanor consistently reflect a professional standard."
+                        ? 'border-primary-500 bg-primary-50' 
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="professionalPresentationAndPreparedness"
+                        value="My appearance and demeanor consistently reflect a professional standard."
+                        checked={formData.professionalPresentationAndPreparedness === "My appearance and demeanor consistently reflect a professional standard."}
+                        onChange={handleInputChange}
+                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                      />
+                      <span className="ml-3 text-gray-700">My appearance and demeanor consistently reflect a professional standard.</span>
+                    </label>
+                  </div>
+                </div>
+                
+                {/* Continuous Learning and Growth Mindset */}
+                <div className="space-y-4">
+                  <h3 className="text-xl font-semibold text-gray-900 pb-2 border-b">Continuous Learning and Growth Mindset</h3>
+                  <p className="text-sm text-gray-500 mb-4">Choose 1 statement that resonates with you.</p>
+                  
+                  <div className="bg-gray-50 p-5 rounded-lg border space-y-3">
+                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
+                      formData.continuousLearningAndGrowthMindset === "I actively seek learning opportunities to enhance my skills and knowledge."
+                        ? 'border-primary-500 bg-primary-50' 
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="continuousLearningAndGrowthMindset"
+                        value="I actively seek learning opportunities to enhance my skills and knowledge."
+                        checked={formData.continuousLearningAndGrowthMindset === "I actively seek learning opportunities to enhance my skills and knowledge."}
+                        onChange={handleInputChange}
+                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                        required
+                      />
+                      <span className="ml-3 text-gray-700">I actively seek learning opportunities to enhance my skills and knowledge.</span>
+                    </label>
+                    
+                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
+                      formData.continuousLearningAndGrowthMindset === "I am open to feedback and view it as a tool for continuous improvement."
+                        ? 'border-primary-500 bg-primary-50' 
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="continuousLearningAndGrowthMindset"
+                        value="I am open to feedback and view it as a tool for continuous improvement."
+                        checked={formData.continuousLearningAndGrowthMindset === "I am open to feedback and view it as a tool for continuous improvement."}
+                        onChange={handleInputChange}
+                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                      />
+                      <span className="ml-3 text-gray-700">I am open to feedback and view it as a tool for continuous improvement.</span>
+                    </label>
+                    
+                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
+                      formData.continuousLearningAndGrowthMindset === "I explore new technologies, trends, and methods relevant to my desired field."
+                        ? 'border-primary-500 bg-primary-50' 
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="continuousLearningAndGrowthMindset"
+                        value="I explore new technologies, trends, and methods relevant to my desired field."
+                        checked={formData.continuousLearningAndGrowthMindset === "I explore new technologies, trends, and methods relevant to my desired field."}
+                        onChange={handleInputChange}
+                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                      />
+                      <span className="ml-3 text-gray-700">I explore new technologies, trends, and methods relevant to my desired field.</span>
+                    </label>
+                    
+                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
+                      formData.continuousLearningAndGrowthMindset === "I take initiative in pursuing certifications, training, or projects to expand my expertise."
+                        ? 'border-primary-500 bg-primary-50' 
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="continuousLearningAndGrowthMindset"
+                        value="I take initiative in pursuing certifications, training, or projects to expand my expertise."
+                        checked={formData.continuousLearningAndGrowthMindset === "I take initiative in pursuing certifications, training, or projects to expand my expertise."}
+                        onChange={handleInputChange}
+                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                      />
+                      <span className="ml-3 text-gray-700">I take initiative in pursuing certifications, training, or projects to expand my expertise.</span>
+                    </label>
+                    
+                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
+                      formData.continuousLearningAndGrowthMindset === "I embrace challenges as opportunities to develop and grow professionally."
+                        ? 'border-primary-500 bg-primary-50' 
+                        : 'border-gray-200 bg-white hover:bg-gray-50'
+                    }`}>
+                      <input
+                        type="radio"
+                        name="continuousLearningAndGrowthMindset"
+                        value="I embrace challenges as opportunities to develop and grow professionally."
+                        checked={formData.continuousLearningAndGrowthMindset === "I embrace challenges as opportunities to develop and grow professionally."}
+                        onChange={handleInputChange}
+                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                      />
+                      <span className="ml-3 text-gray-700">I embrace challenges as opportunities to develop and grow professionally.</span>
+                    </label>
+                  </div>
+                </div>
+                
+                {/* Error message */}
+                {error && (
+                  <div className="bg-red-50 p-4 rounded-lg border border-red-200 text-sm text-red-600">
+                    {error}
+                  </div>
+                )}
+                
+                {/* Submit button */}
+                <div className="pt-6 border-t border-gray-200">
+                  <Button 
+                    type="submit" 
+                    className="w-full md:w-auto"
+                  >
+                    Preview Assessment
+                  </Button>
+                  
+                  <p className="mt-4 text-sm text-gray-500">
+                    By submitting this assessment, you agree to our terms and conditions.
+                  </p>
+                </div>
+              </div>
             </div>
           </div>
         </form>
       )}
 
       {step === 'preview' && renderPreview()}
-      
+      {step === 'processing' && renderProcessing()}
       {step === 'analyzing' && (
         <AssessmentProcessingScreen 
           assessmentType={assessmentType || 'irl'} 

@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth/auth';
 import { prisma } from '@/lib/db';
+import { 
+  validateCoupon,
+  formatCurrency 
+} from '@/lib/utils/priceCalculation';
 
 export async function POST(request: NextRequest) {
   try {
@@ -56,28 +60,31 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'Invalid coupon code' }, { status: 400 });
     }
     
-    // Check usage limit instead of isUsed
-    if (coupon.currentUses >= coupon.maxUses) {
-      return NextResponse.json({ message: 'This coupon has reached its usage limit' }, { status: 400 });
+    // Use assessment's current price as base price
+    const basePrice = Number(assessment.price);
+    
+    if (isNaN(basePrice) || basePrice <= 0) {
+      return NextResponse.json({ message: 'Invalid assessment price' }, { status: 400 });
     }
     
-    if (new Date() > coupon.expiresAt) {
-      return NextResponse.json({ message: 'This coupon has expired' }, { status: 400 });
+    // Validate coupon and calculate discount
+    const validation = validateCoupon(coupon, basePrice);
+    
+    if (!validation.isValid) {
+      return NextResponse.json({ 
+        message: validation.message 
+      }, { status: 400 });
     }
     
-    // Calculate discounted price
-    let basePrice = assessment.price;
-    let finalPrice = basePrice;
-    const discountAmount = (basePrice * coupon.discountPercentage) / 100;
+    const discountCalc = validation.discountCalculation!;
     
-    if (coupon.maxDiscount && discountAmount > coupon.maxDiscount) {
-      finalPrice = basePrice - coupon.maxDiscount;
-    } else {
-      finalPrice = basePrice - discountAmount;
-    }
-    
-    // Ensure price is not negative
-    finalPrice = Math.max(0, finalPrice);
+    console.log('Discount calculation:', {
+      basePrice: discountCalc.originalPrice,
+      discountPercentage: discountCalc.discountPercentage,
+      discountAmount: discountCalc.discountAmount,
+      finalPrice: discountCalc.finalPrice,
+      savings: discountCalc.savings
+    });
     
     // Check if a payment record already exists
     const existingPayment = await prisma.payment.findUnique({
@@ -86,7 +93,7 @@ export async function POST(request: NextRequest) {
     
     // Transaction to ensure both operations happen or none
     await prisma.$transaction(async (tx) => {
-      // Increment coupon usage count instead of marking as used
+      // Increment coupon usage count
       await tx.coupon.update({
         where: { id: coupon.id },
         data: {
@@ -101,8 +108,9 @@ export async function POST(request: NextRequest) {
         await tx.payment.update({
           where: { id: existingPayment.id },
           data: {
-            amount: finalPrice,
+            amount: discountCalc.finalPrice,
             couponId: coupon.id,
+            updatedAt: new Date(),
           },
         });
       } else {
@@ -111,7 +119,7 @@ export async function POST(request: NextRequest) {
           data: {
             assessmentId,
             userId,
-            amount: finalPrice,
+            amount: discountCalc.finalPrice,
             method: 'pending',
             status: 'pending',
             couponId: coupon.id,
@@ -119,22 +127,26 @@ export async function POST(request: NextRequest) {
         });
       }
       
-      // Update assessment price
+      // Update assessment price to the discounted price
       await tx.assessment.update({
         where: { id: assessmentId },
         data: {
-          price: finalPrice,
+          price: discountCalc.finalPrice,
         },
       });
     });
     
     return NextResponse.json({
       success: true,
-      couponCode: code,
-      originalPrice: basePrice,
-      finalPrice,
-      discount: basePrice - finalPrice,
-      message: 'Coupon applied successfully to assessment'
+      couponCode: code.trim(),
+      originalPrice: discountCalc.originalPrice,
+      finalPrice: discountCalc.finalPrice,
+      discount: discountCalc.savings,
+      discountPercentage: discountCalc.discountPercentage,
+      formattedOriginalPrice: formatCurrency(discountCalc.originalPrice),
+      formattedFinalPrice: formatCurrency(discountCalc.finalPrice),
+      formattedDiscount: formatCurrency(discountCalc.savings),
+      message: `Coupon applied successfully! You save ${formatCurrency(discountCalc.savings)}`
     });
   } catch (error) {
     console.error('Error applying coupon to assessment:', error);
