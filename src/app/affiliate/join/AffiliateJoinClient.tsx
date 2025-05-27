@@ -2,10 +2,12 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { signOut, signIn, useSession } from 'next-auth/react';
 import Link from 'next/link';
 
 export default function AffiliateJoinClient() {
   const router = useRouter();
+  const { data: session, update } = useSession();
   
   const [formData, setFormData] = useState({
     fullName: '',
@@ -20,6 +22,7 @@ export default function AffiliateJoinClient() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitted, setSubmitted] = useState(false);
+  const [affiliateCode, setAffiliateCode] = useState('');
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
@@ -91,12 +94,24 @@ export default function AffiliateJoinClient() {
         throw new Error('Failed to submit affiliate application');
       }
       
-      setSubmitted(true);
+      const result = await response.json();
       
-      // Auto-redirect after 3 seconds
-      setTimeout(() => {
-        router.push('/affiliate');
-      }, 3000);
+      if (result.success) {
+        setAffiliateCode(result.affiliateCode);
+        setSubmitted(true);
+        
+        // Force session update
+        if (update) {
+          await update();
+        }
+        
+        // Auto-redirect after 3 seconds
+        setTimeout(() => {
+          handleGoToDashboard();
+        }, 3000);
+      } else {
+        throw new Error(result.error || 'Registration failed');
+      }
       
     } catch (error) {
       console.error('Error submitting affiliate application:', error);
@@ -106,31 +121,70 @@ export default function AffiliateJoinClient() {
     }
   };
 
+  const handleGoToDashboard = async () => {
+    try {
+      // Method 1: Force page refresh to update session
+      window.location.href = '/affiliate';
+      
+      // Alternative Method 2: Session refresh then navigate
+      // if (update) {
+      //   await update();
+      //   setTimeout(() => {
+      //     router.push('/affiliate');
+      //   }, 500);
+      // } else {
+      //   window.location.href = '/affiliate';
+      // }
+      
+    } catch (error) {
+      console.error('Error navigating to dashboard:', error);
+      // Fallback to force refresh
+      window.location.href = '/affiliate';
+    }
+  };
+
   if (submitted) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 p-6">
         <div className="max-w-md mx-auto bg-white rounded-xl shadow-md overflow-hidden">
           <div className="bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] p-6 text-white">
-            <h1 className="text-2xl font-bold">Application Submitted</h1>
+            <h1 className="text-2xl font-bold">Registration Complete!</h1>
           </div>
           <div className="p-6 text-center">
-            <div className="w-16 h-16 mx-auto bg-green-100 rounded-full flex items-center justify-center text-green-600">
+            <div className="w-16 h-16 mx-auto bg-green-100 rounded-full flex items-center justify-center text-green-600 mb-4">
               <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
             </div>
-            <h2 className="mt-4 text-xl font-bold text-gray-800">Thank You!</h2>
-            <p className="mt-2 text-gray-600">
-              Your affiliate application has been submitted successfully. Our team will review your application and get back to you within 24-48 hours.
+            
+            <h2 className="text-xl font-bold text-gray-800 mb-2">Welcome, Affiliate!</h2>
+            <p className="text-gray-600 mb-4">
+              Your affiliate registration is complete. You can now access your dashboard and start earning commissions.
             </p>
-            <div className="mt-6">
-              <p className="text-sm text-gray-500">Redirecting to dashboard in 3 seconds...</p>
+            
+            {affiliateCode && (
+              <div className="bg-gray-50 p-4 rounded-lg mb-6">
+                <p className="text-sm text-gray-600 mb-2">Your Affiliate Code:</p>
+                <p className="font-mono text-lg font-bold text-[#7e43f1]">{affiliateCode}</p>
+              </div>
+            )}
+            
+            <div className="space-y-3">
+              <p className="text-sm text-gray-500">Redirecting to your affiliate dashboard in 3 seconds...</p>
+              
               <button
-                onClick={() => router.push('/affiliate')}
-                className="mt-4 px-6 py-2 bg-[#7e43f1] text-white rounded-lg hover:bg-[#6a38d1]"
+                onClick={handleGoToDashboard}
+                className="w-full px-6 py-3 bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] text-white rounded-lg hover:shadow-lg transition-shadow font-medium"
               >
-                Go to Dashboard Now
+                Go to Affiliate Dashboard Now
               </button>
+              
+              <Link
+                href="/dashboard"
+                className="block w-full px-6 py-2 bg-white text-[#7e43f1] border border-[#7e43f1] rounded-lg hover:bg-purple-50 transition-colors"
+              >
+                Back to Main Dashboard
+              </Link>
             </div>
           </div>
         </div>
@@ -168,7 +222,7 @@ export default function AffiliateJoinClient() {
                     name="fullName"
                     value={formData.fullName}
                     onChange={handleChange}
-                    className={`w-full rounded-lg border ${errors.fullName ? 'border-red-300' : 'border-gray-300'} focus:ring-[#7e43f1] focus:border-[#7e43f1]`}
+                    className={`w-full px-3 py-2 rounded-lg border ${errors.fullName ? 'border-red-300' : 'border-gray-300'} focus:ring-[#7e43f1] focus:border-[#7e43f1] focus:outline-none`}
                   />
                   {errors.fullName && (
                     <p className="mt-1 text-sm text-red-600">{errors.fullName}</p>
@@ -185,7 +239,7 @@ export default function AffiliateJoinClient() {
                     name="email"
                     value={formData.email}
                     onChange={handleChange}
-                    className={`w-full rounded-lg border ${errors.email ? 'border-red-300' : 'border-gray-300'} focus:ring-[#7e43f1] focus:border-[#7e43f1]`}
+                    className={`w-full px-3 py-2 rounded-lg border ${errors.email ? 'border-red-300' : 'border-gray-300'} focus:ring-[#7e43f1] focus:border-[#7e43f1] focus:outline-none`}
                   />
                   {errors.email && (
                     <p className="mt-1 text-sm text-red-600">{errors.email}</p>
@@ -202,7 +256,7 @@ export default function AffiliateJoinClient() {
                     name="phone"
                     value={formData.phone}
                     onChange={handleChange}
-                    className={`w-full rounded-lg border ${errors.phone ? 'border-red-300' : 'border-gray-300'} focus:ring-[#7e43f1] focus:border-[#7e43f1]`}
+                    className={`w-full px-3 py-2 rounded-lg border ${errors.phone ? 'border-red-300' : 'border-gray-300'} focus:ring-[#7e43f1] focus:border-[#7e43f1] focus:outline-none`}
                   />
                   {errors.phone && (
                     <p className="mt-1 text-sm text-red-600">{errors.phone}</p>
@@ -221,7 +275,7 @@ export default function AffiliateJoinClient() {
                       value={formData.website}
                       onChange={handleChange}
                       placeholder="https://yourdomain.com"
-                      className="w-full rounded-lg border border-gray-300 focus:ring-[#7e43f1] focus:border-[#7e43f1]"
+                      className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-[#7e43f1] focus:border-[#7e43f1] focus:outline-none"
                     />
                   </div>
                   
@@ -236,7 +290,7 @@ export default function AffiliateJoinClient() {
                       value={formData.socialMedia}
                       onChange={handleChange}
                       placeholder="@username"
-                      className="w-full rounded-lg border border-gray-300 focus:ring-[#7e43f1] focus:border-[#7e43f1]"
+                      className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-[#7e43f1] focus:border-[#7e43f1] focus:outline-none"
                     />
                   </div>
                 </div>
@@ -251,7 +305,7 @@ export default function AffiliateJoinClient() {
                     rows={4}
                     value={formData.howPromote}
                     onChange={handleChange}
-                    className={`w-full rounded-lg border ${errors.howPromote ? 'border-red-300' : 'border-gray-300'} focus:ring-[#7e43f1] focus:border-[#7e43f1] resize-none`}
+                    className={`w-full px-3 py-2 rounded-lg border ${errors.howPromote ? 'border-red-300' : 'border-gray-300'} focus:ring-[#7e43f1] focus:border-[#7e43f1] focus:outline-none resize-none`}
                     placeholder="Please explain how you plan to promote KareerFit (e.g., website, social media, email newsletter, etc.)"
                   ></textarea>
                   {errors.howPromote && (
@@ -285,15 +339,15 @@ export default function AffiliateJoinClient() {
                 
                 <div className="flex justify-between mt-8">
                   <Link 
-                    href="/affiliate" 
-                    className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50"
+                    href="/dashboard" 
+                    className="px-6 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
                   >
                     Cancel
                   </Link>
                   <button
                     type="submit"
                     disabled={isSubmitting}
-                    className="px-6 py-2 bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] text-white rounded-lg hover:shadow-lg transition-shadow disabled:opacity-70"
+                    className="px-6 py-2 bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] text-white rounded-lg hover:shadow-lg transition-shadow disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isSubmitting ? 'Submitting...' : 'Submit Application'}
                   </button>

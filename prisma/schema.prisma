@@ -25,6 +25,7 @@ model User {
   isClerk               Boolean                @default(false)  
   phone                 String?
   affiliateCode         String?                @unique
+  affiliateType         String?                @default("individual") // NEW FIELD ADDED
   referredBy            String?
   affiliateApplications AffiliateApplication[]
   affiliateStats        AffiliateStats?

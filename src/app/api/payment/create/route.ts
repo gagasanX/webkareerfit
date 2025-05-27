@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth/auth';
 import { prisma } from '@/lib/db';
 import { createBillplzPayment } from '@/lib/payment/billplz';
 import { formatCurrency } from '@/lib/utils/priceCalculation';
+import { calculateCommission } from '@/lib/utils/commissionCalculation';
 
 export async function POST(request: NextRequest) {
   try {
@@ -31,7 +32,6 @@ export async function POST(request: NextRequest) {
     
     const { assessmentId, amount, method } = requestData;
     
-    // Billplz sahaja - tidak perlu semak gateway
     const gateway = 'billplz';
     
     if (!assessmentId || amount === undefined || !method) {
@@ -39,19 +39,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'Missing required fields' }, { status: 400 });
     }
     
-    // Validate amount is a positive number with proper precision
+    // Validate and round amount
     const numericAmount = Number(amount);
     if (isNaN(numericAmount) || numericAmount < 0) {
       return NextResponse.json({ message: 'Invalid amount' }, { status: 400 });
     }
     
-    // Round amount to 2 decimal places for currency
     const finalAmount = Math.round(numericAmount * 100) / 100;
     
     // Verify assessment exists and belongs to user
     const assessment = await prisma.assessment.findUnique({
       where: { id: assessmentId },
-      include: { payment: true }
+      include: { 
+        payment: true,
+        user: true 
+      }
     });
     
     if (!assessment) {
@@ -62,7 +64,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'You do not own this assessment' }, { status: 403 });
     }
     
-    // Verify amount matches assessment price (with small tolerance for floating point)
+    // Verify amount matches assessment price
     const assessmentPrice = Number(assessment.price);
     if (Math.abs(finalAmount - assessmentPrice) > 0.01) {
       console.error('Amount mismatch:', {
@@ -87,6 +89,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'User not found' }, { status: 404 });
     }
     
+    // Get original assessment price for commission calculation
+    const originalPrice = await getOriginalAssessmentPrice(assessment.type, assessment.tier);
+    const commissionInfo = calculateCommission(originalPrice);
+    
+    console.log('Commission calculation:', {
+      originalPrice,
+      finalAmount,
+      commissionAmount: commissionInfo.commissionAmount,
+      commissionRate: commissionInfo.commissionRate
+    });
+    
     // Create or update payment record
     const paymentRecord = assessment.payment
       ? await prisma.payment.update({
@@ -110,10 +123,6 @@ export async function POST(request: NextRequest) {
     
     // Only create payment gateway integration if amount > 0
     if (finalAmount > 0) {
-      // Create payment with Billplz
-      let paymentUrl: string;
-      let gatewayPaymentId: string;
-      
       const paymentDescription = `Payment for ${assessment.type.toUpperCase()} Assessment`;
       const returnUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/payment/status`;
       const callbackUrl = `${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000'}/api/payment/webhook/${gateway}`;
@@ -130,27 +139,34 @@ export async function POST(request: NextRequest) {
         callbackUrl: callbackUrl
       });
       
-      paymentUrl = billplzResponse.url;
-      gatewayPaymentId = billplzResponse.id;
-      
       // Update payment record with gateway payment ID
       await prisma.payment.update({
         where: { id: paymentRecord.id },
         data: {
-          gatewayPaymentId: gatewayPaymentId
+          gatewayPaymentId: billplzResponse.id
         }
       });
+      
+      // Process affiliate commission preview (for display)
+      const affiliatePreview = await getAffiliateCommissionPreview(userId, originalPrice);
       
       return NextResponse.json({
         success: true,
         paymentId: paymentRecord.id,
-        gatewayPaymentId: gatewayPaymentId,
-        paymentUrl: paymentUrl,
+        gatewayPaymentId: billplzResponse.id,
+        paymentUrl: billplzResponse.url,
         amount: finalAmount,
-        formattedAmount: formatCurrency(finalAmount)
+        formattedAmount: formatCurrency(finalAmount),
+        commissionInfo: {
+          eligible: commissionInfo.commissionAmount > 0,
+          amount: commissionInfo.commissionAmount,
+          rate: commissionInfo.commissionRate,
+          formattedAmount: formatCurrency(commissionInfo.commissionAmount)
+        },
+        affiliatePreview
       });
     } else {
-      // Free assessment - no payment gateway needed
+      // Free assessment - no payment gateway needed, NO COMMISSION
       await prisma.payment.update({
         where: { id: paymentRecord.id },
         data: {
@@ -159,13 +175,22 @@ export async function POST(request: NextRequest) {
         }
       });
       
+      console.log('Free assessment - no commission processed');
+      
       return NextResponse.json({
         success: true,
         paymentId: paymentRecord.id,
-        paymentUrl: null, // No payment URL needed for free
+        paymentUrl: null,
         amount: 0,
         formattedAmount: formatCurrency(0),
-        message: 'Assessment is free - no payment required'
+        message: 'Assessment is free - no payment required',
+        commissionInfo: {
+          eligible: false,
+          amount: 0,
+          rate: 0,
+          formattedAmount: formatCurrency(0),
+          reason: 'No commission for free assessments'
+        }
       });
     }
   } catch (error) {
@@ -174,5 +199,60 @@ export async function POST(request: NextRequest) {
       message: 'Failed to create payment',
       details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
+  }
+}
+
+// Helper function to get original assessment price
+async function getOriginalAssessmentPrice(assessmentType: string, tier?: string): Promise<number> {
+  const { getAssessmentBasePrice, getTierPrice } = await import('@/lib/utils/priceCalculation');
+  
+  if (tier) {
+    return getTierPrice(tier);
+  }
+  
+  return getAssessmentBasePrice(assessmentType);
+}
+
+// Helper function to get affiliate commission preview
+async function getAffiliateCommissionPreview(userId: string, originalPrice: number) {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { referredBy: true }
+    });
+
+    if (!user?.referredBy) {
+      return null;
+    }
+
+    const affiliate = await prisma.user.findUnique({
+      where: { affiliateCode: user.referredBy },
+      select: { 
+        id: true, 
+        name: true,
+        email: true,
+        isAffiliate: true,
+        affiliateType: true 
+      }
+    });
+
+    if (!affiliate?.isAffiliate) {
+      return null;
+    }
+
+    const commissionInfo = calculateCommission(originalPrice);
+
+    return {
+      affiliateId: affiliate.id,
+      affiliateName: affiliate.name,
+      affiliateEmail: affiliate.email,
+      affiliateType: affiliate.affiliateType || 'individual',
+      commissionAmount: commissionInfo.commissionAmount,
+      commissionRate: commissionInfo.commissionRate,
+      formattedCommission: formatCurrency(commissionInfo.commissionAmount)
+    };
+  } catch (error) {
+    console.error('Error getting affiliate preview:', error);
+    return null;
   }
 }

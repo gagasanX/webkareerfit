@@ -1,4 +1,3 @@
-// app/api/payment/complete-free/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth/auth';
@@ -117,64 +116,20 @@ export async function POST(request: NextRequest) {
       });
     }
     
-    // Process affiliate reward if applicable
-    try {
-      const user = await prisma.user.findUnique({
-        where: { id: userId }
-      });
-      
-      if (user && user.referredBy) {
-        // For free assessments, we may want different commission rules
-        const commissionAmount = 2.0; // Fixed RM2 commission for free assessments
-        
-        // Create or update the referral record
-        await prisma.referral.create({
-          data: {
-            affiliateId: user.referredBy,
-            userName: user.name || 'Anonymous',
-            email: user.email,
-            assessmentId: assessment.id,
-            assessmentType: assessment.type,
-            status: 'completed',
-            commission: commissionAmount,
-            paidOut: false
-          }
-        });
-        
-        // Update affiliate stats
-        const affiliateStats = await prisma.affiliateStats.findUnique({
-          where: { userId: user.referredBy }
-        });
-        
-        if (affiliateStats) {
-          await prisma.affiliateStats.update({
-            where: { userId: user.referredBy },
-            data: {
-              totalReferrals: affiliateStats.totalReferrals + 1,
-              totalEarnings: affiliateStats.totalEarnings + commissionAmount
-            }
-          });
-        }
-      }
-    } catch (referralError) {
-      // Log but don't fail the request if referral processing fails
-      console.error('Error processing referral for free assessment:', referralError);
-    }
+    // NO AFFILIATE COMMISSION FOR FREE ASSESSMENTS
+    console.log('Free assessment completed - no commission processed');
     
     // Determine the appropriate redirect URL based on tier
     let redirectUrl;
     
-    // For premium tier (RM250), use premium-results page
     if (assessment.tier === 'premium') {
       redirectUrl = `/assessment/${assessment.type}/premium-results/${assessment.id}`;
       console.log(`Premium tier - Redirecting to: ${redirectUrl}`);
     } 
-    // For standard tier (RM100), use standard-results page
     else if (assessment.tier === 'standard') {
       redirectUrl = `/assessment/${assessment.type}/standard-results/${assessment.id}`;
       console.log(`Standard tier - Redirecting to: ${redirectUrl}`);
     }
-    // Fallback for basic tier
     else {
       redirectUrl = `/assessment/${assessment.type}/results/${assessment.id}`;
       console.log(`Basic tier - Redirecting to: ${redirectUrl}`);
@@ -182,9 +137,13 @@ export async function POST(request: NextRequest) {
     
     return NextResponse.json({
       success: true,
-      message: 'Assessment unlocked successfully',
+      message: 'Free assessment unlocked successfully',
       redirectUrl: redirectUrl,
-      isManualProcessing: assessment.manualProcessing || assessment.tier === 'standard' || assessment.tier === 'premium'
+      isManualProcessing: assessment.manualProcessing || assessment.tier === 'standard' || assessment.tier === 'premium',
+      commission: {
+        processed: false,
+        reason: 'No commission for free assessments'
+      }
     });
   } catch (error) {
     console.error('Error processing free assessment:', error);

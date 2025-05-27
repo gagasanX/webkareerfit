@@ -35,10 +35,12 @@ export async function POST(request: NextRequest) {
     }
     
     if (existingUser.isAffiliate) {
-      return NextResponse.json(
-        { error: 'User is already an affiliate' },
-        { status: 400 }
-      );
+      return NextResponse.json({
+        success: true,
+        message: 'User is already an affiliate',
+        affiliateCode: existingUser.affiliateCode,
+        alreadyAffiliate: true
+      });
     }
     
     // Parse request data
@@ -56,45 +58,41 @@ export async function POST(request: NextRequest) {
     const randomString = Math.random().toString(36).substring(2, 8).toUpperCase();
     const affiliateCode = `KF-${randomString}`;
     
-    // Step 1: Update user to be an affiliate
-    await prisma.user.update({
-      where: { id: userId },
-      data: {
-        isAffiliate: true,
-        affiliateCode: affiliateCode,
-      },
-    });
+    console.log(`Creating affiliate for user ${userId} with code ${affiliateCode}`);
     
-    // Step 2: Create affiliate application record - using direct SQL for reliability
-    try {
-      await prisma.$executeRaw`
-        INSERT INTO "AffiliateApplication" (
-          "id", "createdAt", "updatedAt", "userId", "fullName", 
-          "email", "phone", "website", "socialMedia", "howPromote", "status"
-        ) 
-        VALUES (
-          ${crypto.randomUUID()}, ${new Date()}, ${new Date()}, 
-          ${userId}, ${data.fullName}, ${data.email}, 
-          ${data.phone}, ${data.website || null}, ${data.socialMedia || null}, 
-          ${data.howPromote}, 'pending'
-        )
-      `;
-    } catch (appError) {
-      // Non-critical: continue even if this fails
-      console.error('Error creating application record:', appError);
-    }
-    
-    // Step 3: Create or update affiliate stats
-    try {
-      const existingStats = await prisma.affiliateStats.findUnique({
+    // Transaction to ensure all operations succeed together
+    await prisma.$transaction(async (tx) => {
+      // Step 1: Update user to be an affiliate
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          isAffiliate: true,
+          affiliateCode: affiliateCode,
+        },
+      });
+      
+      // Step 2: Create affiliate application record
+      await tx.affiliateApplication.create({
+        data: {
+          userId,
+          fullName: data.fullName,
+          email: data.email,
+          phone: data.phone,
+          website: data.website || '',
+          socialMedia: data.socialMedia || '',
+          howPromote: data.howPromote,
+          status: 'approved', // Auto approve for now
+          notes: 'Auto-approved individual affiliate'
+        }
+      });
+      
+      // Step 3: Create affiliate stats record
+      const existingStats = await tx.affiliateStats.findUnique({
         where: { userId }
       });
       
-      if (existingStats) {
-        // Stats already exist, no need to create
-      } else {
-        // Create new stats record
-        await prisma.affiliateStats.create({
+      if (!existingStats) {
+        await tx.affiliateStats.create({
           data: {
             userId,
             totalReferrals: 0,
@@ -103,15 +101,15 @@ export async function POST(request: NextRequest) {
           }
         });
       }
-    } catch (statsError) {
-      // Non-critical: continue even if this fails
-      console.error('Error creating affiliate stats:', statsError);
-    }
+    });
+    
+    console.log(`Successfully created affiliate ${affiliateCode} for user ${userId}`);
     
     return NextResponse.json({
       success: true,
-      message: 'Affiliate application submitted successfully',
-      affiliateCode
+      message: 'Affiliate registration completed successfully',
+      affiliateCode,
+      requiresRefresh: true // Signal that session needs refresh
     });
     
   } catch (error) {

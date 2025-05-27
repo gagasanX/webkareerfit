@@ -1,6 +1,16 @@
 import { NextResponse } from 'next/server';
 import { NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
+import { PrismaClient } from '@prisma/client';
+
+// Create a global prisma instance for middleware
+const globalForPrisma = globalThis as unknown as {
+  prisma: PrismaClient | undefined;
+};
+
+const prisma = globalForPrisma.prisma ?? new PrismaClient();
+
+if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
 
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
@@ -126,11 +136,28 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // Affiliate page protection
+  // Affiliate page protection - CHECK DATABASE INSTEAD OF TOKEN
   if (path.startsWith('/affiliate') && path !== '/affiliate/join') {
-    if (!token.isAffiliate) {
-      console.log("Non-affiliate attempting to access affiliate route:", path);
-      return NextResponse.redirect(new URL('/affiliate/join', request.url));
+    try {
+      // Check database for real-time affiliate status
+      const user = await prisma.user.findUnique({
+        where: { id: token.sub || token.id },
+        select: { isAffiliate: true }
+      });
+      
+      if (!user?.isAffiliate) {
+        console.log("Non-affiliate attempting to access affiliate route:", path);
+        return NextResponse.redirect(new URL('/affiliate/join', request.url));
+      } else {
+        console.log("Affiliate access granted for path:", path);
+      }
+    } catch (error) {
+      console.error("Error checking affiliate status:", error);
+      // Fallback to token check if database fails
+      if (!token.isAffiliate) {
+        console.log("Non-affiliate attempting to access affiliate route (fallback):", path);
+        return NextResponse.redirect(new URL('/affiliate/join', request.url));
+      }
     }
   }
 
