@@ -16,6 +16,9 @@ npx prisma studio
 #bash struktur
 find ./src/app -type f,d | sort
 
+
+find ./src -type f,d | sort
+
 cd /workspaces/webkareerfit/prisma/migrations
 
 

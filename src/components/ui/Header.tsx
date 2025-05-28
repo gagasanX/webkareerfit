@@ -26,13 +26,11 @@ export default function Header() {
         <div className="flex justify-between h-16">
           <div className="flex items-center">
             <Link href="/" className="flex-shrink-0 flex items-center">
+              {/* --- LOGO DIUBAH DI SINI --- */}
               <div className="bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] p-1 rounded-full w-8 h-8 flex items-center justify-center">
-                <img 
-                  src="https://kareerfit.com/wp-content/uploads/2025/01/KAREERfit.png" 
-                  alt="KareerFit" 
-                  className="w-6 h-6 object-contain" 
-                />
+                <span className="text-white font-bold text-sm">KF</span>
               </div>
+              {/* --- AKHIR PERUBAHAN LOGO --- */}
               <span className="ml-2 text-xl font-semibold text-gray-800">KareerFit</span>
             </Link>
             

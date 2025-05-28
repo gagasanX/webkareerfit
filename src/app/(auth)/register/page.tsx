@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
@@ -19,6 +19,33 @@ export default function RegisterPage() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [serverError, setServerError] = useState('');
+  const [referralCode, setReferralCode] = useState<string | null>(null);
+  const [affiliateName, setAffiliateName] = useState<string | null>(null);
+
+  // Capture referral code on component mount
+  useEffect(() => {
+    // Get referral code from localStorage
+    const savedReferralCode = localStorage.getItem('referralCode');
+    const expiryDate = localStorage.getItem('referralCodeExpiry');
+    const savedAffiliateName = localStorage.getItem('affiliateName');
+    
+    if (savedReferralCode && expiryDate) {
+      const expiry = new Date(expiryDate);
+      const now = new Date();
+      
+      if (now < expiry) {
+        setReferralCode(savedReferralCode);
+        setAffiliateName(savedAffiliateName);
+        console.log('Using saved referral code:', savedReferralCode);
+      } else {
+        // Expired, remove from localStorage
+        localStorage.removeItem('referralCode');
+        localStorage.removeItem('referralCodeExpiry');
+        localStorage.removeItem('affiliateName');
+        console.log('Referral code expired');
+      }
+    }
+  }, []);
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
@@ -40,6 +67,15 @@ export default function RegisterPage() {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
+    
+    // Clear error for this field when user starts typing
+    if (errors[name]) {
+      setErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[name];
+        return newErrors;
+      });
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -58,6 +94,7 @@ export default function RegisterPage() {
           email: formData.email,
           phone: formData.phone,
           password: formData.password,
+          referralCode: referralCode // Include referral code in registration
         }),
       });
 
@@ -65,6 +102,14 @@ export default function RegisterPage() {
 
       if (!response.ok) {
         throw new Error(data.message || 'An error occurred during registration');
+      }
+
+      // Clear referral code after successful registration
+      if (referralCode) {
+        localStorage.removeItem('referralCode');
+        localStorage.removeItem('referralCodeExpiry');
+        localStorage.removeItem('affiliateName');
+        console.log('Referral code cleared after successful registration');
       }
 
       router.push('/login?success=Account+created+successfully');
@@ -94,6 +139,32 @@ export default function RegisterPage() {
               <h2 className="text-2xl font-bold">Create Your Account</h2>
               <p className="text-white/80 mt-1">Join KareerFit and discover your career path</p>
             </div>
+            
+            {/* Referral Code Display */}
+            {referralCode && (
+              <div className="mx-6 mt-6 mb-0 p-4 bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-lg">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0">
+                    <svg className="h-5 w-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                  <div className="ml-3">
+                    <h3 className="text-sm font-medium text-green-800">
+                      🎁 Referral Code Applied!
+                    </h3>
+                    <div className="mt-1 text-sm text-green-700">
+                      <p>
+                        You were referred by: <span className="font-semibold">{affiliateName || 'KareerFit Affiliate'}</span>
+                      </p>
+                      <p className="text-xs text-green-600 mt-1">
+                        Code: <span className="font-mono font-bold">{referralCode}</span>
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
             
             {/* Form section */}
             <div className="p-6">

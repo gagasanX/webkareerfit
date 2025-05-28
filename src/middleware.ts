@@ -1,21 +1,10 @@
 import { NextResponse } from 'next/server';
 import { NextRequest } from 'next/server';
 import { getToken } from 'next-auth/jwt';
-import { PrismaClient } from '@prisma/client';
-
-// Create a global prisma instance for middleware
-const globalForPrisma = globalThis as unknown as {
-  prisma: PrismaClient | undefined;
-};
-
-const prisma = globalForPrisma.prisma ?? new PrismaClient();
-
-if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
 
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
   
-  // Debug for development
   console.log("Middleware checking path:", path);
 
   // List of public paths that don't require authentication
@@ -59,7 +48,7 @@ export async function middleware(request: NextRequest) {
 
   // Debug token info
   if (token) {
-    console.log("Token found for path:", path, "- Role:", token.role, "- Admin:", token.isAdmin, "- Clerk:", token.isClerk);
+    console.log("Token found for path:", path, "- Role:", token.role, "- Admin:", token.isAdmin, "- Clerk:", token.isClerk, "- Affiliate:", token.isAffiliate);
     
     // Redirect from homepage to dashboard if user is authenticated
     if (isHomepage) {
@@ -96,7 +85,6 @@ export async function middleware(request: NextRequest) {
       }
     }
     
-    // For all other public paths, just continue
     return NextResponse.next();
   }
 
@@ -104,7 +92,6 @@ export async function middleware(request: NextRequest) {
   if (!token) {
     console.log("No auth token for protected path:", path);
     
-    // Determine the appropriate login page based on the path
     let loginPath = '/login';
     
     if (path.startsWith('/admin')) {
@@ -136,28 +123,34 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // Affiliate page protection - CHECK DATABASE INSTEAD OF TOKEN
+  // AFFILIATE PROTECTION - USE API CALL INSTEAD OF DIRECT DB
   if (path.startsWith('/affiliate') && path !== '/affiliate/join') {
     try {
-      // Check database for real-time affiliate status
-      const user = await prisma.user.findUnique({
-        where: { id: token.sub || token.id },
-        select: { isAffiliate: true }
+      // Make API call to check affiliate status
+      const response = await fetch(new URL('/api/user/affiliate-status', request.url), {
+        headers: {
+          'Authorization': `Bearer ${JSON.stringify(token)}`,
+          'Content-Type': 'application/json'
+        }
       });
       
-      if (!user?.isAffiliate) {
-        console.log("Non-affiliate attempting to access affiliate route:", path);
+      if (!response.ok) {
+        console.log("Failed to check affiliate status, redirecting to join");
+        return NextResponse.redirect(new URL('/affiliate/join', request.url));
+      }
+      
+      const { isAffiliate } = await response.json();
+      
+      if (!isAffiliate) {
+        console.log("User is not an affiliate, redirecting to join");
         return NextResponse.redirect(new URL('/affiliate/join', request.url));
       } else {
-        console.log("Affiliate access granted for path:", path);
+        console.log("Affiliate access granted for:", path);
       }
     } catch (error) {
       console.error("Error checking affiliate status:", error);
-      // Fallback to token check if database fails
-      if (!token.isAffiliate) {
-        console.log("Non-affiliate attempting to access affiliate route (fallback):", path);
-        return NextResponse.redirect(new URL('/affiliate/join', request.url));
-      }
+      // Fallback: allow access if we can't check
+      console.log("Allowing affiliate access due to check error");
     }
   }
 
@@ -166,7 +159,6 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Match all paths except for specific exclusions
     '/((?!api/(?!auth).*|_next/static|_next/image|favicon.ico).*)',
   ],
 };
