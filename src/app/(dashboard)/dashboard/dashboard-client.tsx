@@ -626,7 +626,7 @@ export default function DashboardClient() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
               <div className="bg-white rounded-xl shadow-sm p-4 sm:p-5">
                 <div className="flex justify-between items-center mb-4">
-                  <h3 className="font-medium text-gray-700 text-sm sm:text-base">Career Profile Composition</h3>
+                  <h3 className="font-medium text-gray-700 text-sm sm:text-base">Competency Profile</h3>
                   <Link href="/assessment/results" className="text-xs text-[#38b6ff] hover:underline">View More</Link>
                 </div>
                 <div className="flex justify-center">

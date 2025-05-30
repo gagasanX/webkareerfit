@@ -1,8 +1,8 @@
 'use client';
 
-import React, { ReactNode, useState, useEffect } from 'react';
+import React, { ReactNode, useState } from 'react';
 import Link from 'next/link';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { signIn } from 'next-auth/react';
 
 // Define types for FloatingElement props
@@ -100,6 +100,7 @@ const LoginForm = () => {
         />
       </div>
       
+      {/* Here's the improved button with clear styling */}
       <button
         type="submit"
         disabled={isLoading}
@@ -112,69 +113,8 @@ const LoginForm = () => {
 };
 
 export default function HomePage() {
-  const searchParams = useSearchParams();
-  const [showReferralNotification, setShowReferralNotification] = useState(false);
-  const [referralCode, setReferralCode] = useState<string | null>(null);
-
-  // CAPTURE REFERRAL CODE ON PAGE LOAD
-  useEffect(() => {
-    const refCode = searchParams.get('ref');
-    
-    if (refCode && refCode.trim()) {
-      console.log('🎯 Referral code detected:', refCode);
-      
-      // Save referral code to localStorage
-      localStorage.setItem('referralCode', refCode.trim());
-      localStorage.setItem('affiliateName', 'KareerFit Affiliate'); // Default name
-      
-      // Set expiry (30 days)
-      const expiryDate = new Date();
-      expiryDate.setDate(expiryDate.getDate() + 30);
-      localStorage.setItem('referralCodeExpiry', expiryDate.toISOString());
-      
-      // Clean URL (remove ref parameter)
-      const url = new URL(window.location.href);
-      url.searchParams.delete('ref');
-      window.history.replaceState({}, '', url.toString());
-      
-      console.log('✅ Referral code saved for 30 days:', refCode);
-      
-      // Show notification
-      setReferralCode(refCode);
-      setShowReferralNotification(true);
-      
-      // Hide notification after 5 seconds
-      setTimeout(() => {
-        setShowReferralNotification(false);
-      }, 5000);
-    }
-  }, [searchParams]);
-
   return (
     <div className="flex flex-col lg:flex-row min-h-screen">
-      {/* Referral Notification */}
-      {showReferralNotification && referralCode && (
-        <div className="fixed top-4 right-4 z-50 bg-gradient-to-r from-green-500 to-blue-500 text-white p-4 rounded-lg shadow-lg animate-pulse">
-          <div className="flex items-center">
-            <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-white" fill="currentColor" viewBox="0 0 20 20">
-                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div className="ml-3">
-              <p className="text-sm font-medium">🎁 Referral Code Applied!</p>
-              <p className="text-xs opacity-90">Code: {referralCode}</p>
-            </div>
-            <button 
-              onClick={() => setShowReferralNotification(false)}
-              className="ml-4 text-white/80 hover:text-white"
-            >
-              ×
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Left side - Content */}
       <div className="flex-1 bg-gradient-to-br from-[#38b6ff] to-[#7e43f1] p-8 relative overflow-hidden">
         {/* Animated elements */}
@@ -198,7 +138,7 @@ export default function HomePage() {
                 className="h-8"
               />
             </div>
-            <h2 className="text-white text-lg font-medium">KareerFit</h2>
+            <h2 className="text-white text-lg font-medium"></h2>
           </div>
 
           {/* Main content */}
@@ -254,7 +194,7 @@ export default function HomePage() {
 
           {/* Footer */}
           <div className="mt-8 text-white/60 text-sm">
-            V1.0.11© {new Date().getFullYear()} CAREERXPERT SOLUTIONS (003704811-M)
+            V1.1.02 © {new Date().getFullYear()} CAREERXPERT SOLUTIONS (003704811-M)
           </div>
         </div>
       </div>
