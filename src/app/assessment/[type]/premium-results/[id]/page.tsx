@@ -7,7 +7,7 @@ export default function PremiumResultsPage({ params }: { params: { type: string,
       <div className="max-w-4xl mx-auto bg-white rounded-xl shadow-md overflow-hidden">
         <div className="bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] p-6 text-white">
           <h1 className="text-2xl font-bold">Premium Assessment Received</h1>
-          <p className="opacity-80">Your premium assessment package is being processed</p>
+          <p className="opacity-80">Your premium package includes expert consultation</p>
         </div>
         
         <div className="p-8 text-center">
@@ -15,48 +15,119 @@ export default function PremiumResultsPage({ params }: { params: { type: string,
             <span className="text-purple-500 text-4xl">⭐</span>
           </div>
           
-          <h2 className="text-2xl font-bold mb-4">Thank You for Choosing Our Premium Package</h2>
+          <h2 className="text-2xl font-bold mb-4">Thank You for Choosing Premium Package</h2>
           
           <div className="max-w-2xl mx-auto mb-8">
             <p className="text-gray-700 mb-6">
-              Your premium assessment has been received. Our team is preparing for your personalized consultation and in-depth analysis.
+              Your RM250 premium assessment has been received. This includes a <strong>personalized 20-minute interview session</strong> with our career consultant.
             </p>
             
-            <div className="bg-purple-50 p-6 rounded-lg text-left mb-8">
-              <h3 className="font-bold text-purple-800 mb-3">Your Premium Experience Includes:</h3>
-              <ul className="space-y-4">
-                <li className="flex items-start">
-                  <span className="text-purple-500 mr-3 text-xl">•</span>
-                  <span>Our analysis team will contact you within 2 business days to schedule your 20-minute consultation</span>
-                </li>
-                <li className="flex items-start">
-                  <span className="text-purple-500 mr-3 text-xl">•</span>
-                  <span>During your consultation, we'll discuss your unique career situation and goals</span>
-                </li>
-                <li className="flex items-start">
-                  <span className="text-purple-500 mr-3 text-xl">•</span>
-                  <span>After your consultation, you'll receive a comprehensive analysis report within 3-5 working days</span>
-                </li>
-                <li className="flex items-start">
-                  <span className="text-purple-500 mr-3 text-xl">•</span>
-                  <span>You'll have priority email support for 30 days after receiving your report</span>
-                </li>
-              </ul>
+            {/* Interview Scheduling Section - Highlighted */}
+            <div className="bg-gradient-to-r from-purple-100 to-blue-100 p-6 rounded-lg border-2 border-purple-200 mb-6">
+              <h3 className="font-bold text-purple-800 mb-3 text-lg">🎯 Interview Scheduling</h3>
+              <div className="bg-white p-4 rounded-lg shadow-sm">
+                <p className="text-purple-700 font-semibold mb-2">
+                  Our career consultant will contact you via email within 2 business days to schedule your interview slot.
+                </p>
+                <p className="text-gray-600 text-sm">
+                  Please check your email (including spam folder) for scheduling details.
+                </p>
+              </div>
             </div>
             
-            <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-100 mb-8">
-              <p className="text-yellow-800 font-medium">
-                We'll be reaching out to you via the email address associated with your account to schedule your consultation.
+            <div className="bg-purple-50 p-6 rounded-lg text-left mb-8">
+              <h3 className="font-bold text-purple-800 mb-3">Your Premium Experience Timeline:</h3>
+              <div className="space-y-4">
+                <div className="flex items-start">
+                  <div className="w-8 h-8 rounded-full bg-purple-500 text-white flex items-center justify-center text-sm font-bold mr-4 mt-1">1</div>
+                  <div>
+                    <h4 className="font-semibold text-purple-700">Interview Scheduling (1-2 days)</h4>
+                    <p className="text-gray-600">Our consultant will email you to book your 20-minute consultation slot</p>
+                  </div>
+                </div>
+                
+                <div className="flex items-start">
+                  <div className="w-8 h-8 rounded-full bg-purple-500 text-white flex items-center justify-center text-sm font-bold mr-4 mt-1">2</div>
+                  <div>
+                    <h4 className="font-semibold text-purple-700">Personal Interview Session</h4>
+                    <p className="text-gray-600">Discuss your career goals, challenges, and receive personalized guidance</p>
+                  </div>
+                </div>
+                
+                <div className="flex items-start">
+                  <div className="w-8 h-8 rounded-full bg-purple-500 text-white flex items-center justify-center text-sm font-bold mr-4 mt-1">3</div>
+                  <div>
+                    <h4 className="font-semibold text-purple-700">Comprehensive Report (3-5 days)</h4>
+                    <p className="text-gray-600">Detailed analysis based on your assessment + interview insights</p>
+                  </div>
+                </div>
+                
+                <div className="flex items-start">
+                  <div className="w-8 h-8 rounded-full bg-purple-500 text-white flex items-center justify-center text-sm font-bold mr-4 mt-1">4</div>
+                  <div>
+                    <h4 className="font-semibold text-purple-700">30-Day Email Support</h4>
+                    <p className="text-gray-600">Priority support for follow-up questions and career guidance</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            {/* What makes Premium different */}
+            <div className="bg-blue-50 p-6 rounded-lg border border-blue-200 mb-8">
+              <h3 className="font-bold text-blue-800 mb-3">Premium Package Benefits:</h3>
+              <div className="grid md:grid-cols-2 gap-4 text-left">
+                <div className="space-y-2">
+                  <div className="flex items-center">
+                    <span className="text-green-500 mr-2">✓</span>
+                    <span className="text-sm">20-minute personal interview</span>
+                  </div>
+                  <div className="flex items-center">
+                    <span className="text-green-500 mr-2">✓</span>
+                    <span className="text-sm">Custom career roadmap</span>
+                  </div>
+                  <div className="flex items-center">
+                    <span className="text-green-500 mr-2">✓</span>
+                    <span className="text-sm">Industry-specific insights</span>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center">
+                    <span className="text-green-500 mr-2">✓</span>
+                    <span className="text-sm">Priority email support (30 days)</span>
+                  </div>
+                  <div className="flex items-center">
+                    <span className="text-green-500 mr-2">✓</span>
+                    <span className="text-sm">Follow-up resources</span>
+                  </div>
+                  <div className="flex items-center">
+                    <span className="text-green-500 mr-2">✓</span>
+                    <span className="text-sm">Expert recommendations</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200 mb-8">
+              <p className="text-yellow-800 font-medium text-center">
+                📧 Important: We'll contact you at the email address associated with your account to schedule your interview session.
               </p>
             </div>
           </div>
           
-          <Link 
-            href="/dashboard" 
-            className="bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] text-white px-6 py-3 rounded-lg hover:shadow-lg transition-all font-medium"
-          >
-            Return to Dashboard
-          </Link>
+          <div className="flex flex-col sm:flex-row justify-center gap-4">
+            <Link 
+              href="/dashboard" 
+              className="bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] text-white px-6 py-3 rounded-lg hover:shadow-lg transition-all font-medium"
+            >
+              Return to Dashboard
+            </Link>
+            <Link 
+              href="/contact" 
+              className="bg-white text-[#7e43f1] border border-[#7e43f1] px-6 py-3 rounded-lg hover:bg-purple-50 transition-all font-medium"
+            >
+              Contact Support
+            </Link>
+          </div>
         </div>
       </div>
     </div>

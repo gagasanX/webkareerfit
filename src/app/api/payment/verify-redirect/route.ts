@@ -72,20 +72,13 @@ export async function POST(request: NextRequest) {
         
         // If payment is successful
         if (isSuccessful) {
-          // CRITICAL FIX: Check if this assessment requires manual processing
-          // based on tier explicitly, not just manualProcessing flag
-          const isManualProcessing = payment.assessment?.tier === 'standard' || 
-                                    payment.assessment?.tier === 'premium' || 
-                                    payment.assessment?.price >= 100;
-          
-          // Update assessment status based on processing type
+          // CRITICAL FIX: Always redirect to questionnaire first, regardless of tier
+          // Update assessment status to in_progress so user can fill questionnaire
           if (payment.assessment && payment.assessment.status !== 'completed') {
             await prisma.assessment.update({
               where: { id: payment.assessment.id },
               data: {
-                // For manual processing, set to pending_review; otherwise, set to in_progress
-                status: isManualProcessing ? 'pending_review' : 'in_progress',
-                manualProcessing: isManualProcessing // Ensure this flag is correctly set
+                status: 'in_progress' // Set to in_progress so user can continue with questionnaire
               }
             });
           }
@@ -98,35 +91,15 @@ export async function POST(request: NextRequest) {
           // Process affiliate commission if applicable
           await processAffiliateCommission(payment);
           
-          // CRITICAL FIX: Determine the appropriate redirect URL based on tier with explicit checks
-          let redirectUrl;
-          
-          // Explicit tier checks first
-          if (payment.assessment?.tier === 'premium') {
-            redirectUrl = `/assessment/${payment.assessment?.type}/premium-results/${payment.assessment?.id}`;
-            console.log(`Premium tier - Redirecting to: ${redirectUrl}`);
-          } 
-          // Then standard tier
-          else if (payment.assessment?.tier === 'standard') {
-            redirectUrl = `/assessment/${payment.assessment?.type}/standard-results/${payment.assessment?.id}`;
-            console.log(`Standard tier - Redirecting to: ${redirectUrl}`);
-          }
-          // Then fallback to price checks
-          else if (payment.assessment?.price >= 250) {
-            redirectUrl = `/assessment/${payment.assessment?.type}/premium-results/${payment.assessment?.id}`;
-            console.log(`Premium price (RM${payment.assessment?.price}) - Redirecting to: ${redirectUrl}`);
-          }
-          else if (payment.assessment?.price >= 100) {
-            redirectUrl = `/assessment/${payment.assessment?.type}/standard-results/${payment.assessment?.id}`;
-            console.log(`Standard price (RM${payment.assessment?.price}) - Redirecting to: ${redirectUrl}`);
-          }
-          // Basic tier fallback
-          else {
-            redirectUrl = `/assessment/${payment.assessment?.type}/results/${payment.assessment?.id}`;
-            console.log(`Basic tier - Redirecting to: ${redirectUrl}`);
-          }
+          // CRITICAL FIX: Always redirect to questionnaire page after payment success
+          const redirectUrl = `/assessment/${payment.assessment?.type}/${payment.assessment?.id}`;
+          console.log(`Payment successful - Redirecting to questionnaire: ${redirectUrl}`);
 
-          // Include the processing type and appropriate redirect URL in the response
+          // Include the processing type info for debugging
+          const isManualProcessing = payment.assessment?.tier === 'standard' || 
+                                    payment.assessment?.tier === 'premium' || 
+                                    payment.assessment?.price >= 100;
+
           return NextResponse.json({
             success: true,
             status: 'completed',
@@ -148,27 +121,8 @@ export async function POST(request: NextRequest) {
         }
       } else {
         // Payment already processed by webhook, just return the status
-        // CRITICAL FIX: Determine redirect URL based on tier with explicit checks
-        let redirectUrl;
-        
-        // Explicit tier checks first
-        if (payment.assessment?.tier === 'premium') {
-          redirectUrl = `/assessment/${payment.assessment?.type}/premium-results/${payment.assessment?.id}`;
-        } 
-        else if (payment.assessment?.tier === 'standard') {
-          redirectUrl = `/assessment/${payment.assessment?.type}/standard-results/${payment.assessment?.id}`;
-        }
-        // Then fallback to price checks
-        else if (payment.assessment?.price >= 250) {
-          redirectUrl = `/assessment/${payment.assessment?.type}/premium-results/${payment.assessment?.id}`;
-        }
-        else if (payment.assessment?.price >= 100) {
-          redirectUrl = `/assessment/${payment.assessment?.type}/standard-results/${payment.assessment?.id}`;
-        }
-        // Basic tier fallback
-        else {
-          redirectUrl = `/assessment/${payment.assessment?.type}/results/${payment.assessment?.id}`;
-        }
+        // CRITICAL FIX: Always redirect to questionnaire page
+        const redirectUrl = `/assessment/${payment.assessment?.type}/${payment.assessment?.id}`;
         
         return NextResponse.json({
           success: true,
@@ -184,8 +138,103 @@ export async function POST(request: NextRequest) {
       }
     } 
     else if (gateway === 'toyyibpay') {
-      // Similar logic with same changes for manual processing
-      // [Rest of toyyibpay implementation with the same tier-based fixes]
+      // Similar logic for toyyibpay with same questionnaire redirect fix
+      const { billcode, status } = params;
+      
+      if (!billcode) {
+        return NextResponse.json({ 
+          success: false, 
+          message: 'Missing required parameters' 
+        }, { status: 400 });
+      }
+      
+      // Find payment by gateway reference
+      const payment = await prisma.payment.findFirst({
+        where: { gatewayPaymentId: billcode },
+        include: { assessment: true, user: true }
+      });
+      
+      if (!payment) {
+        return NextResponse.json({ 
+          success: false, 
+          message: 'Payment not found' 
+        }, { status: 404 });
+      }
+      
+      paymentId = payment.id;
+      isSuccessful = status === '1'; // ToyyibPay success status
+      
+      if (payment.status === 'pending') {
+        // Update payment status
+        await prisma.payment.update({
+          where: { id: paymentId },
+          data: {
+            status: isSuccessful ? 'completed' : 'failed',
+          }
+        });
+        
+        if (isSuccessful) {
+          // Update assessment status to in_progress for questionnaire
+          if (payment.assessment && payment.assessment.status !== 'completed') {
+            await prisma.assessment.update({
+              where: { id: payment.assessment.id },
+              data: {
+                status: 'in_progress'
+              }
+            });
+          }
+          
+          // Send receipt email
+          sendPaymentReceipt(paymentId).catch(err => {
+            console.error('Failed to send receipt email:', err);
+          });
+          
+          // Process affiliate commission if applicable
+          await processAffiliateCommission(payment);
+          
+          // CRITICAL FIX: Redirect to questionnaire page
+          const redirectUrl = `/assessment/${payment.assessment?.type}/${payment.assessment?.id}`;
+          console.log(`ToyyibPay payment successful - Redirecting to questionnaire: ${redirectUrl}`);
+
+          const isManualProcessing = payment.assessment?.tier === 'standard' || 
+                                    payment.assessment?.tier === 'premium' || 
+                                    payment.assessment?.price >= 100;
+
+          return NextResponse.json({
+            success: true,
+            status: 'completed',
+            message: 'Payment verified successfully',
+            assessmentId: payment.assessment?.id,
+            assessmentType: payment.assessment?.type,
+            isManualProcessing: isManualProcessing,
+            redirectUrl: redirectUrl
+          });
+        } else {
+          return NextResponse.json({
+            success: true,
+            status: 'failed',
+            message: 'Payment verification failed',
+            assessmentId: payment.assessment?.id,
+            assessmentType: payment.assessment?.type,
+            redirectUrl: `/payment/failed?id=${payment.assessment?.id}`
+          });
+        }
+      } else {
+        // Payment already processed, redirect to questionnaire
+        const redirectUrl = `/assessment/${payment.assessment?.type}/${payment.assessment?.id}`;
+        
+        return NextResponse.json({
+          success: true,
+          status: payment.status === 'completed' ? 'completed' : 'failed',
+          message: `Payment already processed (${payment.status})`,
+          assessmentId: payment.assessment?.id,
+          assessmentType: payment.assessment?.type,
+          isManualProcessing: payment.assessment?.tier === 'standard' || 
+                            payment.assessment?.tier === 'premium' || 
+                            payment.assessment?.price >= 100,
+          redirectUrl: redirectUrl
+        });
+      }
     } else {
       return NextResponse.json({ 
         success: false, 

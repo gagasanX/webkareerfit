@@ -1,10 +1,128 @@
 // /src/lib/ai-processing.ts
 import OpenAI from 'openai';
+import { prisma } from '@/lib/db';
 
 // Initialize OpenAI client
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
+
+// CRITICAL: Main function that was missing - this is what results route calls
+export async function processAssessmentWithAI(assessmentId: string, assessmentType: string): Promise<void> {
+  console.log(`[AI Processing] Starting complete AI analysis for ${assessmentType} assessment: ${assessmentId}`);
+  
+  try {
+    // Get assessment data
+    const assessment = await prisma.assessment.findUnique({
+      where: { id: assessmentId }
+    });
+    
+    if (!assessment) {
+      throw new Error(`Assessment ${assessmentId} not found`);
+    }
+    
+    const data = assessment.data as Record<string, any> || {};
+    const responses = data.responses;
+    
+    if (!responses) {
+      throw new Error('No responses found in assessment data');
+    }
+    
+    console.log(`[AI Processing] Found responses for ${assessmentId}, processing...`);
+    
+    // Process all components in parallel for efficiency
+    const [scores, recommendations, strengths, improvements] = await Promise.all([
+      processScores(responses, assessmentType),
+      processRecommendations(responses, assessmentType),
+      processStrengths(responses, assessmentType),
+      processImprovements(responses, assessmentType)
+    ]);
+    
+    // Calculate readiness level from overall score
+    const overallScore = scores.overallScore || 70;
+    const readinessLevel = calculateReadinessLevel(overallScore);
+    
+    // Create comprehensive assessment data
+    const processedData = {
+      ...data,
+      scores,
+      recommendations,
+      strengths,
+      improvements,
+      readinessLevel,
+      summary: generateSummary(overallScore, readinessLevel, assessmentType),
+      aiProcessed: true,
+      aiProcessedAt: new Date().toISOString(),
+      aiAnalysisStarted: true,
+      aiAnalysisStartedAt: data.aiAnalysisStartedAt || new Date().toISOString()
+    };
+    
+    // Update assessment with processed results
+    await prisma.assessment.update({
+      where: { id: assessmentId },
+      data: {
+        data: processedData,
+        status: 'completed'
+      }
+    });
+    
+    console.log(`[AI Processing] Successfully completed AI analysis for ${assessmentId}`);
+    
+  } catch (error) {
+    console.error(`[AI Processing] Error processing assessment ${assessmentId}:`, error);
+    
+    // Update assessment with error information
+    try {
+      const assessment = await prisma.assessment.findUnique({
+        where: { id: assessmentId }
+      });
+      
+      if (assessment) {
+        const data = assessment.data as Record<string, any> || {};
+        await prisma.assessment.update({
+          where: { id: assessmentId },
+          data: {
+            data: {
+              ...data,
+              aiError: error instanceof Error ? error.message : 'Unknown AI processing error',
+              aiProcessed: false,
+              aiAnalysisStarted: false
+            }
+          }
+        });
+      }
+    } catch (updateError) {
+      console.error(`[AI Processing] Failed to update assessment with error:`, updateError);
+    }
+    
+    throw error;
+  }
+}
+
+// Generate summary based on results
+function generateSummary(overallScore: number, readinessLevel: string, assessmentType: string): string {
+  const typeNames: Record<string, string> = {
+    fjrl: 'first job readiness',
+    ijrl: 'ideal job readiness', 
+    cdrl: 'career development readiness',
+    ccrl: 'career comeback readiness',
+    ctrl: 'career transition readiness',
+    rrl: 'retirement readiness',
+    irl: 'internship readiness'
+  };
+  
+  const typeName = typeNames[assessmentType.toLowerCase()] || 'career readiness';
+  
+  if (overallScore >= 85) {
+    return `Excellent work! Your ${typeName} assessment shows you are well-prepared and ready to take the next steps in your career journey. You demonstrate strong competencies across all key areas.`;
+  } else if (overallScore >= 70) {
+    return `Good progress! Your ${typeName} assessment indicates you are approaching readiness. With some focused development in key areas, you'll be well-positioned for success.`;
+  } else if (overallScore >= 50) {
+    return `You're on the right track! Your ${typeName} assessment shows developing competency. Focus on strengthening the areas highlighted in your recommendations to improve your readiness.`;
+  } else {
+    return `This assessment provides a helpful starting point for your ${typeName} development. The recommendations will guide you in building the essential skills and knowledge needed for your career goals.`;
+  }
+}
 
 // Process scores
 export async function processScores(responses: any, assessmentType: string) {

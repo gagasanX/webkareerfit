@@ -17,10 +17,10 @@ interface AssessmentData {
   [key: string]: any; // Allow for other properties
 }
 
-// GET endpoint for retrieving an assessment
+// CRITICAL FIX: Proper Next.js 15 async params handling
 export async function GET(
   request: NextRequest,
-  { params }: { params: { type: string; id: string } }
+  { params }: { params: Promise<{ type: string; id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -29,7 +29,9 @@ export async function GET(
       return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
     }
 
-    const { type, id } = params;
+    // FIXED: Properly await params for Next.js 15
+    const resolvedParams = await params;
+    const { type, id } = resolvedParams;
 
     const assessment = await prisma.assessment.findUnique({
       where: { id },
@@ -62,10 +64,10 @@ export async function GET(
   }
 }
 
-// POST endpoint for submitting an assessment
+// CRITICAL FIX: Proper Next.js 15 async params handling
 export async function POST(
   request: Request,
-  { params }: { params: { type: string; id: string } }
+  { params }: { params: Promise<{ type: string; id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -73,7 +75,10 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { type, id } = params;
+    // FIXED: Properly await params for Next.js 15
+    const resolvedParams = await params;
+    const { type, id } = resolvedParams;
+    
     const { responses } = await request.json();
 
     // Get assessment to check package price and processing type

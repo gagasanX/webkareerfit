@@ -59,8 +59,13 @@ export default function PaymentClient({
             throw new Error('Failed to process free assessment');
           }
           
-          // Redirect to the assessment page
-          router.push(`/assessment/${assessment.type}/${assessment.id}`);
+          const data = await response.json();
+          
+          // CRITICAL FIX: Use the redirect URL from API response
+          const redirectUrl = data.redirectUrl || `/assessment/${assessment.type}/${assessment.id}`;
+          console.log(`Free assessment completed, redirecting to: ${redirectUrl}`);
+          
+          router.push(redirectUrl);
         } catch (err) {
           setError('Error processing free assessment. Please try again.');
           setIsProcessing(false);
@@ -71,8 +76,16 @@ export default function PaymentClient({
     processFreeAssessment();
   }, [isFree, assessment, router, isProcessing]);
   
+  // CRITICAL FIX: Handle coupon application with proper price calculation
   const handleApplyCoupon = (discountAmount: number, newPrice: number) => {
-    console.log(`[PaymentClient] Coupon applied - Discount: ${discountAmount}, New Price: ${newPrice}`);
+    console.log(`[PaymentClient] Coupon applied - Original: ${basePrice}, Discount: ${discountAmount}, New Price: ${newPrice}`);
+    
+    // Verify the calculation makes sense
+    const expectedNewPrice = basePrice - discountAmount;
+    if (Math.abs(newPrice - expectedNewPrice) > 0.01) {
+      console.warn(`Price calculation mismatch. Expected: ${expectedNewPrice}, Got: ${newPrice}`);
+    }
+    
     setDiscount(discountAmount);
     setFinalPrice(newPrice);
   };
@@ -112,8 +125,13 @@ export default function PaymentClient({
           throw new Error('Failed to process free assessment');
         }
         
-        // Redirect to assessment page
-        router.push(`/assessment/${assessment.type}/${assessment.id}`);
+        const data = await response.json();
+        
+        // CRITICAL FIX: Use the redirect URL from API response
+        const redirectUrl = data.redirectUrl || `/assessment/${assessment.type}/${assessment.id}`;
+        console.log(`Free assessment submitted, redirecting to: ${redirectUrl}`);
+        
+        router.push(redirectUrl);
         return;
       }
       
@@ -223,7 +241,7 @@ export default function PaymentClient({
                   </div>
                 </div>
                 
-                {/* Coupon Section */}
+                {/* CRITICAL FIX: Pass tier to CouponInput */}
                 <div className="mt-6">
                   <h3 className="text-sm font-medium text-gray-700 mb-2">Have a coupon code?</h3>
                   <CouponInput
@@ -231,6 +249,7 @@ export default function PaymentClient({
                     assessmentType={assessment.type}
                     originalPrice={basePrice}
                     onApplyCoupon={handleApplyCoupon}
+                    tier={assessment.tier} // ✅ CRITICAL FIX: Pass tier for correct pricing
                   />
                 </div>
               </div>
@@ -339,19 +358,6 @@ export default function PaymentClient({
           </div>
         </div>
       </div>
-      
-      {/* Main page payment button (visible in your screenshot) - make sure this is rendered on the page */}
-      {basePrice > 0 && (
-        <div className="mt-8 flex justify-center">
-          <button
-            onClick={handleSubmit}
-            disabled={isProcessing}
-            className="px-8 py-3 bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] text-white font-bold rounded-lg hover:shadow-lg text-lg"
-          >
-            {isProcessing ? 'Processing...' : `Start Assessment for RM ${finalPrice}`}
-          </button>
-        </div>
-      )}
     </div>
   );
 }

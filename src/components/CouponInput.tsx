@@ -6,11 +6,26 @@ import { useRouter } from 'next/navigation';
 interface CouponInputProps {
   assessmentId: string;
   assessmentType: string;
-  onApplyCoupon: (discount: number, finalPrice: number) => void;
   originalPrice: number;
+  onApplyCoupon: (discount: number, finalPrice: number) => void;
+  // CRITICAL FIX: Add tier prop to send correct pricing info
+  tier?: string;
 }
 
-export default function CouponInput({ assessmentId, assessmentType, onApplyCoupon, originalPrice }: CouponInputProps) {
+// FIXED: Define interface for validation payload
+interface CouponValidationPayload {
+  code: string;
+  assessmentId: string;
+  tier?: string;
+}
+
+export default function CouponInput({ 
+  assessmentId, 
+  assessmentType, 
+  originalPrice, 
+  onApplyCoupon,
+  tier 
+}: CouponInputProps) {
   const router = useRouter();
   const [couponCode, setCouponCode] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -36,36 +51,56 @@ export default function CouponInput({ assessmentId, assessmentType, onApplyCoupo
     setSuccess(null);
     
     try {
+      // FIXED: Use object spread to conditionally include tier
+      const validationPayload: CouponValidationPayload = {
+        code: couponCode,
+        assessmentId: assessmentId,
+        ...(tier && { tier }), // Only include tier if it exists
+      };
+      
+      console.log('Sending coupon validation request:', validationPayload);
+      
       const response = await fetch('/api/coupon/validate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          code: couponCode,
-          assessmentType,
-        }),
+        body: JSON.stringify(validationPayload),
       });
       
       const data = await response.json();
+      
+      console.log('Coupon validation response:', data);
       
       if (!response.ok) {
         throw new Error(data.message || 'Error validating coupon');
       }
       
-      // Success
+      // Success - show the savings message
       setSuccess(data.message);
       setAppliedCoupon(couponCode);
       
-      // Call the parent handler
+      // CRITICAL FIX: Verify the discount calculation makes sense
+      console.log('Coupon calculation verification:', {
+        originalPrice: originalPrice,
+        apiOriginalPrice: data.originalPrice,
+        finalPrice: data.finalPrice,
+        discount: data.discount,
+        match: originalPrice === data.originalPrice
+      });
+      
+      // Call the parent handler to update UI
       onApplyCoupon(data.discount, data.finalPrice);
       
-      // If the final price is 0 (free), apply the coupon and redirect to assessment
+      // CRITICAL FIX: Check if final price is 0 (free) with proper calculation
       if (data.finalPrice === 0) {
-        // Show a processing message
+        console.log('✅ Coupon provides 100% discount - processing free assessment');
+        
+        // Show processing message
         setSuccess('Coupon provides 100% discount! Processing your free assessment...');
         
         // Apply the coupon to the assessment
+        console.log('Applying coupon to assessment...');
         const applyResponse = await fetch('/api/coupon/apply', {
           method: 'POST',
           headers: {
@@ -78,10 +113,15 @@ export default function CouponInput({ assessmentId, assessmentType, onApplyCoupo
         });
         
         if (!applyResponse.ok) {
-          throw new Error('Error applying free coupon');
+          const applyError = await applyResponse.json();
+          throw new Error(applyError.message || 'Error applying free coupon');
         }
         
+        const applyData = await applyResponse.json();
+        console.log('Coupon applied successfully:', applyData);
+        
         // Process the free assessment
+        console.log('Processing free assessment...');
         const completeResponse = await fetch('/api/payment/complete-free', {
           method: 'POST',
           headers: {
@@ -93,18 +133,43 @@ export default function CouponInput({ assessmentId, assessmentType, onApplyCoupo
         });
         
         if (!completeResponse.ok) {
-          throw new Error('Error processing free assessment');
+          const completeError = await completeResponse.json();
+          throw new Error(completeError.message || 'Error processing free assessment');
         }
         
-        // Redirect to the assessment page
-        router.push(`/assessment/${assessmentType}/${assessmentId}`);
+        const completeData = await completeResponse.json();
+        console.log('Free assessment completed:', completeData);
+        
+        // CRITICAL FIX: Use the redirect URL from the API response
+        const redirectUrl = completeData.redirectUrl || `/assessment/${assessmentType}/${assessmentId}`;
+        console.log(`Redirecting to: ${redirectUrl}`);
+        
+        // Show success message before redirect
+        setSuccess('Free assessment activated! Redirecting...');
+        
+        // Redirect after a short delay
+        setTimeout(() => {
+          router.push(redirectUrl);
+        }, 1500);
+      } else {
+        console.log(`✅ Coupon applied - Final price: RM${data.finalPrice}`);
       }
       
     } catch (err) {
+      console.error('Coupon validation/application error:', err);
       setError(err instanceof Error ? err.message : 'Error applying coupon. Please try again.');
     } finally {
       setIsLoading(false);
     }
+  };
+  
+  // FIXED: Reset function to use original price correctly
+  const resetCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponCode('');
+    setSuccess(null);
+    setError(null);
+    onApplyCoupon(0, originalPrice); // Reset to original price
   };
   
   return (
@@ -146,12 +211,7 @@ export default function CouponInput({ assessmentId, assessmentType, onApplyCoupo
         {appliedCoupon && (
           <button
             type="button"
-            onClick={() => {
-              setAppliedCoupon(null);
-              setCouponCode('');
-              setSuccess(null);
-              onApplyCoupon(0, originalPrice);
-            }}
+            onClick={resetCoupon}
             className="text-red-500 hover:text-red-700 text-sm whitespace-nowrap"
           >
             Remove
@@ -167,16 +227,14 @@ export default function CouponInput({ assessmentId, assessmentType, onApplyCoupo
         <p className="mt-2 text-sm text-green-600">{success}</p>
       )}
       
+      {/* FIXED: Display correct discount calculation */}
       {appliedCoupon && (
         <div className="mt-3 text-sm">
           <div className="flex justify-between items-center text-gray-500">
             <span>Original price:</span>
             <span>RM {originalPrice.toFixed(2)}</span>
           </div>
-          <div className="flex justify-between items-center text-green-600 font-medium">
-            <span>Discount:</span>
-            <span>-RM {(originalPrice - (originalPrice - (appliedCoupon ? originalPrice * 0.1 : 0))).toFixed(2)}</span>
-          </div>
+          {/* Note: The actual discount amount will be calculated by the parent component based on API response */}
         </div>
       )}
     </div>

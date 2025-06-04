@@ -4,9 +4,17 @@ import { authOptions } from '@/lib/auth/auth';
 import { prisma } from '@/lib/db';
 import PaymentClient from './PaymentClient';
 
-export default async function PaymentPage({ params }: { params: { assessmentId: string } }) {
+// CRITICAL FIX: Proper Next.js 15 async params handling
+export default async function PaymentPage({ 
+  params 
+}: { 
+  params: Promise<{ assessmentId: string }> 
+}) {
   const session = await getServerSession(authOptions);
-  const assessmentId = params.assessmentId; // Extract it once to avoid multiple access
+  
+  // FIXED: Properly await params for Next.js 15
+  const resolvedParams = await params;
+  const assessmentId = resolvedParams.assessmentId;
 
   // Redirect to login if not authenticated
   if (!session || !session.user) {
@@ -51,26 +59,32 @@ export default async function PaymentPage({ params }: { params: { assessmentId: 
     irl: 'Internship Readiness Level',
   };
 
-  // Critical fix: Set the base price according to the tier
-  // Explicitly check the tier value and map to the corresponding price
-  let basePrice = 50; // Default to basic price
+  // CRITICAL FIX: Use proper tier-based pricing from single source of truth
+  const TIER_PRICES = {
+    basic: 50,
+    standard: 100,
+    premium: 250,
+  };
   
-  if (assessment.tier === 'basic') {
-    basePrice = 50;
-  } else if (assessment.tier === 'standard') {
-    basePrice = 100;
-  } else if (assessment.tier === 'premium') {
-    basePrice = 250;
-  }
+  // Get base price from tier (most reliable method)
+  let basePrice = TIER_PRICES[assessment.tier as keyof typeof TIER_PRICES] || TIER_PRICES.basic;
   
-  // Important: If the assessment's price is already set and differs from our calculated basePrice,
-  // use the assessment's price instead to ensure consistency
-  if (assessment.price && assessment.price !== basePrice) {
-    console.log(`Assessment already has a price (${assessment.price}) that differs from calculated basePrice (${basePrice}). Using assessment price.`);
+  // CRITICAL FIX: Only use assessment.price if it matches expected tier pricing
+  // This prevents overwrites and ensures consistency
+  const expectedPrice = TIER_PRICES[assessment.tier as keyof typeof TIER_PRICES];
+  if (assessment.price && assessment.price === expectedPrice) {
     basePrice = assessment.price;
+    console.log(`[PaymentPage] Using assessment price (matches tier): ${assessment.price}`);
+  } else if (assessment.price && assessment.price !== expectedPrice) {
+    console.log(`[PaymentPage] Price mismatch - Tier: ${assessment.tier} expects ${expectedPrice}, DB has ${assessment.price}. Using tier price.`);
+    // Update assessment price to match tier
+    await prisma.assessment.update({
+      where: { id: assessmentId },
+      data: { price: basePrice }
+    });
   }
   
-  console.log(`[PaymentPage] ID: ${assessment.id}, Tier: ${assessment.tier}, Setting basePrice: ${basePrice}`);
+  console.log(`[PaymentPage] Final pricing - ID: ${assessment.id}, Tier: ${assessment.tier}, Price: ${basePrice}`);
   
   const assessmentType = assessment.type as keyof typeof assessmentLabels;
   const assessmentLabel = assessmentLabels[assessmentType] || assessment.type;
@@ -85,9 +99,9 @@ export default async function PaymentPage({ params }: { params: { assessmentId: 
   // Get the package label
   const packageLabel = packageLabels[assessment.tier as keyof typeof packageLabels] || 'Custom Package';
 
-  // Update any existing pending payment to match the current price
+  // FIXED: Update any existing pending payment to match the tier price
   if (assessment.payment && assessment.payment.status === 'pending' && assessment.payment.amount !== basePrice) {
-    console.log(`Updating existing payment from ${assessment.payment.amount} to ${basePrice}`);
+    console.log(`Updating existing payment from ${assessment.payment.amount} to ${basePrice} (tier-based)`);
     await prisma.payment.update({
       where: { id: assessment.payment.id },
       data: { amount: basePrice }
@@ -101,7 +115,6 @@ export default async function PaymentPage({ params }: { params: { assessmentId: 
     - Tier: ${assessment.tier} (${packageLabel})
     - Price: ${basePrice}`);
 
-  // No type conversion needed - pass the session user directly
   return (
     <PaymentClient 
       assessment={assessment} 

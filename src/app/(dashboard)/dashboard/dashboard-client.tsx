@@ -247,6 +247,139 @@ const ConfirmationDialog = ({
   );
 };
 
+// ✅ CRITICAL FIX: Status mapping helper function
+const getAssessmentStatus = (status: string) => {
+  switch (status) {
+    case 'draft':
+      return {
+        text: 'Draft',
+        color: 'bg-gray-100 text-gray-800'
+      };
+    case 'in_progress':
+      return {
+        text: 'In Progress',
+        color: 'bg-yellow-100 text-yellow-800'
+      };
+    case 'submitted':
+      return {
+        text: 'Submitted',
+        color: 'bg-blue-100 text-blue-800'
+      };
+    case 'pending_review':
+      return {
+        text: 'Under Review',
+        color: 'bg-blue-100 text-blue-800'
+      };
+    case 'processing':
+      return {
+        text: 'Processing',
+        color: 'bg-indigo-100 text-indigo-800'
+      };
+    case 'completed':
+      return {
+        text: 'Completed',
+        color: 'bg-green-100 text-green-800'
+      };
+    case 'cancelled':
+      return {
+        text: 'Cancelled',
+        color: 'bg-red-100 text-red-800'
+      };
+    default:
+      return {
+        text: 'Unknown',
+        color: 'bg-gray-100 text-gray-800'
+      };
+  }
+};
+
+// ✅ CRITICAL FIX: Action button helper function
+const getAssessmentActions = (assessment: any, confirmCancel: (id: string, type: string) => void) => {
+  const { status, payment, id, type } = assessment;
+  
+  // Completed assessments
+  if (status === 'completed') {
+    return (
+      <Link 
+        href={`/assessment/${type}/results/${id}`}
+        className="text-[#38b6ff] hover:text-[#7e43f1] bg-blue-50 hover:bg-blue-100 px-1 sm:px-2 py-1 rounded text-xs"
+      >
+        View Results
+      </Link>
+    );
+  }
+  
+  // Cancelled assessments
+  if (status === 'cancelled') {
+    return (
+      <span className="text-gray-400 px-1 sm:px-2 py-1 text-xs">Cancelled</span>
+    );
+  }
+  
+  // Submitted/Under Review assessments - show view status
+  if (status === 'submitted' || status === 'pending_review' || status === 'processing') {
+    // Determine the correct status page based on tier/price
+    let statusUrl = `/assessment/${type}/results/${id}`; // fallback
+    
+    if (payment?.amount >= 250 || (assessment as any).tier === 'premium') {
+      statusUrl = `/assessment/${type}/premium-results/${id}`;
+    } else if (payment?.amount >= 100 || (assessment as any).tier === 'standard') {
+      statusUrl = `/assessment/${type}/standard-results/${id}`;
+    } else {
+      statusUrl = `/assessment/${type}/processing/${id}`;
+    }
+    
+    return (
+      <div className="flex space-x-1 sm:space-x-2">
+        <Link 
+          href={statusUrl}
+          className="text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-1 sm:px-2 py-1 rounded text-xs"
+        >
+          View Status
+        </Link>
+      </div>
+    );
+  }
+  
+  // Draft/In Progress assessments
+  if (payment?.status === 'completed') {
+    return (
+      <div className="flex space-x-1 sm:space-x-2">
+        <Link 
+          href={`/assessment/${type}/${id}`}
+          className="text-[#38b6ff] hover:text-[#7e43f1] bg-blue-50 hover:bg-blue-100 px-1 sm:px-2 py-1 rounded text-xs"
+        >
+          Continue
+        </Link>
+        <button
+          onClick={() => confirmCancel(id, type)}
+          className="text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-1 sm:px-2 py-1 rounded text-xs"
+        >
+          Cancel
+        </button>
+      </div>
+    );
+  } else {
+    // Payment not completed
+    return (
+      <div className="flex space-x-1 sm:space-x-2">
+        <Link 
+          href={`/payment/${id}`}
+          className="text-[#38b6ff] hover:text-[#7e43f1] bg-blue-50 hover:bg-blue-100 px-1 sm:px-2 py-1 rounded text-xs"
+        >
+          Pay Now
+        </Link>
+        <button
+          onClick={() => confirmCancel(id, type)}
+          className="text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-1 sm:px-2 py-1 rounded text-xs"
+        >
+          Cancel
+        </button>
+      </div>
+    );
+  }
+};
+
 export default function DashboardClient() {
   const router = useRouter();
   const { data: session, status } = useSession();
@@ -375,7 +508,13 @@ export default function DashboardClient() {
   const completedAssessments = user.assessments?.filter(a => a.status === 'completed').length || 0;
   const completionRate = 0; // Set to 0
   
-  const pendingAssessments = user.assessments?.filter(a => a.status !== 'completed' && a.status !== 'cancelled') || [];
+  // ✅ CRITICAL FIX: Better pending assessment filtering
+  const pendingAssessments = user.assessments?.filter(a => 
+    a.status === 'draft' || 
+    a.status === 'in_progress' || 
+    (a.status !== 'completed' && a.status !== 'cancelled' && a.payment?.status !== 'completed')
+  ) || [];
+  
   const pendingPayments = user.assessments?.filter(a => a.payment?.status !== 'completed') || [];
 
   return (
@@ -688,6 +827,8 @@ export default function DashboardClient() {
                     <tbody className="bg-white divide-y divide-gray-200">
                       {user.assessments?.map((assessment, index) => {
                         const assessmentType = assessmentTypes.find(t => t.id === assessment.type);
+                        const statusInfo = getAssessmentStatus(assessment.status);
+                        
                         return (
                           <tr key={index} className="hover:bg-gray-50">
                             <td className="px-2 sm:px-4 py-3 whitespace-nowrap">
@@ -699,18 +840,8 @@ export default function DashboardClient() {
                               </div>
                             </td>
                             <td className="px-2 sm:px-4 py-3 whitespace-nowrap">
-                              <span className={`inline-flex text-xs leading-5 font-semibold rounded-full px-1 sm:px-2 py-1 ${
-                                assessment.status === 'completed' 
-                                  ? 'bg-green-100 text-green-800' 
-                                  : assessment.status === 'cancelled'
-                                  ? 'bg-red-100 text-red-800'
-                                  : 'bg-yellow-100 text-yellow-800'
-                              }`}>
-                                {assessment.status === 'completed' 
-                                  ? 'Completed' 
-                                  : assessment.status === 'cancelled'
-                                  ? 'Cancelled'
-                                  : 'In Progress'}
+                              <span className={`inline-flex text-xs leading-5 font-semibold rounded-full px-1 sm:px-2 py-1 ${statusInfo.color}`}>
+                                {statusInfo.text}
                               </span>
                             </td>
                             <td className="hidden sm:table-cell px-4 py-3 whitespace-nowrap text-sm text-gray-500">
@@ -727,48 +858,7 @@ export default function DashboardClient() {
                             </td>
                             <td className="px-2 sm:px-4 py-3 whitespace-nowrap text-right text-sm font-medium">
                               <div className="flex justify-end space-x-1 sm:space-x-2">
-                                {assessment.status === 'completed' ? (
-                                  <Link 
-                                    href={`/assessment/${assessment.type}/results/${assessment.id}`}
-                                    className="text-[#38b6ff] hover:text-[#7e43f1] bg-blue-50 hover:bg-blue-100 px-1 sm:px-2 py-1 rounded text-xs"
-                                  >
-                                    View Results
-                                  </Link>
-                                ) : assessment.status === 'cancelled' ? (
-                                  <span className="text-gray-400 px-1 sm:px-2 py-1 text-xs">Cancelled</span>
-                                ) : assessment.payment?.status === 'completed' ? (
-                                  <>
-                                    <Link 
-                                      href={`/assessment/${assessment.type}/${assessment.id}`}
-                                      className="text-[#38b6ff] hover:text-[#7e43f1] bg-blue-50 hover:bg-blue-100 px-1 sm:px-2 py-1 rounded text-xs"
-                                    >
-                                      Continue
-                                    </Link>
-                                    <button
-                                      onClick={() => confirmCancel(assessment.id, assessment.type)}
-                                      disabled={cancelingId === assessment.id}
-                                      className="text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-1 sm:px-2 py-1 rounded text-xs"
-                                    >
-                                      {cancelingId === assessment.id ? 'Cancelling...' : 'Cancel'}
-                                    </button>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Link 
-                                      href={`/payment/${assessment.id}`}
-                                      className="text-[#38b6ff] hover:text-[#7e43f1] bg-blue-50 hover:bg-blue-100 px-1 sm:px-2 py-1 rounded text-xs"
-                                    >
-                                      Pay Now
-                                    </Link>
-                                    <button
-                                      onClick={() => confirmCancel(assessment.id, assessment.type)}
-                                      disabled={cancelingId === assessment.id}
-                                      className="text-red-600 hover:text-red-800 bg-red-50 hover:bg-red-100 px-1 sm:px-2 py-1 rounded text-xs"
-                                    >
-                                      {cancelingId === assessment.id ? 'Cancelling...' : 'Cancel'}
-                                    </button>
-                                  </>
-                                )}
+                                {getAssessmentActions(assessment, confirmCancel)}
                               </div>
                             </td>
                           </tr>
@@ -815,6 +905,8 @@ export default function DashboardClient() {
                 <div className="space-y-3">
                   {pendingAssessments.map((assessment, index) => {
                     const assessmentType = assessmentTypes.find(t => t.id === assessment.type);
+                    const statusInfo = getAssessmentStatus(assessment.status);
+                    
                     return (
                       <Link
                         key={index}
@@ -835,7 +927,7 @@ export default function DashboardClient() {
                             {assessmentType?.label || assessment.type}
                           </p>
                           <p className="text-xs text-gray-500">
-                            {assessment.payment?.status === 'completed' ? 'Continue assessment' : 'Payment required'}
+                            {statusInfo.text} • {assessment.payment?.status === 'completed' ? 'Paid' : 'Payment required'}
                           </p>
                         </div>
                         <div className="text-xs px-2 py-1 rounded-full bg-gray-100 text-gray-700">

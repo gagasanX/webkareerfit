@@ -1,4 +1,3 @@
-//app/assessment/[type]/results/[id]/resultclient.tsx
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
@@ -40,9 +39,13 @@ interface AssessmentData {
   aiAnalysisStarted?: boolean;
   aiAnalysisStartedAt?: string;
   aiError?: string;
-  // Added fields for manual processing
+  // Manual processing fields
   reviewNotes?: string;
   reviewedAt?: string;
+  // Critical redirect fields
+  redirectRequired?: boolean;
+  manualProcessingOnly?: boolean;
+  properRedirectUrl?: string;
 }
 
 interface ResultsClientProps {
@@ -58,7 +61,6 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
   const [assessment, setAssessment] = useState<any>(null);
   const [assessmentData, setAssessmentData] = useState<AssessmentData | null>(null);
   const [aiStatus, setAiStatus] = useState<'pending' | 'processing' | 'completed' | 'failed'>('pending');
-  // New state for manual processing
   const [manualStatus, setManualStatus] = useState<'pending_review' | 'in_review' | 'completed' | null>(null);
   const [pollingCount, setPollingCount] = useState(0);
   const [debugInfo, setDebugInfo] = useState<string | null>(null);
@@ -75,8 +77,7 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
     irl: 'Internship Readiness Level',
   };
 
-  // Mapping between backend category names and UI display names
-  // Add index signature to allow string indexing
+  // Category display mapping
   const categoryDisplayMap: { [key: string]: string } = {
     // CCRL - Career Comeback Readiness Level
     skillCurrency: 'Skill Renewal',
@@ -126,7 +127,7 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
     professionalNetworking: 'Professional Networking'
   };
 
-  // Get appropriate categories for each assessment type
+  // Get expected categories for each assessment type
   function getExpectedCategories(assessmentType: string): string[] {
     switch (assessmentType.toLowerCase()) {
       case 'fjrl':
@@ -148,7 +149,23 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
     }
   }
 
-  // Fetch assessment results
+  // Helper function to determine if assessment should redirect
+  function shouldRedirectToThankYouPage(assessment: any, assessmentData: any): boolean {
+    const isManualProcessing = assessment?.tier === 'standard' || 
+                              assessment?.tier === 'premium' || 
+                              assessment?.manualProcessing === true;
+    
+    const redirectRequired = assessmentData?.redirectRequired === true || 
+                            assessmentData?.manualProcessingOnly === true;
+    
+    const hasNoRealResults = !assessmentData?.scores ||
+                            Object.keys(assessmentData.scores).length <= 1 ||
+                            assessmentData.manualProcessingOnly;
+    
+    return isManualProcessing && (redirectRequired || hasNoRealResults);
+  }
+
+  // Authentication and initial fetch
   useEffect(() => {
     if (status === 'unauthenticated') {
       router.push(`/login?callbackUrl=/assessment/${assessmentType}/results/${assessmentId}`);
@@ -159,6 +176,59 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
       fetchResults();
     }
   }, [status, assessmentType, assessmentId, router]);
+
+  // Auto-redirect for manual processing assessments
+  useEffect(() => {
+    if (assessment && assessmentData) {
+      console.log('Checking manual processing redirect requirement:', {
+        tier: assessment.tier,
+        price: assessment.price,
+        manualProcessing: assessment.manualProcessing,
+        redirectRequired: assessmentData.redirectRequired,
+        manualProcessingOnly: assessmentData.manualProcessingOnly
+      });
+      
+      const isManualProcessing = assessment.tier === 'standard' || 
+                                assessment.tier === 'premium' || 
+                                assessment.manualProcessing === true;
+      
+      const redirectRequired = assessmentData.redirectRequired === true || 
+                              assessmentData.manualProcessingOnly === true;
+      
+      const hasOnlyPlaceholderResults = !assessmentData.scores ||
+                                       Object.keys(assessmentData.scores).length <= 1 ||
+                                       assessmentData.manualProcessingOnly;
+      
+      console.log('Redirect decision factors:', {
+        isManualProcessing,
+        redirectRequired,
+        hasOnlyPlaceholderResults,
+        shouldRedirect: isManualProcessing && (redirectRequired || hasOnlyPlaceholderResults)
+      });
+      
+      if (isManualProcessing && (redirectRequired || hasOnlyPlaceholderResults)) {
+        console.log('🔄 Manual processing assessment detected - redirecting to thank you page');
+        
+        let redirectUrl: string;
+        if (assessment.tier === 'premium') {
+          redirectUrl = `/assessment/${assessmentType}/premium-results/${assessmentId}`;
+          console.log('Redirecting to premium-results page');
+        } else if (assessment.tier === 'standard') {
+          redirectUrl = `/assessment/${assessmentType}/standard-results/${assessmentId}`;
+          console.log('Redirecting to standard-results page');
+        } else {
+          console.warn('Manual processing assessment with basic tier - unusual case');
+          return;
+        }
+        
+        console.log(`Executing redirect to: ${redirectUrl}`);
+        router.replace(redirectUrl);
+        return;
+      }
+      
+      console.log('✅ Showing results page - either basic tier with AI results or completed manual review');
+    }
+  }, [assessment, assessmentData, router, assessmentType, assessmentId]);
 
   // Poll for AI updates if needed
   useEffect(() => {
@@ -173,7 +243,7 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
       const timer = setTimeout(() => {
         fetchResults();
         setPollingCount(prev => prev + 1);
-      }, 10000); // Poll every 10 seconds
+      }, 10000);
       
       return () => clearTimeout(timer);
     }
@@ -189,7 +259,6 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
       console.log(`Fetching results for assessment: ${assessmentType}/${assessmentId}`);
       setDebugInfo(`Fetching results for assessment: ${assessmentType}/${assessmentId}`);
       
-      // Add a cache-busting parameter
       const now = new Date().getTime();
       const response = await fetch(`/api/assessment/${assessmentType}/results/${assessmentId}?_nocache=${now}`);
       
@@ -215,43 +284,33 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
       
       setAssessment(data);
       
-      // Check if this is a manual processing assessment
-      const isManualProcessing = data.manualProcessing || data.price === 100 || data.price === 250;
+      const isManualProcessing = data.manualProcessing || 
+                                data.tier === 'standard' || 
+                                data.tier === 'premium';
       
-      // Set manual status based on assessment status if it's a manual processing assessment
       if (isManualProcessing) {
         setManualStatus(data.status as 'pending_review' | 'in_review' | 'completed' | null);
         
-        // If manual processing is completed, we'll treat it as if AI is completed
-        // so that results are displayed
         if (data.status === 'completed') {
           setAiStatus('completed');
         } else {
-          // Don't set AI status for in-progress manual reviews
           setAiStatus('pending');
         }
         
         console.log(`Manual processing assessment detected. Status: ${data.status}`);
-        setDebugInfo(`Manual processing (RM${data.price}) assessment. Status: ${data.status}`);
+        setDebugInfo(`Manual processing (tier: ${data.tier}) assessment. Status: ${data.status}`);
       }
       
-      // Get assessment data
       const responseData = data.data || {};
-      
-      // Get expected categories for this assessment type
       const expectedCategories = getExpectedCategories(assessmentType);
       
-      // IMPORTANT: Initialize the scores object properly
-      let scoresObj = { overallScore: 70 } as ScoresData; // Default overall score
+      let scoresObj = { overallScore: 70 } as ScoresData;
       
-      // Process the scores from the response
       if (responseData.scores && typeof responseData.scores === 'object' && !Array.isArray(responseData.scores)) {
         const receivedScores = responseData.scores;
         
-        // Log received scores for debugging
         console.log('Received scores:', receivedScores);
         
-        // Check for uniform scores (potential issue)
         if (Object.keys(receivedScores).length > 1) {
           const scoreValues = Object.entries(receivedScores)
             .filter(([key]) => key !== 'overallScore')
@@ -267,19 +326,16 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
           }
         }
         
-        // Make sure all expected categories have scores
         expectedCategories.forEach(category => {
           if (!receivedScores.hasOwnProperty(category)) {
             console.warn(`Expected category ${category} missing from response`);
           }
         });
         
-        // Copy valid scores to our scores object
         Object.entries(receivedScores).forEach(([key, value]) => {
           if (typeof value === 'number' && !isNaN(value) && value >= 0 && value <= 100) {
             scoresObj[key] = value;
           } else if (value !== undefined) {
-            // Try to convert to number if possible
             const numValue = Number(value);
             if (!isNaN(numValue) && numValue >= 0 && numValue <= 100) {
               scoresObj[key] = numValue;
@@ -291,7 +347,6 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
         });
       }
       
-      // Calculate overall score if missing or invalid
       if (!scoresObj.hasOwnProperty('overallScore') || 
           typeof scoresObj.overallScore !== 'number' || 
           isNaN(scoresObj.overallScore) || 
@@ -308,28 +363,23 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
           );
           console.log(`Calculated overallScore: ${scoresObj.overallScore} from ${categoryScores.length} categories`);
         } else {
-          scoresObj.overallScore = 70; // Default
+          scoresObj.overallScore = 70;
           console.log(`Using default overallScore: ${scoresObj.overallScore}`);
         }
       }
       
-      // Explicitly round the overall score to ensure it's an integer
       scoresObj.overallScore = Math.round(scoresObj.overallScore);
       
-      // Normalize recommendations to ensure they have the proper structure
       const normalizedRecommendations = normalizeRecommendations(responseData.recommendations || []);
       
-      // Determine readiness level from overall score if missing
       let readinessLevel = responseData.readinessLevel || '';
       if (!readinessLevel) {
         readinessLevel = calculateReadinessLevel(scoresObj.overallScore);
         console.log(`Calculated readiness level: ${readinessLevel}`);
       }
       
-      // Create the isAnalysisStarted flag by combining the two possible flags
       const isAnalysisStarted = Boolean(responseData.aiAnalysisStarted || responseData.aiProcessing);
       
-      // Ensure data has required properties with defaults
       const processedData: AssessmentData = {
         scores: scoresObj,
         readinessLevel: readinessLevel,
@@ -348,12 +398,13 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
         aiAnalysisStartedAt: responseData.aiAnalysisStartedAt || responseData.aiProcessingStarted,
         aiProcessedAt: responseData.aiProcessedAt,
         aiError: responseData.aiError,
-        // Add manual processing data
         reviewNotes: data.reviewNotes,
         reviewedAt: data.reviewedAt,
+        redirectRequired: responseData.redirectRequired,
+        manualProcessingOnly: responseData.manualProcessingOnly,
+        properRedirectUrl: responseData.properRedirectUrl,
       };
       
-      // Check AI processing status
       if (processedData.aiProcessed) {
         setAiStatus('completed');
         setDebugInfo('AI analysis is complete');
@@ -380,7 +431,6 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
     }
   };
 
-  // Helper function to normalize recommendations to the expected format
   const normalizeRecommendations = (recommendations: any[]): RecommendationWithDetails[] => {
     if (!Array.isArray(recommendations)) {
       console.warn('Recommendations is not an array, using empty array instead');
@@ -388,11 +438,9 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
     }
     
     return recommendations.map(rec => {
-      // If it's already in the correct format with title, explanation and steps
       if (rec && typeof rec === 'object' && rec.title && rec.explanation && Array.isArray(rec.steps)) {
         return rec as RecommendationWithDetails;
       }
-      // If it's a string recommendation
       else if (typeof rec === 'string') {
         return {
           title: rec,
@@ -404,7 +452,6 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
           ]
         };
       }
-      // If it's an object with missing properties
       else if (rec && typeof rec === 'object') {
         return {
           title: rec.title || "Career Development Recommendation",
@@ -416,7 +463,6 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
           ]
         };
       }
-      // Default fallback
       return {
         title: "Enhance Your Career Development",
         explanation: "Focusing on continuous improvement is essential for career growth.",
@@ -429,7 +475,6 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
     });
   };
 
-  // Function to calculate readiness level based on score
   const calculateReadinessLevel = (score: number): string => {
     if (score < 50) return "Early Development";
     if (score < 70) return "Developing Competency";
@@ -437,14 +482,12 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
     return "Fully Prepared";
   };
 
-  // Manual refresh function
   const handleRefreshResults = () => {
     setLoading(true);
     setDebugInfo('Manually refreshing results...');
     fetchResults();
   };
 
-  // Helper to get color based on score percentage
   const getScoreColor = (percentage: number): string => {
     if (percentage >= 80) return 'bg-green-500';
     if (percentage >= 60) return 'bg-blue-500';
@@ -453,7 +496,6 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
     return 'bg-red-500';
   };
 
-  // Get readiness level color
   const getReadinessLevelColor = (level: string): string => {
     switch (level) {
       case "Early Development":
@@ -469,9 +511,7 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
     }
   };
 
-  // Function to handle printing with proper layout
   const handlePrint = () => {
-    // Create a new window for printing
     const printWindow = window.open('', '_blank');
     
     if (!printWindow) {
@@ -479,10 +519,8 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
       return;
     }
     
-    // Safely access the overall score
     const overallScore = assessmentData?.scores?.overallScore ?? 70;
     
-    // Generate category scores HTML for printing
     const categoryScoresHTML = assessmentData && assessmentData.scores 
       ? Object.entries(assessmentData.scores)
           .filter(([key]) => key !== 'overallScore')
@@ -493,7 +531,6 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
                              scoreValue >= 40 ? '#ecc94b' : 
                              scoreValue >= 20 ? '#ed8936' : '#f56565';
             
-            // Use the category display map for printing
             const displayName = categoryDisplayMap[category] || formatCategoryName(category);
             
             return `
@@ -506,7 +543,6 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
                   <div class="score-bar" style="width: ${scoreValue}%; background-color: ${scoreColor};"></div>
                 </div>
                 
-                <!-- Category Analysis (if available) -->
                 ${assessmentData.categoryAnalysis && assessmentData.categoryAnalysis[category] ? `
                   <div class="category-analysis">
                     ${assessmentData.categoryAnalysis[category].strengths && assessmentData.categoryAnalysis[category].strengths.length > 0 ? `
@@ -537,7 +573,6 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
           }).join('') 
       : '<p>No detailed category scores available</p>';
     
-    // Generate the print-optimized HTML content
     const contentToPrint = `
       <!DOCTYPE html>
       <html>
@@ -775,7 +810,6 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
             margin-bottom: 10px;
           }
           
-          /* Print-specific styles */
           @media print {
             body {
               padding: 0;
@@ -795,7 +829,6 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
               border: 1px solid #000;
             }
             
-            /* Ensure colors are preserved in print */
             * {
               -webkit-print-color-adjust: exact !important;
               print-color-adjust: exact !important;
@@ -804,13 +837,11 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
         </style>
       </head>
       <body>
-        <!-- Header Section -->
         <div class="header">
           <h1>${assessmentTypeLabels[assessmentType] || assessmentType} Results</h1>
           <p>Completed on ${new Date(assessmentData?.completedAt || new Date()).toLocaleDateString()}</p>
         </div>
         
-        <!-- Overall Score Section -->
         <div class="section">
           <h2>Overall Score</h2>
           <div class="score-container">
@@ -823,7 +854,6 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
         </div>
         
         ${assessmentData?.reviewNotes ? `
-        <!-- Expert Review Section -->
         <div class="section review-notes">
           <h2>Expert Review</h2>
           <p>Reviewed on ${new Date(assessmentData.reviewedAt || new Date()).toLocaleDateString()}</p>
@@ -831,7 +861,6 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
         </div>
         ` : ''}
         
-        <!-- Strengths and Improvements Section -->
         <div class="section">
           <h2>Key Insights</h2>
           <div class="two-columns">
@@ -850,13 +879,11 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
           </div>
         </div>
         
-        <!-- Category Scores Section -->
         <div class="section">
           <h2>Category Scores</h2>
           ${categoryScoresHTML}
         </div>
         
-        <!-- Recommendations Section -->
         <div class="section">
           <h2>Action Plan & Recommendations</h2>
           ${assessmentData?.recommendations?.map((rec, index) => `
@@ -873,13 +900,11 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
           `).join('') || '<p>No specific recommendations available</p>'}
         </div>
         
-        <!-- Footer Section -->
         <div class="footer">
           <p>This report was generated on ${new Date().toLocaleString()} based on your assessment responses.</p>
           <p>© ${new Date().getFullYear()} KareerFit Assessment System</p>
         </div>
         
-        <!-- Print button (only visible in browser) -->
         <div class="no-print" style="text-align: center; margin-top: 30px;">
           <button onclick="window.print();" style="padding: 10px 20px; background-color: #4299e1; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">
             Print or Save as PDF
@@ -889,12 +914,10 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
       </html>
     `;
     
-    // Write content to the new window
     printWindow.document.open();
     printWindow.document.write(contentToPrint);
     printWindow.document.close();
     
-    // Trigger print when content is loaded
     printWindow.onload = function() {
       setTimeout(() => {
         printWindow.print();
@@ -902,7 +925,7 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
     };
   };
 
-  // Loading, error and not found states remain the same...
+  // Loading state
   if (loading || status === 'loading') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -914,7 +937,31 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
     );
   }
 
+  // Enhanced error handling
   if (error) {
+    if (error.includes('manual processing') || error.includes('expert review')) {
+      let redirectUrl: string;
+      
+      const currentPath = window.location.pathname;
+      const pathParts = currentPath.split('/');
+      const typeFromPath = pathParts[2];
+      const idFromPath = pathParts[4];
+      
+      if (typeFromPath && idFromPath) {
+        if (error.includes('premium') || currentPath.includes('premium')) {
+          redirectUrl = `/assessment/${typeFromPath}/premium-results/${idFromPath}`;
+        } else if (error.includes('standard') || currentPath.includes('standard')) {
+          redirectUrl = `/assessment/${typeFromPath}/standard-results/${idFromPath}`;
+        } else {
+          redirectUrl = `/assessment/${typeFromPath}/standard-results/${idFromPath}`;
+        }
+        
+        console.log('Error indicates manual processing - redirecting to:', redirectUrl);
+        router.replace(redirectUrl);
+        return null;
+      }
+    }
+    
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="bg-white p-8 rounded-lg shadow-lg max-w-md w-full">
@@ -930,12 +977,18 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
               <strong>Debug Info:</strong> {debugInfo}
             </div>
           )}
-          <div className="flex justify-center">
+          <div className="flex justify-center space-x-3">
             <button
               onClick={fetchResults}
               className="bg-[#7e43f1] hover:bg-[#6a38d1] text-white px-4 py-2 rounded-lg"
             >
               Try Again
+            </button>
+            <button
+              onClick={() => router.push('/dashboard')}
+              className="bg-gray-500 hover:bg-gray-600 text-white px-4 py-2 rounded-lg"
+            >
+              Go to Dashboard
             </button>
           </div>
         </div>
@@ -943,6 +996,7 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
     );
   }
 
+  // No results found
   if (!assessment || !assessmentData) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -967,7 +1021,7 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
     );
   }
   
-  // Safely extract data for display
+  // Extract data for display
   const scores = assessmentData.scores || { overallScore: 70 };
   const recommendations = assessmentData.recommendations || [];
   const strengths = assessmentData.strengths || [];
@@ -979,7 +1033,6 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
   const readinessLevel = assessmentData.readinessLevel || calculateReadinessLevel(overallScore);
   const readinessLevelColor = getReadinessLevelColor(readinessLevel);
   
-  // Alert if all scores are the same (for development/debugging)
   const categoryScores = Object.entries(scores)
     .filter(([key]) => key !== 'overallScore')
     .map(([_, value]) => value);
@@ -990,7 +1043,7 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
   return (
     <div className="print-container min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl mx-auto" ref={contentRef}>
-        {/* Debug info - show in development mode only */}
+        {/* Debug info - development only */}
         {process.env.NODE_ENV === 'development' && (
           <div className="print-hidden mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-sm">
             <strong>Debug Info:</strong> {debugInfo}
@@ -1046,7 +1099,6 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
                     />
                   </svg>
                 </div>
-                {/* Readiness Level */}
                 <div className="mt-2">
                   <span className="font-medium">Readiness Level: </span>
                   <span className={`font-bold ${readinessLevelColor}`}>{readinessLevel}</span>
@@ -1054,7 +1106,7 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
               </div>
               <p className="mt-4 text-gray-600 max-w-xl mx-auto">{summary}</p>
               
-              {/* Manual processing status indicators */}
+              {/* Status indicators */}
               {manualStatus === 'pending_review' && (
                 <div className="print-hidden mt-4 p-3 bg-yellow-50 text-yellow-700 rounded-lg flex items-center justify-center">
                   <svg className="h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1085,7 +1137,6 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
                 </div>
               )}
               
-              {/* AI analysis status indicator (only show if not manual processing) */}
               {!manualStatus && aiStatus === 'processing' && (
                 <div className="print-hidden mt-4 p-3 bg-blue-50 text-blue-700 rounded-lg flex items-center justify-center">
                   <div className="w-4 h-4 border-2 border-t-transparent border-blue-700 rounded-full animate-spin mr-2"></div>
@@ -1111,7 +1162,6 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
                 </div>
               )}
               
-              {/* Warning for uniform scores */}
               {hasUniformScores && (
                 <div className="print-hidden mt-4 p-3 bg-yellow-50 text-yellow-700 rounded-lg">
                   <p>
@@ -1130,7 +1180,7 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
           </div>
         </div>
 
-        {/* Expert Review Notes (when available) */}
+        {/* Expert Review Notes */}
         {assessment.reviewNotes && manualStatus === 'completed' && (
           <div className="bg-white rounded-xl shadow-md overflow-hidden mb-8">
             <div className="p-6">
@@ -1180,7 +1230,7 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
           </div>
         )}
 
-        {/* Detailed scores - IMPROVED */}
+        {/* Category Scores */}
         <div className="bg-white rounded-xl shadow-md overflow-hidden mb-8">
           <div className="p-6">
             <h2 className="text-xl font-semibold text-gray-800 mb-4">Category Scores</h2>
@@ -1194,11 +1244,8 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
                 {Object.entries(scores)
                   .filter(([key]) => key !== 'overallScore')
                   .map(([category, score], index) => {
-                    // Ensure score is a number
                     const numericScore = typeof score === 'number' ? Math.round(score) : 0;
                     const analysis = categoryAnalysis?.[category];
-                    
-                    // Use the display mapping for category names
                     const displayName = categoryDisplayMap[category] || formatCategoryName(category);
                     
                     return (
@@ -1218,7 +1265,6 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
                           ></div>
                         </div>
                         
-                        {/* Show category analysis if available */}
                         {analysis && (
                           <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
                             {analysis.strengths && analysis.strengths.length > 0 && (
@@ -1252,7 +1298,7 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
           </div>
         </div>
 
-        {/* Enhanced Recommendations section with more detailed display */}
+        {/* Recommendations */}
         {recommendations && recommendations.length > 0 && (
           <div className="bg-white rounded-xl shadow-md overflow-hidden mb-8">
             <div className="p-6">
@@ -1334,7 +1380,7 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
 // Helper function to format category names
 function formatCategoryName(category: string): string {
   return category
-    .replace(/([A-Z])/g, ' $1') // Add space before capital letters
-    .replace(/^./, str => str.toUpperCase()) // Capitalize first letter
+    .replace(/([A-Z])/g, ' $1')
+    .replace(/^./, str => str.toUpperCase())
     .trim();
 }

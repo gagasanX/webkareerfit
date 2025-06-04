@@ -60,12 +60,12 @@ export async function POST(
     
     // If payment is successful
     if (isSuccessful) {
-      // Update assessment status if it's not already completed
+      // CRITICAL FIX: Always set assessment status to 'in_progress' so user can continue to questionnaire
       if (payment.assessment && payment.assessment.status !== 'completed') {
         await prisma.assessment.update({
           where: { id: payment.assessment.id },
           data: {
-            status: 'in_progress', // Set to in_progress so user can continue
+            status: 'in_progress', // Set to in_progress so user can continue to questionnaire
           }
         });
       }

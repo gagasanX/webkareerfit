@@ -3,40 +3,62 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth/auth';
 import { prisma } from '@/lib/db';
-import { getOpenAIInstance, isOpenAIConfigured } from '@/lib/openai';
 
+// CRITICAL FIX: Proper Next.js 15 async params handling
 export async function POST(
   request: NextRequest,
-  { params }: { params: { type: string, id: string } }
+  { params }: { params: Promise<{ type: string, id: string }> }
 ) {
-  console.log('Submit-with-file endpoint called with params:', params);
-  
-  if (!params || !params.id || !params.type) {
-    return NextResponse.json({ error: 'Invalid parameters' }, { status: 400 });
-  }
-  
-  const assessmentId = params.id;
-  const assessmentType = params.type;
+  console.log('=== SUBMIT WITH FILE ENDPOINT ===');
   
   try {
+    // FIXED: Properly await params for Next.js 15
+    const resolvedParams = await params;
+    const { type, id } = resolvedParams;
+    
+    console.log('Submit-with-file endpoint called with params:', { type, id });
+    
+    if (!type || !id) {
+      console.log('Invalid parameters provided');
+      return NextResponse.json({ error: 'Invalid parameters' }, { status: 400 });
+    }
+    
+    const assessmentId = id;
+    const assessmentType = type;
+    
     // Authenticate user
     const session = await getServerSession(authOptions);
     
     if (!session?.user?.id) {
+      console.log('Authentication failed - no session or user ID');
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
     
-    // Get assessment
+    console.log(`User authenticated: ${session.user.id}`);
+    
+    // Get assessment with detailed logging
     const assessment = await prisma.assessment.findUnique({
       where: { id: assessmentId },
       include: { user: true }
     });
     
     if (!assessment) {
+      console.log(`Assessment not found: ${assessmentId}`);
       return NextResponse.json({ error: 'Assessment not found' }, { status: 404 });
     }
     
+    console.log('Assessment found:', {
+      id: assessment.id,
+      type: assessment.type,
+      tier: assessment.tier,
+      price: assessment.price,
+      manualProcessing: assessment.manualProcessing,
+      status: assessment.status,
+      userId: assessment.userId
+    });
+    
     if (assessment.userId !== session.user.id) {
+      console.log(`Unauthorized access - assessment belongs to ${assessment.userId}, user is ${session.user.id}`);
       return NextResponse.json({ error: 'Unauthorized access' }, { status: 403 });
     }
     
@@ -52,6 +74,7 @@ export async function POST(
         const parsedData = JSON.parse(formDataJson);
         responses = parsedData;
         formDataContent = formDataJson;
+        console.log('Form data parsed successfully, response count:', Object.keys(responses).length);
       }
     } catch (parseError) {
       console.error('Error parsing form data:', parseError);
@@ -63,9 +86,12 @@ export async function POST(
     let fileContent = '';
     
     if (file) {
+      console.log(`File uploaded: ${file.name} (${Math.round(file.size / 1024)} KB)`);
       // Process file in memory
       const buffer = Buffer.from(await file.arrayBuffer());
       fileContent = buffer.toString('utf-8').substring(0, 5000); // Get first 5000 chars only
+    } else {
+      console.log('No file uploaded');
     }
     
     // Update assessment with submitted data
@@ -83,15 +109,27 @@ export async function POST(
       }
     });
     
-    // CRITICAL: Check if assessment is for manual or AI processing based on tier
-    const isManualProcessing = 
-      assessment.tier === 'standard' || 
-      assessment.tier === 'premium' || 
-      assessment.price >= 100;
+    console.log('Assessment updated to submitted status');
     
-    // IMPORTANT: For manual processing tiers, NO AI processing is needed
+    // CRITICAL DECISION LOGIC: Manual vs AI Processing
+    console.log('=== PROCESSING DECISION LOGIC ===');
+    
+    // CRITICAL FIX: Simplified tier-based decision
+    const isManualProcessing = assessment.tier === 'standard' || 
+                              assessment.tier === 'premium' || 
+                              assessment.manualProcessing === true;
+    
+    console.log('Manual processing check:', {
+      tier: assessment.tier,
+      price: assessment.price,
+      manualProcessingFlag: assessment.manualProcessing,
+      finalDecision: isManualProcessing
+    });
+    
+    // MANUAL PROCESSING PATH (RM100 and RM250)
     if (isManualProcessing) {
-      console.log(`Assessment ${assessmentId} is for manual processing - tier: ${assessment.tier}`);
+      console.log(`=== MANUAL PROCESSING PATH ===`);
+      console.log(`Assessment ${assessmentId} is for manual processing - tier: ${assessment.tier}, price: ${assessment.price}`);
       
       // Update status for manual processing
       await prisma.assessment.update({
@@ -102,33 +140,71 @@ export async function POST(
         }
       });
       
-      // Determine redirect URL based on tier
+      console.log('Assessment status updated to pending_review');
+      
+      // CRITICAL FIX: Tier-based redirect URL determination
       let redirectUrl;
-      if (assessment.tier === 'premium' || assessment.price >= 250) {
+      
+      if (assessment.tier === 'premium') {
         redirectUrl = `/assessment/${assessmentType}/premium-results/${assessmentId}`;
-      } else {
+        console.log(`PREMIUM tier detected → redirecting to: ${redirectUrl}`);
+      } else if (assessment.tier === 'standard') {
         redirectUrl = `/assessment/${assessmentType}/standard-results/${assessmentId}`;
+        console.log(`STANDARD tier detected → redirecting to: ${redirectUrl}`);
+      } else {
+        // Fallback - shouldn't happen but just in case
+        redirectUrl = `/assessment/${assessmentType}/standard-results/${assessmentId}`;
+        console.log(`FALLBACK for manual processing → redirecting to: ${redirectUrl}`);
       }
       
-      return NextResponse.json({
+      const response = {
         success: true,
         message: 'Assessment submitted for expert review',
-        redirectUrl: redirectUrl
+        redirectUrl: redirectUrl,
+        debug: {
+          tier: assessment.tier,
+          price: assessment.price,
+          manualProcessing: true,
+          redirectReason: assessment.tier === 'premium' ? 'premium' : 'standard'
+        }
+      };
+      
+      console.log('Sending manual processing response:', response);
+      return NextResponse.json(response);
+    }
+    
+    // AI PROCESSING PATH (RM50 Basic)
+    console.log(`=== AI PROCESSING PATH ===`);
+    console.log(`Assessment ${assessmentId} is for AI processing - tier: ${assessment.tier}, price: ${assessment.price}`);
+    
+    const redirectUrl = `/assessment/${assessmentType}/processing/${assessmentId}`;
+    
+    const response = {
+      success: true, 
+      message: 'Assessment submitted for AI processing',
+      redirectUrl: redirectUrl,
+      debug: {
+        tier: assessment.tier,
+        price: assessment.price,
+        manualProcessing: false,
+        redirectReason: 'ai_processing'
+      }
+    };
+    
+    console.log('Sending AI processing response:', response);
+    return NextResponse.json(response);
+    
+  } catch (error) {
+    console.error('=== SUBMIT ERROR ===');
+    console.error('Server error:', error);
+    
+    if (error instanceof Error) {
+      console.error('Error details:', {
+        message: error.message,
+        stack: error.stack
       });
     }
     
-    // For basic tier (RM50), do AI processing in a separate endpoint
-    // Just return success and redirect to processing page
-    console.log(`Assessment ${assessmentId} is for AI processing - tier: ${assessment.tier}`);
-    
-    return NextResponse.json({
-      success: true, 
-      message: 'Assessment submitted for AI processing',
-      redirectUrl: `/assessment/${assessmentType}/processing/${assessmentId}`
-    });
-    
-  } catch (error) {
-    console.error('Server error:', error);
     return NextResponse.json({ 
       error: 'Server error',
       details: error instanceof Error ? error.message : 'Unknown error'

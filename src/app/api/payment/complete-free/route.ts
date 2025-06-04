@@ -1,3 +1,4 @@
+// /src/app/api/payment/complete-free/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth/auth';
@@ -49,9 +50,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'You do not own this assessment' }, { status: 403 });
     }
     
-    // Verify the assessment is actually free (price is 0)
-    if (assessment.price > 0) {
-      return NextResponse.json({ message: 'Assessment is not free' }, { status: 400 });
+    console.log('Processing free assessment completion:', {
+      assessmentId,
+      tier: assessment.tier,
+      originalPrice: assessment.price,
+      paymentAmount: assessment.payment?.amount || 0,
+      couponApplied: !!assessment.payment?.couponId
+    });
+    
+    // CRITICAL: Check payment amount, not assessment price
+    // Assessment price never changes, but payment amount can be 0 after coupon
+    const paymentAmount = assessment.payment?.amount || 0;
+    
+    if (paymentAmount > 0) {
+      return NextResponse.json({ 
+        message: 'Payment amount is not zero - this is not a free assessment',
+        paymentAmount,
+        assessmentPrice: assessment.price
+      }, { status: 400 });
     }
     
     let paymentId;
@@ -65,22 +81,14 @@ export async function POST(request: NextRequest) {
           data: {
             status: 'completed',
             method: 'coupon',
-            amount: 0
+            amount: 0 // Ensure amount is 0 for free assessment
           }
         });
         paymentId = updatedPayment.id;
+        console.log(`Updated existing payment ${paymentId} to completed`);
         
-        // If there's a coupon associated, increment its usage counter
-        if (assessment.payment.couponId) {
-          await tx.coupon.update({
-            where: { id: assessment.payment.couponId },
-            data: {
-              currentUses: {
-                increment: 1
-              }
-            }
-          });
-        }
+        // Coupon usage already incremented during coupon application
+        // No need to increment again
       } else {
         // Create payment record if it doesn't exist
         const newPayment = await tx.payment.create({
@@ -93,25 +101,24 @@ export async function POST(request: NextRequest) {
           }
         });
         paymentId = newPayment.id;
+        console.log(`Created new free payment ${paymentId}`);
       }
       
-      // Check if this assessment requires manual processing
-      const isManualProcessing = assessment.manualProcessing || 
-                                assessment.tier === 'standard' || 
-                                assessment.tier === 'premium';
-      
-      // Update assessment status based on processing type
+      // CRITICAL FIX: Always set status to 'in_progress' after free payment completion
+      // This allows user to continue to questionnaire page
       await tx.assessment.update({
         where: { id: assessmentId },
         data: {
-          status: isManualProcessing ? 'pending_review' : 'in_progress'
+          status: 'in_progress' // Always set to in_progress so user can fill questionnaire
         }
       });
+      
+      console.log(`Assessment status updated to: in_progress`);
     });
     
     // Send receipt email
     if (paymentId) {
-      sendPaymentReceipt(paymentId).catch(err => {
+      sendPaymentReceipt(paymentId).catch((err: Error) => {
         console.error('Failed to send receipt email for free assessment:', err);
       });
     }
@@ -119,30 +126,29 @@ export async function POST(request: NextRequest) {
     // NO AFFILIATE COMMISSION FOR FREE ASSESSMENTS
     console.log('Free assessment completed - no commission processed');
     
-    // Determine the appropriate redirect URL based on tier
-    let redirectUrl;
+    // CRITICAL FIX: Always redirect to questionnaire page for free assessments
+    const redirectUrl = `/assessment/${assessment.type}/${assessment.id}`;
+    console.log(`Free assessment - Redirecting to questionnaire: ${redirectUrl}`);
     
-    if (assessment.tier === 'premium') {
-      redirectUrl = `/assessment/${assessment.type}/premium-results/${assessment.id}`;
-      console.log(`Premium tier - Redirecting to: ${redirectUrl}`);
-    } 
-    else if (assessment.tier === 'standard') {
-      redirectUrl = `/assessment/${assessment.type}/standard-results/${assessment.id}`;
-      console.log(`Standard tier - Redirecting to: ${redirectUrl}`);
-    }
-    else {
-      redirectUrl = `/assessment/${assessment.type}/results/${assessment.id}`;
-      console.log(`Basic tier - Redirecting to: ${redirectUrl}`);
-    }
+    const isManualProcessing = assessment.tier === 'standard' || 
+                              assessment.tier === 'premium' ||
+                              assessment.manualProcessing === true;
     
     return NextResponse.json({
       success: true,
       message: 'Free assessment unlocked successfully',
       redirectUrl: redirectUrl,
-      isManualProcessing: assessment.manualProcessing || assessment.tier === 'standard' || assessment.tier === 'premium',
+      isManualProcessing: isManualProcessing,
       commission: {
         processed: false,
         reason: 'No commission for free assessments'
+      },
+      debug: {
+        tier: assessment.tier,
+        originalPrice: assessment.price,
+        paymentAmount: 0,
+        manualProcessing: isManualProcessing,
+        redirectReason: `Redirecting to questionnaire: ${redirectUrl}`
       }
     });
   } catch (error) {
