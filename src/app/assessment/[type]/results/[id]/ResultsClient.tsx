@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
+import AssessmentProcessingScreen from '@/components/assessment/AssessmentProcessingScreen';
 
 // Enhanced recommendation interface that matches the AI prompt output format
 interface RecommendationWithDetails {
@@ -46,6 +47,9 @@ interface AssessmentData {
   redirectRequired?: boolean;
   manualProcessingOnly?: boolean;
   properRedirectUrl?: string;
+  // 🔥 NEW: Processing screen control
+  showProcessingScreen?: boolean;
+  processingMessage?: string;
 }
 
 interface ResultsClientProps {
@@ -65,6 +69,10 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
   const [pollingCount, setPollingCount] = useState(0);
   const [debugInfo, setDebugInfo] = useState<string | null>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  
+  // 🔥 NEW: State untuk control processing screen
+  const [showProcessingScreen, setShowProcessingScreen] = useState(false);
+  const [processingMessage, setProcessingMessage] = useState('');
 
   // Assessment type labels
   const assessmentTypeLabels: Record<string, string> = {
@@ -149,22 +157,6 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
     }
   }
 
-  // Helper function to determine if assessment should redirect
-  function shouldRedirectToThankYouPage(assessment: any, assessmentData: any): boolean {
-    const isManualProcessing = assessment?.tier === 'standard' || 
-                              assessment?.tier === 'premium' || 
-                              assessment?.manualProcessing === true;
-    
-    const redirectRequired = assessmentData?.redirectRequired === true || 
-                            assessmentData?.manualProcessingOnly === true;
-    
-    const hasNoRealResults = !assessmentData?.scores ||
-                            Object.keys(assessmentData.scores).length <= 1 ||
-                            assessmentData.manualProcessingOnly;
-    
-    return isManualProcessing && (redirectRequired || hasNoRealResults);
-  }
-
   // Authentication and initial fetch
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -230,25 +222,26 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
     }
   }, [assessment, assessmentData, router, assessmentType, assessmentId]);
 
-  // Poll for AI updates if needed
+  // 🔥 NEW: Enhanced polling for processing screen and AI updates
   useEffect(() => {
-    if (assessmentData && 
-        assessmentData.aiAnalysisStarted && 
-        !assessmentData.aiProcessed && 
-        pollingCount < 30) {
+    if (showProcessingScreen || 
+        (assessmentData && assessmentData.aiAnalysisStarted && !assessmentData.aiProcessed && pollingCount < 30)) {
       
-      console.log(`Polling for AI updates (attempt ${pollingCount + 1})...`);
-      setDebugInfo(`Polling for AI updates (attempt ${pollingCount + 1})`);
+      console.log(`Polling for updates (attempt ${pollingCount + 1})...`);
+      setDebugInfo(`Polling for updates (attempt ${pollingCount + 1})`);
+      
+      const pollInterval = Math.min(10000, 3000 + (pollingCount * 1000)); // Start with 3s, max 10s
       
       const timer = setTimeout(() => {
         fetchResults();
         setPollingCount(prev => prev + 1);
-      }, 10000);
+      }, pollInterval);
       
       return () => clearTimeout(timer);
     }
-  }, [assessmentData, pollingCount]);
+  }, [showProcessingScreen, assessmentData, pollingCount]);
 
+  // 🔥 ENHANCED: fetchResults function
   const fetchResults = async () => {
     if (!assessmentType || !assessmentId) {
       setError('Missing assessment type or ID');
@@ -302,6 +295,34 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
       }
       
       const responseData = data.data || {};
+      
+      // 🔥 NEW: Check for processing screen flag from API
+      const shouldShowProcessingScreen = responseData.showProcessingScreen === true;
+      const aiAnalysisStarted = responseData.aiAnalysisStarted === true;
+      const aiProcessed = responseData.aiProcessed === true;
+      
+      console.log('Processing status check:', {
+        shouldShowProcessingScreen,
+        aiAnalysisStarted,
+        aiProcessed,
+        status: data.status
+      });
+      
+      // 🔥 CRITICAL: Control processing screen display
+      if (shouldShowProcessingScreen && !aiProcessed) {
+        console.log('🚀 SHOWING PROCESSING SCREEN - AI ANALYSIS IN PROGRESS');
+        setShowProcessingScreen(true);
+        setProcessingMessage(responseData.processingMessage || 'AI analysis in progress...');
+        setLoading(false); // Stop loading spinner, show processing screen
+        setPollingCount(0); // Reset polling count
+        return; // Don't process results data yet
+      } else if (aiProcessed || (!aiAnalysisStarted && !shouldShowProcessingScreen)) {
+        console.log('✅ SHOWING RESULTS - AI ANALYSIS COMPLETED OR NOT NEEDED');
+        setShowProcessingScreen(false);
+        setProcessingMessage('');
+        // Continue to process and show results
+      }
+      
       const expectedCategories = getExpectedCategories(assessmentType);
       
       let scoresObj = { overallScore: 70 } as ScoresData;
@@ -378,8 +399,6 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
         console.log(`Calculated readiness level: ${readinessLevel}`);
       }
       
-      const isAnalysisStarted = Boolean(responseData.aiAnalysisStarted || responseData.aiProcessing);
-      
       const processedData: AssessmentData = {
         scores: scoresObj,
         readinessLevel: readinessLevel,
@@ -394,7 +413,7 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
         resumeAnalysis: responseData.resumeAnalysis,
         resumeRecommendations: responseData.resumeRecommendations,
         aiProcessed: responseData.aiProcessed || false,
-        aiAnalysisStarted: isAnalysisStarted,
+        aiAnalysisStarted: aiAnalysisStarted,
         aiAnalysisStartedAt: responseData.aiAnalysisStartedAt || responseData.aiProcessingStarted,
         aiProcessedAt: responseData.aiProcessedAt,
         aiError: responseData.aiError,
@@ -403,6 +422,8 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
         redirectRequired: responseData.redirectRequired,
         manualProcessingOnly: responseData.manualProcessingOnly,
         properRedirectUrl: responseData.properRedirectUrl,
+        showProcessingScreen: shouldShowProcessingScreen,
+        processingMessage: responseData.processingMessage,
       };
       
       if (processedData.aiProcessed) {
@@ -426,9 +447,18 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
       console.error('Error fetching assessment results:', err);
       setError(err instanceof Error ? err.message : 'Error loading assessment results. Please try again.');
       setLoading(false);
+      setShowProcessingScreen(false);
       setAiStatus('failed');
       setDebugInfo(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
+  };
+
+  // 🔥 NEW: Handle processing screen completion
+  const handleProcessingComplete = () => {
+    console.log('🎉 Processing complete - refreshing results');
+    setShowProcessingScreen(false);
+    setPollingCount(0);
+    fetchResults();
   };
 
   const normalizeRecommendations = (recommendations: any[]): RecommendationWithDetails[] => {
@@ -925,6 +955,18 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
     };
   };
 
+  // 🔥 NEW: Show processing screen if needed
+  if (showProcessingScreen) {
+    console.log('🚀 RENDERING PROCESSING SCREEN');
+    return (
+      <AssessmentProcessingScreen
+        assessmentType={assessmentType as any}
+        assessmentId={assessmentId}
+        onComplete={handleProcessingComplete}
+      />
+    );
+  }
+
   // Loading state
   if (loading || status === 'loading') {
     return (
@@ -1047,8 +1089,10 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
         {process.env.NODE_ENV === 'development' && (
           <div className="print-hidden mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-sm">
             <strong>Debug Info:</strong> {debugInfo}
+            <div>Show Processing Screen: {showProcessingScreen ? 'YES' : 'NO'}</div>
             <div>Overall Score: {overallScore}</div>
             <div>Readiness Level: {readinessLevel}</div>
+            <div>AI Status: {aiStatus}</div>
             <div>Category Scores: {Object.entries(scores).filter(([key]) => key !== 'overallScore').map(([key, value]) => `${key}=${value}`).join(', ')}</div>
             {hasUniformScores && (
               <div className="mt-2 text-red-600 font-bold">

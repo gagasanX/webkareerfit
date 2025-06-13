@@ -557,7 +557,6 @@ function AssessmentSelectionClient() {
   }
 
   // Filter assessments by status
-  const pendingAssessments = assessments.filter(a => a.status !== 'completed');
   const completedAssessments = assessments.filter(a => a.status === 'completed');
 
   // Main assessment selection page
@@ -589,59 +588,6 @@ function AssessmentSelectionClient() {
         {error && (
           <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
             {error}
-          </div>
-        )}
-        
-        {/* In-progress assessments section */}
-        {pendingAssessments.length > 0 && (
-          <div className="mb-12">
-            <h2 className="text-xl font-semibold text-gray-900 mb-4">Continue Your Assessment</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {pendingAssessments.map((assessment, index) => {
-                const assessmentType = assessmentTypes.find(t => t.id === assessment.type);
-                const tierName = assessment.tier 
-                  ? pricingTiers.find(t => t.id === assessment.tier)?.name
-                  : 'Standard';
-                return (
-                  <div key={index} className="bg-white rounded-xl shadow-sm overflow-hidden border border-gray-100">
-                    <div 
-                      className="p-4 text-white"
-                      style={{ backgroundColor: assessmentType?.color || '#38b6ff' }}
-                    >
-                      <div className="flex items-center">
-                        <span className="text-2xl mr-2">{assessmentType?.icon || '📝'}</span>
-                        <div>
-                          <h3 className="font-semibold">{assessmentType?.label || assessment.type}</h3>
-                          <div className="text-xs text-white/80">{tierName} Package</div>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="p-4">
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-sm text-gray-500">Started on {new Date(assessment.createdAt).toLocaleDateString()}</span>
-                        <span className={`text-xs px-2 py-1 rounded-full ${
-                          assessment.payment?.status === 'completed' 
-                            ? 'bg-green-100 text-green-800' 
-                            : 'bg-red-100 text-red-800'
-                        }`}>
-                          {assessment.payment?.status === 'completed' ? 'Paid' : 'Payment Required'}
-                        </span>
-                      </div>
-                      
-                      <Link 
-                        href={assessment.payment?.status === 'completed' 
-                          ? `/assessment/${assessment.type}/${assessment.id}` 
-                          : `/payment/${assessment.id}`
-                        }
-                        className="w-full mt-2 inline-block text-center py-2 bg-[#7e43f1] text-white rounded-lg text-sm hover:bg-[#6a38d1]"
-                      >
-                        {assessment.payment?.status === 'completed' ? 'Continue Assessment' : 'Complete Payment'}
-                      </Link>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
           </div>
         )}
         

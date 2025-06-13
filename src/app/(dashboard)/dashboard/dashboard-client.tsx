@@ -57,24 +57,23 @@ const LogoutIcon = () => (
   </svg>
 );
 
-// Component for donut chart
+// ✅ LOCKED Donut chart component
 interface DonutChartProps {
   percentage: number;
   size?: number;
   strokeWidth?: number;
   color?: string;
+  locked?: boolean;
 }
 
-const DonutChart = ({ percentage = 0, size = 100, strokeWidth = 10, color = '#38b6ff' }: DonutChartProps) => {
+const DonutChart = ({ percentage = 0, size = 100, strokeWidth = 10, color = '#38b6ff', locked = true }: DonutChartProps) => {
   const radius = (size - strokeWidth) / 2;
   const circumference = 2 * Math.PI * radius;
-  // Show minimum 5% for visual representation even if 0%
-  const displayPercentage = percentage === 0 ? 5 : percentage;
-  const strokeDashoffset = circumference - (displayPercentage / 100) * circumference;
   
   return (
-    <div className="flex justify-center">
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+    <div className="flex justify-center relative">
+      {/* Background donut (grayed out when locked) */}
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className={locked ? 'opacity-30' : ''}>
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -88,10 +87,10 @@ const DonutChart = ({ percentage = 0, size = 100, strokeWidth = 10, color = '#38
           cy={size / 2}
           r={radius}
           fill="transparent"
-          stroke={color}
+          stroke={locked ? "#d1d5db" : color}
           strokeWidth={strokeWidth}
           strokeDasharray={circumference}
-          strokeDashoffset={strokeDashoffset}
+          strokeDashoffset={circumference * 0.7} // Show some progress as preview
           strokeLinecap="round"
           transform={`rotate(-90 ${size / 2} ${size / 2})`}
         />
@@ -102,37 +101,62 @@ const DonutChart = ({ percentage = 0, size = 100, strokeWidth = 10, color = '#38
           textAnchor="middle"
           fontSize="16"
           fontWeight="bold"
-          fill="#333"
+          fill={locked ? "#9ca3af" : "#333"}
         >
-          {percentage}%
+          {locked ? "?" : `${percentage}%`}
         </text>
       </svg>
+      
+      {/* Lock overlay when locked */}
+      {locked && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <div className="bg-white/90 backdrop-blur-sm rounded-full p-2 shadow-sm">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-500" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+            </svg>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
-// Bar chart component - Fixed for mobile and 0% display
+// ✅ LOCKED Bar chart component - Shows potential but locked
 const BarChart = () => (
-  <div className="w-full h-32 sm:h-36 flex items-end justify-between px-2 sm:px-4">
-    <div className="flex flex-col items-center flex-1 mx-1">
-      <div className="h-2 w-4 sm:w-6 md:w-8 bg-[#fcb3b3] rounded-t-md"></div>
-      <span className="text-xs mt-1 text-gray-500 text-center">Strengths</span>
+  <div className="relative w-full h-32 sm:h-36">
+    {/* Background chart (grayed out) */}
+    <div className="w-full h-full flex items-end justify-between px-2 sm:px-4 opacity-30">
+      <div className="flex flex-col items-center flex-1 mx-1">
+        <div className="h-8 w-4 sm:w-6 md:w-8 bg-gray-300 rounded-t-md"></div>
+        <span className="text-xs mt-1 text-gray-400 text-center">Strengths</span>
+      </div>
+      <div className="flex flex-col items-center flex-1 mx-1">
+        <div className="h-12 w-4 sm:w-6 md:w-8 bg-gray-300 rounded-t-md"></div>
+        <span className="text-xs mt-1 text-gray-400 text-center">Skills</span>
+      </div>
+      <div className="flex flex-col items-center flex-1 mx-1">
+        <div className="h-6 w-4 sm:w-6 md:w-8 bg-gray-300 rounded-t-md"></div>
+        <span className="text-xs mt-1 text-gray-400 text-center">Experience</span>
+      </div>
+      <div className="flex flex-col items-center flex-1 mx-1">
+        <div className="h-10 w-4 sm:w-6 md:w-8 bg-gray-300 rounded-t-md"></div>
+        <span className="text-xs mt-1 text-gray-400 text-center">Alignment</span>
+      </div>
+      <div className="flex flex-col items-center flex-1 mx-1">
+        <div className="h-14 w-4 sm:w-6 md:w-8 bg-gray-300 rounded-t-md"></div>
+        <span className="text-xs mt-1 text-gray-400 text-center">Potential</span>
+      </div>
     </div>
-    <div className="flex flex-col items-center flex-1 mx-1">
-      <div className="h-2 w-4 sm:w-6 md:w-8 bg-[#38b6ff] rounded-t-md"></div>
-      <span className="text-xs mt-1 text-gray-500 text-center">Skills</span>
-    </div>
-    <div className="flex flex-col items-center flex-1 mx-1">
-      <div className="h-2 w-4 sm:w-6 md:w-8 bg-[#38b6ff] rounded-t-md"></div>
-      <span className="text-xs mt-1 text-gray-500 text-center">Experience</span>
-    </div>
-    <div className="flex flex-col items-center flex-1 mx-1">
-      <div className="h-2 w-4 sm:w-6 md:w-8 bg-[#fcb3b3] rounded-t-md"></div>
-      <span className="text-xs mt-1 text-gray-500 text-center">Alignment</span>
-    </div>
-    <div className="flex flex-col items-center flex-1 mx-1">
-      <div className="h-2 w-4 sm:w-6 md:w-8 bg-[#7e43f1] rounded-t-md"></div>
-      <span className="text-xs mt-1 text-gray-500 text-center">Potential</span>
+    
+    {/* Lock overlay */}
+    <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/80 backdrop-blur-sm rounded-lg">
+      <div className="bg-gray-100 p-2 rounded-full mb-2">
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-gray-500" viewBox="0 0 20 20" fill="currentColor">
+          <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+        </svg>
+      </div>
+      <p className="text-xs text-gray-600 font-medium">Complete Assessment</p>
+      <p className="text-xs text-gray-500">to unlock profile</p>
     </div>
   </div>
 );
@@ -503,19 +527,21 @@ export default function DashboardClient() {
   const user = userData;
   if (!user) return null;
 
-  // Calculate statistics - All set to 0 for now
-  const totalAssessments = user.assessments?.length || 0;
-  const completedAssessments = user.assessments?.filter(a => a.status === 'completed').length || 0;
-  const completionRate = 0; // Set to 0
+  // ✅ CRITICAL FIX: Calculate statistics properly - Exclude cancelled assessments
+  const allAssessments = user.assessments || [];
+  const activeAssessments = allAssessments.filter(a => a.status !== 'cancelled');
+  const totalAssessments = activeAssessments.length;
+  const completedAssessments = activeAssessments.filter(a => a.status === 'completed').length;
+  const cancelledAssessments = allAssessments.filter(a => a.status === 'cancelled').length;
   
-  // ✅ CRITICAL FIX: Better pending assessment filtering
-  const pendingAssessments = user.assessments?.filter(a => 
+  // ✅ CRITICAL FIX: Better pending assessment filtering - exclude cancelled
+  const pendingAssessments = activeAssessments.filter(a => 
     a.status === 'draft' || 
     a.status === 'in_progress' || 
-    (a.status !== 'completed' && a.status !== 'cancelled' && a.payment?.status !== 'completed')
+    (a.status !== 'completed' && a.payment?.status !== 'completed')
   ) || [];
   
-  const pendingPayments = user.assessments?.filter(a => a.payment?.status !== 'completed') || [];
+  const pendingPayments = activeAssessments.filter(a => a.payment?.status !== 'completed') || [];
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex">
@@ -533,13 +559,14 @@ export default function DashboardClient() {
         }}
       />
       
-      {/* Sidebar */}
+      {/* ✅ FIXED Sidebar - Profile moved to bottom */}
       <aside className="w-16 sm:w-20 bg-white shadow-lg flex flex-col items-center py-4 sm:py-8 fixed h-full z-40">
         {/* Logo - Changed to KF text */}
         <div className="bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] p-1 rounded-full mb-6 sm:mb-10 w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center">
           <span className="text-white font-bold text-sm sm:text-base">KF</span>
         </div>
         
+        {/* Main Navigation - Profile REMOVED dari sini */}
         <nav className="flex flex-col items-center space-y-4 sm:space-y-8">
           <Link 
             href="/dashboard" 
@@ -547,13 +574,6 @@ export default function DashboardClient() {
             aria-label="Dashboard"
           >
             <HomeIcon />
-          </Link>
-          <Link 
-            href="/profile" 
-            className="text-gray-400 hover:text-[#7e43f1] p-2 sm:p-3 rounded-xl hover:bg-purple-50 transition-colors"
-            aria-label="Profile"
-          >
-            <UserIcon />
           </Link>
           <Link 
             href="/assessment" 
@@ -578,7 +598,15 @@ export default function DashboardClient() {
           </Link>
         </nav>
         
-        <div className="mt-auto">
+        {/* ✅ FIXED Bottom Section - Profile MOVED ke sini */}
+        <div className="mt-auto flex flex-col items-center space-y-3 sm:space-y-4">
+          <Link 
+            href="/profile" 
+            className="text-gray-400 hover:text-[#7e43f1] p-2 sm:p-3 rounded-xl hover:bg-purple-50 transition-colors"
+            aria-label="Profile"
+          >
+            <UserIcon />
+          </Link>
           <Link 
             href="/settings" 
             className="text-gray-400 hover:text-[#7e43f1] p-2 sm:p-3 rounded-xl hover:bg-purple-50 transition-colors"
@@ -716,19 +744,35 @@ export default function DashboardClient() {
               <div className="absolute top-5 right-16 sm:right-20 w-8 sm:w-10 h-8 sm:h-10 rounded-full bg-white/10 backdrop-blur-sm"></div>
             </div>
             
-            {/* Stats section */}
+            {/* Stats section - UPDATED with Reports Generated */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
               <div className="bg-white rounded-xl shadow-sm p-4 sm:p-5">
-                <h3 className="text-gray-500 text-xs uppercase">Career Readiness</h3>
-                <div className="flex items-center mt-1">
-                  <div className="text-xl sm:text-2xl font-bold text-[#7e43f1]">{completionRate}%</div>
+                <h3 className="text-gray-500 text-xs uppercase">Reports Generated</h3>
+                <div className="flex items-center justify-between mt-1">
+                  <div className="text-xl sm:text-2xl font-bold text-[#7e43f1]">{completedAssessments}</div>
+                  <div className="flex-shrink-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-[#7e43f1]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
                 </div>
-                <div className="mt-2 w-full bg-gray-100 rounded-full h-2">
-                  <div 
-                    className="bg-[#7e43f1] h-2 rounded-full" 
-                    style={{ width: completionRate === 0 ? '2px' : `${completionRate}%` }}
-                  ></div>
+                <div className="mt-2 text-xs text-gray-500">
+                  {completedAssessments === 0 ? (
+                    'Complete assessments to generate reports'
+                  ) : completedAssessments === 1 ? (
+                    '1 career insight report unlocked'
+                  ) : (
+                    `${completedAssessments} career insight reports unlocked`
+                  )}
                 </div>
+                {completedAssessments > 0 && (
+                  <div className="mt-3 flex items-center text-xs text-green-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    Reports ready to view
+                  </div>
+                )}
               </div>
               
               <div className="bg-white rounded-xl shadow-sm p-4 sm:p-5">
@@ -740,66 +784,123 @@ export default function DashboardClient() {
                   </div>
                 </div>
                 <div className="mt-2 text-xs text-gray-500">
-                  {totalAssessments > 0 ? 
-                    `${totalAssessments - completedAssessments} assessment${totalAssessments - completedAssessments !== 1 ? 's' : ''} pending` : 
-                    'Start your first assessment'}
+                  {totalAssessments > 0 ? (
+                    <>
+                      {totalAssessments - completedAssessments} assessment{totalAssessments - completedAssessments !== 1 ? 's' : ''} pending
+                      {cancelledAssessments > 0 && (
+                        <span className="text-gray-400"> • {cancelledAssessments} cancelled</span>
+                      )}
+                    </>
+                  ) : (
+                    'Start your first assessment'
+                  )}
                 </div>
+                {totalAssessments > 0 && (
+                  <div className="mt-2 w-full bg-gray-100 rounded-full h-1.5">
+                    <div 
+                      className="bg-[#38b6ff] h-1.5 rounded-full transition-all duration-500" 
+                      style={{ width: totalAssessments === 0 ? '0%' : `${(completedAssessments / totalAssessments) * 100}%` }}
+                    ></div>
+                  </div>
+                )}
               </div>
               
               <div className="bg-white rounded-xl shadow-sm p-4 sm:p-5">
                 <h3 className="text-gray-500 text-xs uppercase">Career Match Score</h3>
-                <div className="flex items-center mt-1">
+                <div className="flex items-center justify-between mt-1">
                   <div className="text-xl sm:text-2xl font-bold text-[#fcb3b3]">
                     {completedAssessments > 0 ? '0%' : 'N/A'}
+                  </div>
+                  <div className="flex-shrink-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-[#fcb3b3]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                    </svg>
                   </div>
                 </div>
                 <div className="mt-2 text-xs text-gray-500">
                   {completedAssessments > 0 ? 
-                    'Based on your assessment results' : 
-                    'Complete an assessment to see your score'}
+                    'AI analysis of career compatibility' : 
+                    'Complete assessments to discover matches'}
                 </div>
+                {completedAssessments === 0 && (
+                  <div className="mt-3 flex items-center text-xs text-orange-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m0 0v2m0-2h2m-2 0H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    Unlock with assessments
+                  </div>
+                )}
               </div>
             </div>
             
-            {/* Charts section */}
+            {/* Charts section - LOCKED STATE */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
-              <div className="bg-white rounded-xl shadow-sm p-4 sm:p-5">
+              <div className="bg-white rounded-xl shadow-sm p-4 sm:p-5 relative">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="font-medium text-gray-700 text-sm sm:text-base">Competency Profile</h3>
-                  <Link href="/assessment/results" className="text-xs text-[#38b6ff] hover:underline">View More</Link>
+                  <button 
+                    className="px-3 py-1 bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] text-white text-xs rounded-full hover:shadow-md transition-shadow"
+                    onClick={() => {
+                      // TODO: Navigate to competency wizard
+                      alert('Competency Assessment coming soon! 🚀');
+                    }}
+                  >
+                    🔓 Unlock
+                  </button>
                 </div>
                 <div className="flex justify-center">
                   <BarChart />
                 </div>
+                <div className="mt-3 text-center">
+                  <p className="text-xs text-gray-500">Complete quick assessment to reveal your competency profile</p>
+                </div>
               </div>
               
-              <div className="bg-white rounded-xl shadow-sm p-4 sm:p-5">
+              <div className="bg-white rounded-xl shadow-sm p-4 sm:p-5 relative">
                 <div className="flex justify-between items-center mb-4">
                   <h3 className="font-medium text-gray-700 text-sm sm:text-base">Compatibility of Skills</h3>
-                  <Link href="/assessment/results" className="text-xs text-[#38b6ff] hover:underline">View More</Link>
+                  <button 
+                    className="px-3 py-1 bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] text-white text-xs rounded-full hover:shadow-md transition-shadow"
+                    onClick={() => {
+                      // TODO: Navigate to skills wizard  
+                      alert('Skills Assessment coming soon! 🚀');
+                    }}
+                  >
+                    🔓 Unlock
+                  </button>
                 </div>
-                <DonutChart percentage={0} color="#7e43f1" size={80} />
-                <div className="grid grid-cols-2 gap-2 mt-3">
+                <DonutChart percentage={0} color="#7e43f1" size={80} locked={true} />
+                <div className="grid grid-cols-2 gap-2 mt-3 opacity-50">
                   <div className="text-xs flex items-center">
-                    <div className="w-2 h-2 rounded-full bg-[#7e43f1] mr-1"></div>
-                    <span>Technical Skills</span>
+                    <div className="w-2 h-2 rounded-full bg-gray-300 mr-1"></div>
+                    <span className="text-gray-400">Technical Skills</span>
                   </div>
                   <div className="text-xs flex items-center">
-                    <div className="w-2 h-2 rounded-full bg-[#38b6ff] mr-1"></div>
-                    <span>Soft Skills</span>
+                    <div className="w-2 h-2 rounded-full bg-gray-300 mr-1"></div>
+                    <span className="text-gray-400">Soft Skills</span>
                   </div>
+                </div>
+                <div className="mt-2 text-center">
+                  <p className="text-xs text-gray-500">Discover your technical vs soft skills balance</p>
                 </div>
               </div>
             </div>
             
-            {/* All assessments section */}
+            {/* All assessments section - Show all including cancelled but use correct count */}
             <div className="bg-white rounded-xl shadow-sm p-4 sm:p-5">
               <div className="flex justify-between items-center mb-4">
-                <h3 className="font-medium text-gray-700">Your Assessments</h3>
+                <div>
+                  <h3 className="font-medium text-gray-700">Your Assessments</h3>
+                  {cancelledAssessments > 0 && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Showing {allAssessments.length} total assessments ({cancelledAssessments} cancelled)
+                    </p>
+                  )}
+                </div>
                 <Link href="/assessment" className="text-xs text-[#38b6ff] hover:underline">View All</Link>
               </div>
               
-              {totalAssessments === 0 ? (
+              {allAssessments.length === 0 ? (
                 <div className="text-center py-6 sm:py-8">
                   <div className="mx-auto h-12 w-12 sm:h-16 sm:w-16 text-gray-400">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-full w-full" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -825,12 +926,12 @@ export default function DashboardClient() {
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {user.assessments?.map((assessment, index) => {
+                      {allAssessments.map((assessment, index) => {
                         const assessmentType = assessmentTypes.find(t => t.id === assessment.type);
                         const statusInfo = getAssessmentStatus(assessment.status);
                         
                         return (
-                          <tr key={index} className="hover:bg-gray-50">
+                          <tr key={index} className={`hover:bg-gray-50 ${assessment.status === 'cancelled' ? 'opacity-60' : ''}`}>
                             <td className="px-2 sm:px-4 py-3 whitespace-nowrap">
                               <div className="flex items-center">
                                 <span className="mr-1 sm:mr-2 text-sm">{assessmentType?.icon}</span>

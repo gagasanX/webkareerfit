@@ -82,84 +82,103 @@ export async function GET(
     // ONLY for basic tier (RM50) - AI processing allowed
     console.log('✅ BASIC TIER - AI ANALYSIS ALLOWED');
 
-    // For basic tier, check if analysis needed and start if required
-    if (hasSubmission && !data.aiProcessed && !data.aiAnalysisStarted) {
-      console.log('Basic tier - attempting to start AI analysis');
-      
-      try {
-        // FIXED: Check if AI processing module exists before importing
-        let aiProcessingAvailable = false;
-        try {
-          // Try to import the AI processing module
-          const aiModule = await import('@/lib/ai-processing');
-          if (aiModule && typeof aiModule.processAssessmentWithAI === 'function') {
-            aiProcessingAvailable = true;
-            
-            // Mark as started
-            await prisma.assessment.update({
-              where: { id },
-              data: {
-                data: {
-                  ...data,
-                  aiAnalysisStarted: true,
-                  aiAnalysisStartedAt: new Date().toISOString()
-                }
-              }
-            });
-            
-            // Process in background for basic tier only
-            aiModule.processAssessmentWithAI(id, type).catch((error: Error) => {
-              console.error(`AI processing failed for basic tier ${id}:`, error);
-              // Update assessment with error info
-              prisma.assessment.update({
-                where: { id },
-                data: {
-                  data: {
-                    ...data,
-                    aiError: error.message,
-                    aiAnalysisStarted: false
-                  }
-                }
-              }).catch(console.error);
-            });
-            
-            console.log(`AI analysis started for basic tier assessment: ${id}`);
-          }
-        } catch (importError) {
-          console.warn('AI processing module not available:', importError);
-        }
+    // 🔥 NEW LOGIC: Check if AI analysis needed/running for basic tier
+    if (hasSubmission) {
+      const aiProcessed = data.aiProcessed;
+      const aiAnalysisStarted = data.aiAnalysisStarted;
+      const aiError = data.aiError;
+
+      // Case 1: AI analysis not started yet - START IT and return processing status
+      if (!aiProcessed && !aiAnalysisStarted && !aiError) {
+        console.log('🚀 STARTING AI ANALYSIS - RETURNING PROCESSING STATUS');
         
-        if (!aiProcessingAvailable) {
-          console.warn('AI processing not available - basic tier will show placeholder results');
-          // Update assessment to indicate AI is not available
+        try {
+          // Mark as started
           await prisma.assessment.update({
             where: { id },
             data: {
+              status: 'processing',
               data: {
                 ...data,
-                aiError: 'AI processing module not available',
-                aiAnalysisStarted: false
+                aiAnalysisStarted: true,
+                aiAnalysisStartedAt: new Date().toISOString()
               }
             }
           });
-        }
-      } catch (error) {
-        console.error('Error handling AI analysis for basic tier:', error);
-        // Update assessment with error
-        await prisma.assessment.update({
-          where: { id },
-          data: {
+
+          // Start AI processing in background
+          try {
+            const aiModule = await import('@/lib/ai-processing');
+            if (aiModule && typeof aiModule.processAssessmentWithAI === 'function') {
+              aiModule.processAssessmentWithAI(id, type).catch((error: Error) => {
+                console.error(`AI processing failed for basic tier ${id}:`, error);
+                prisma.assessment.update({
+                  where: { id },
+                  data: {
+                    data: {
+                      ...data,
+                      aiError: error.message,
+                      aiAnalysisStarted: false
+                    }
+                  }
+                }).catch(console.error);
+              });
+              console.log(`🤖 AI analysis started for basic tier assessment: ${id}`);
+            }
+          } catch (importError) {
+            console.warn('AI processing module not available:', importError);
+          }
+          
+          // 🔥 RETURN PROCESSING STATUS instead of results
+          return NextResponse.json({
+            ...assessment,
+            status: 'processing',
             data: {
               ...data,
-              aiError: error instanceof Error ? error.message : 'Unknown error',
-              aiAnalysisStarted: false
+              aiAnalysisStarted: true,
+              aiAnalysisStartedAt: new Date().toISOString(),
+              showProcessingScreen: true,
+              processingMessage: 'AI analysis in progress...'
             }
+          });
+
+        } catch (error) {
+          console.error('Error starting AI analysis:', error);
+          // Fall through to return assessment data with error
+        }
+      }
+
+      // Case 2: AI analysis started but not complete - return processing status
+      if (!aiProcessed && aiAnalysisStarted && !aiError) {
+        console.log('⏳ AI ANALYSIS IN PROGRESS - RETURNING PROCESSING STATUS');
+        
+        return NextResponse.json({
+          ...assessment,
+          status: 'processing', 
+          data: {
+            ...data,
+            showProcessingScreen: true,
+            processingMessage: 'AI analysis in progress...',
+            aiAnalysisStarted: true
           }
-        }).catch(console.error);
+        });
+      }
+
+      // Case 3: AI analysis completed - return full results
+      if (aiProcessed) {
+        console.log('✅ AI ANALYSIS COMPLETED - RETURNING FULL RESULTS');
+        return NextResponse.json(assessment);
+      }
+
+      // Case 4: AI analysis failed - return results with fallback data
+      if (aiError) {
+        console.log('❌ AI ANALYSIS FAILED - RETURNING FALLBACK RESULTS');
+        return NextResponse.json(assessment);
       }
     }
 
-    // Return assessment data for basic tier
+    // Fallback: Return assessment data (shouldn't reach here for basic tier with submissions)
+    console.log('🔄 FALLBACK - RETURNING ASSESSMENT DATA');
     return NextResponse.json(assessment);
 
   } catch (error) {
