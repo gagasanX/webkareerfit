@@ -57,26 +57,63 @@ export async function GET(
       finalDecision: isManualProcessing ? 'MANUAL' : 'AI'
     });
 
+    // Helper function to create properly formatted response data
+    const createResponseData = (assessmentData: any, additionalData: any = {}) => {
+      return {
+        id: assessment.id,
+        type: assessment.type,
+        status: assessment.status,
+        tier: assessment.tier,
+        price: assessment.price,
+        manualProcessing: assessment.manualProcessing,
+        createdAt: assessment.createdAt,
+        completedAt: (assessment as any).completedAt || assessment.updatedAt,
+        reviewNotes: (assessment as any).reviewNotes,
+        reviewedAt: (assessment as any).reviewedAt,
+        data: {
+          ...assessmentData,
+          ...additionalData,
+          // Ensure new fields are explicitly included
+          resumeAnalysis: assessmentData?.resumeAnalysis,
+          careerFit: assessmentData?.careerFit,
+          evidenceLevel: assessmentData?.evidenceLevel,
+          resumeConsistency: assessmentData?.resumeConsistency,
+          resumeText: assessmentData?.resumeText,
+          aiProcessed: assessmentData?.aiProcessed,
+          aiAnalysisStarted: assessmentData?.aiAnalysisStarted,
+          aiAnalysisStartedAt: assessmentData?.aiAnalysisStartedAt,
+          aiProcessedAt: assessmentData?.aiProcessedAt,
+          aiError: assessmentData?.aiError,
+          showProcessingScreen: assessmentData?.showProcessingScreen,
+          processingMessage: assessmentData?.processingMessage,
+          scores: assessmentData?.scores,
+          recommendations: assessmentData?.recommendations,
+          strengths: assessmentData?.strengths,
+          improvements: assessmentData?.improvements,
+          summary: assessmentData?.summary,
+          readinessLevel: assessmentData?.readinessLevel,
+          responses: assessmentData?.responses,
+          personalInfo: assessmentData?.personalInfo
+        }
+      };
+    };
+
     // CRITICAL: For manual processing assessments (standard/premium) - NO RESULTS PAGE ACCESS
     if (isManualProcessing) {
       console.log('🚫 MANUAL PROCESSING ASSESSMENT - NO RESULTS PAGE ACCESS');
       console.log('User should be redirected to appropriate thank you page');
       
       // Return redirect instruction - ResultsClient will handle the redirect
-      return NextResponse.json({
-        ...assessment,
-        data: {
-          ...data,
-          // Clear indicators this should redirect
-          manualProcessingOnly: true,
-          redirectRequired: true,
-          redirectMessage: 'This assessment is being processed by our experts. Please check your thank you page.',
-          // Provide proper redirect URL
-          properRedirectUrl: assessment.tier === 'premium' 
-            ? `/assessment/${type}/premium-results/${id}`
-            : `/assessment/${type}/standard-results/${id}`
-        }
-      });
+      return NextResponse.json(createResponseData(data, {
+        // Clear indicators this should redirect
+        manualProcessingOnly: true,
+        redirectRequired: true,
+        redirectMessage: 'This assessment is being processed by our experts. Please check your thank you page.',
+        // Provide proper redirect URL
+        properRedirectUrl: assessment.tier === 'premium' 
+          ? `/assessment/${type}/premium-results/${id}`
+          : `/assessment/${type}/standard-results/${id}`
+      }));
     }
 
     // ONLY for basic tier (RM50) - AI processing allowed
@@ -94,15 +131,17 @@ export async function GET(
         
         try {
           // Mark as started
+          const updatedData = {
+            ...data,
+            aiAnalysisStarted: true,
+            aiAnalysisStartedAt: new Date().toISOString()
+          };
+
           await prisma.assessment.update({
             where: { id },
             data: {
               status: 'processing',
-              data: {
-                ...data,
-                aiAnalysisStarted: true,
-                aiAnalysisStartedAt: new Date().toISOString()
-              }
+              data: updatedData
             }
           });
 
@@ -116,7 +155,7 @@ export async function GET(
                   where: { id },
                   data: {
                     data: {
-                      ...data,
+                      ...updatedData,
                       aiError: error.message,
                       aiAnalysisStarted: false
                     }
@@ -130,17 +169,12 @@ export async function GET(
           }
           
           // 🔥 RETURN PROCESSING STATUS instead of results
-          return NextResponse.json({
-            ...assessment,
-            status: 'processing',
-            data: {
-              ...data,
-              aiAnalysisStarted: true,
-              aiAnalysisStartedAt: new Date().toISOString(),
-              showProcessingScreen: true,
-              processingMessage: 'AI analysis in progress...'
-            }
-          });
+          return NextResponse.json(createResponseData(updatedData, {
+            aiAnalysisStarted: true,
+            aiAnalysisStartedAt: new Date().toISOString(),
+            showProcessingScreen: true,
+            processingMessage: 'AI analysis in progress...'
+          }));
 
         } catch (error) {
           console.error('Error starting AI analysis:', error);
@@ -152,34 +186,29 @@ export async function GET(
       if (!aiProcessed && aiAnalysisStarted && !aiError) {
         console.log('⏳ AI ANALYSIS IN PROGRESS - RETURNING PROCESSING STATUS');
         
-        return NextResponse.json({
-          ...assessment,
-          status: 'processing', 
-          data: {
-            ...data,
-            showProcessingScreen: true,
-            processingMessage: 'AI analysis in progress...',
-            aiAnalysisStarted: true
-          }
-        });
+        return NextResponse.json(createResponseData(data, {
+          showProcessingScreen: true,
+          processingMessage: 'AI analysis in progress...',
+          aiAnalysisStarted: true
+        }));
       }
 
       // Case 3: AI analysis completed - return full results
       if (aiProcessed) {
         console.log('✅ AI ANALYSIS COMPLETED - RETURNING FULL RESULTS');
-        return NextResponse.json(assessment);
+        return NextResponse.json(createResponseData(data));
       }
 
       // Case 4: AI analysis failed - return results with fallback data
       if (aiError) {
         console.log('❌ AI ANALYSIS FAILED - RETURNING FALLBACK RESULTS');
-        return NextResponse.json(assessment);
+        return NextResponse.json(createResponseData(data));
       }
     }
 
     // Fallback: Return assessment data (shouldn't reach here for basic tier with submissions)
     console.log('🔄 FALLBACK - RETURNING ASSESSMENT DATA');
-    return NextResponse.json(assessment);
+    return NextResponse.json(createResponseData(data));
 
   } catch (error) {
     console.error('Error in results endpoint:', error);

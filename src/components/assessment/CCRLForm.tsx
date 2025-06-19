@@ -1,19 +1,80 @@
 // components/assessment/CCRLForm.tsx
-
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/Button';
 import { useRouter } from 'next/navigation';
-import { useSession } from 'next-auth/react'; // Import useSession hook
-import AssessmentProcessingScreen from '@/components/assessment/AssessmentProcessingScreen'; // Import processing screen
+import { useSession } from 'next-auth/react';
+import AssessmentProcessingScreen from '@/components/assessment/AssessmentProcessingScreen';
 
-// Update props interface to accept onSubmit or direct ID/type
 interface CCRLFormProps {
   assessmentId?: string;
   assessmentType?: string;
   onSubmit?: (formData: any, resumeFile?: File) => Promise<void>;
 }
+
+// 🔥 INTERNAL WEIGHTAGE SYSTEM - Hidden from users
+interface WeightageOption {
+  text: string;
+  weightage: number;
+}
+
+interface CategoryWeightage {
+  [key: string]: WeightageOption[];
+}
+
+// Internal weightage mapping (users won't see these numbers)
+const CATEGORY_WEIGHTAGES: CategoryWeightage = {
+  careerRelevance: [
+    { text: "My professional knowledge and skills are completely up-to-date with current industry standards and I consistently stay ahead of trends.", weightage: 5 },
+    { text: "I have a comprehensive understanding of changes and trends in my target industry and actively monitor developments.", weightage: 4 },
+    { text: "I have identified and am actively pursuing the skills and certifications required for my desired role.", weightage: 3 },
+    { text: "My previous experience and achievements align well with current expectations of my desired job market.", weightage: 2 },
+    { text: "I can articulate some value from my background but need to better understand current industry demands.", weightage: 1 }
+  ],
+  confidenceReadiness: [
+    { text: "I feel highly confident about competing with current professionals and view my career break as a valuable experience.", weightage: 5 },
+    { text: "I have developed comprehensive strategies to address potential challenges and am emotionally prepared for workplace dynamics.", weightage: 4 },
+    { text: "I am emotionally prepared to manage workplace responsibilities and have good self-awareness of my capabilities.", weightage: 3 },
+    { text: "I view my career break positively and am adaptable to changes in workplace culture and technology.", weightage: 2 },
+    { text: "I have some concerns about competing but am working on building my confidence and addressing challenges.", weightage: 1 }
+  ],
+  networkingRelationships: [
+    { text: "I have an extensive and active professional network that strongly supports my career comeback with multiple connection points.", weightage: 5 },
+    { text: "I have successfully re-established connections with former colleagues, mentors, and industry peers and maintain regular contact.", weightage: 4 },
+    { text: "I actively engage in industry events, forums, and professional communities and am building meaningful relationships.", weightage: 3 },
+    { text: "I can leverage my existing network to explore opportunities and maintain a professional presence through platforms like LinkedIn.", weightage: 2 },
+    { text: "I have limited professional connections but am working on building and expanding my network.", weightage: 1 }
+  ],
+  skillRenewal: [
+    { text: "I have completed extensive relevant training, courses, and certifications and am fully committed to continuous learning.", weightage: 5 },
+    { text: "I actively seek hands-on experience and practical exposure to new tools and technologies in my field.", weightage: 4 },
+    { text: "I consistently explore resources to bridge skill gaps and am proactive about learning opportunities.", weightage: 3 },
+    { text: "I am open to learning from colleagues and mentors and have taken some steps to update my skills.", weightage: 2 },
+    { text: "I recognize the need for skill development but have limited recent training or learning experiences.", weightage: 1 }
+  ],
+  selfManagement: [
+    { text: "I have excellent strategies for time management and have successfully created a sustainable work-life balance plan.", weightage: 5 },
+    { text: "I am well-prepared to balance personal and professional life with clear boundaries and strong self-management skills.", weightage: 4 },
+    { text: "I am confident in setting boundaries and have resolved personal challenges that might impact work performance.", weightage: 3 },
+    { text: "I have a solid plan to adjust to regular work schedules and workplace demands.", weightage: 2 },
+    { text: "I am working on developing better time management and work-life balance strategies.", weightage: 1 }
+  ],
+  interviewPreparedness: [
+    { text: "My resume and cover letter are professionally optimized and I am highly confident in articulating the value of my career break.", weightage: 5 },
+    { text: "I am skilled at tailoring applications to specific employers and have extensively practiced addressing career timeline questions.", weightage: 4 },
+    { text: "I am familiar with modern recruitment processes and digital tools used in current hiring practices.", weightage: 3 },
+    { text: "I have prepared responses for potential interview questions and understand how to present my background positively.", weightage: 2 },
+    { text: "I have basic interview preparation but need more practice in articulating my career break and current readiness.", weightage: 1 }
+  ],
+  motivation: [
+    { text: "I have exceptional clarity about my career return goals and my aspirations are perfectly aligned with my values and long-term vision.", weightage: 5 },
+    { text: "I am highly motivated to overcome challenges and remain committed to my career comeback with strong determination.", weightage: 4 },
+    { text: "I find significant fulfillment in pursuing opportunities that align with my passions and strengths.", weightage: 3 },
+    { text: "I am prepared to embrace feedback and adapt my approach to achieve my career objectives.", weightage: 2 },
+    { text: "I have general motivation to return to work but need to clarify my specific goals and direction.", weightage: 1 }
+  ]
+};
 
 interface FormDataType {
   personalInfo: {
@@ -31,18 +92,26 @@ interface FormDataType {
   selfManagement: string;
   interviewPreparedness: string;
   motivation: string;
+  // 🔥 INTERNAL: Store calculated scores (hidden from user)
+  _internalScores: {
+    careerRelevance: number;
+    confidenceReadiness: number;
+    networkingRelationships: number;
+    skillRenewal: number;
+    selfManagement: number;
+    interviewPreparedness: number;
+    motivation: number;
+    totalScore: number;
+    overallScore: number;
+  };
 }
 
 export default function CCRLForm({ assessmentId, assessmentType, onSubmit }: CCRLFormProps) {
-  // Log assessment ID untuk debugging
   if (assessmentId) {
     console.log('Current assessment ID:', assessmentId);
   }
   
-  // Add useSession hook
   const { data: session, status } = useSession();
-  
-  // Add analyzing step to possible states
   const [step, setStep] = useState<'form' | 'preview' | 'processing' | 'analyzing'>('form');
   const [formData, setFormData] = useState<FormDataType>({
     personalInfo: {
@@ -60,6 +129,17 @@ export default function CCRLForm({ assessmentId, assessmentType, onSubmit }: CCR
     selfManagement: '',
     interviewPreparedness: '',
     motivation: '',
+    _internalScores: {
+      careerRelevance: 0,
+      confidenceReadiness: 0,
+      networkingRelationships: 0,
+      skillRenewal: 0,
+      selfManagement: 0,
+      interviewPreparedness: 0,
+      motivation: 0,
+      totalScore: 0,
+      overallScore: 0
+    }
   });
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -68,22 +148,54 @@ export default function CCRLForm({ assessmentId, assessmentType, onSubmit }: CCR
   const [isSubmitting, setIsSubmitting] = useState(false);
   const router = useRouter();
 
-  // Update form data
+  // 🔥 INTERNAL SCORING CALCULATION - Hidden from users
+  const calculateInternalScores = (currentFormData: FormDataType) => {
+    const categories = ['careerRelevance', 'confidenceReadiness', 'networkingRelationships', 'skillRenewal', 'selfManagement', 'interviewPreparedness', 'motivation'];
+    let totalScore = 0;
+    const newScores = { ...currentFormData._internalScores };
+
+    categories.forEach(category => {
+      const selectedAnswer = currentFormData[category as keyof FormDataType] as string;
+      if (selectedAnswer && CATEGORY_WEIGHTAGES[category]) {
+        const option = CATEGORY_WEIGHTAGES[category].find(opt => opt.text === selectedAnswer);
+        if (option) {
+          newScores[category as keyof typeof newScores] = option.weightage;
+          totalScore += option.weightage;
+        }
+      }
+    });
+
+    newScores.totalScore = totalScore;
+    // Calculate percentage (max possible score is 35 = 7 categories × 5 max weightage)
+    newScores.overallScore = Math.round((totalScore / 35) * 100);
+
+    return newScores;
+  };
+
+  // Update form data and recalculate internal scores
   const updateFormData = (section: string, field: string, value: string) => {
+    let updatedData;
+    
     if (section === 'personalInfo') {
-      setFormData({
+      updatedData = {
         ...formData,
         personalInfo: {
           ...formData.personalInfo,
           [field]: value,
         },
-      });
+      };
     } else {
-      setFormData({
+      updatedData = {
         ...formData,
         [section]: value,
-      });
+      };
     }
+
+    // Recalculate internal scores (hidden from user)
+    const newScores = calculateInternalScores(updatedData);
+    updatedData._internalScores = newScores;
+    
+    setFormData(updatedData);
   };
 
   // Calculate progress percentage
@@ -98,7 +210,7 @@ export default function CCRLForm({ assessmentId, assessmentType, onSubmit }: CCR
     if (formData.personalInfo.jobPosition) completedFields++;
     if (formData.qualification) completedFields++;
 
-    // Count other sections
+    // Count assessment fields
     if (formData.careerRelevance) completedFields++;
     if (formData.confidenceReadiness) completedFields++;
     if (formData.networkingRelationships) completedFields++;
@@ -107,7 +219,7 @@ export default function CCRLForm({ assessmentId, assessmentType, onSubmit }: CCR
     if (formData.interviewPreparedness) completedFields++;
     if (formData.motivation) completedFields++;
 
-    // Calculate percentage (7 assessment sections + 6 personal info fields)
+    // Calculate percentage (13 total fields)
     const totalFields = 13;
     const percentage = (completedFields / totalFields) * 100;
     setProgressPercentage(percentage);
@@ -120,10 +232,7 @@ export default function CCRLForm({ assessmentId, assessmentType, onSubmit }: CCR
       const [section, field] = name.split('.');
       updateFormData(section, field, value);
     } else {
-      setFormData({
-        ...formData,
-        [name]: value,
-      });
+      updateFormData(name, '', value);
     }
   };
 
@@ -144,14 +253,24 @@ export default function CCRLForm({ assessmentId, assessmentType, onSubmit }: CCR
       return;
     }
 
+    // Validate that all assessment questions are answered
+    const assessmentFields = ['careerRelevance', 'confidenceReadiness', 'networkingRelationships', 'skillRenewal', 'selfManagement', 'interviewPreparedness', 'motivation'];
+    const missingFields = assessmentFields.filter(field => !formData[field as keyof FormDataType]);
+    
+    if (missingFields.length > 0) {
+      setError('Please answer all assessment questions before proceeding.');
+      return;
+    }
+
     // Proceed to preview
     setStep('preview');
     window.scrollTo(0, 0);
   };
 
-  // Final submission after preview - updated with analyzing step
+  // Final submission after preview
   const handleFinalSubmit = async () => {
     console.log('Final submit function called');
+    console.log('Internal scores calculated:', formData._internalScores);
     
     // Validate inputs
     if (!formData.personalInfo.name || !formData.personalInfo.email) {
@@ -160,17 +279,39 @@ export default function CCRLForm({ assessmentId, assessmentType, onSubmit }: CCR
     }
     
     try {
-      // Show processing state and clear errors
       setIsSubmitting(true);
       setError('');
-      
-      // Show the "analyzing" step with the new processing screen
       setStep('analyzing');
+      
+      // 🔥 Enhanced form data with internal scoring
+      const enhancedFormData = {
+        ...formData,
+        // Add calculated readiness level based on internal score
+        readinessLevel: getReadinessLevel(formData._internalScores.overallScore),
+        // Add scoring data for backend processing
+        scoringData: {
+          totalScore: formData._internalScores.totalScore,
+          overallScore: formData._internalScores.overallScore,
+          categoryScores: {
+            skillCurrency: formData._internalScores.skillRenewal, // Map to expected CCRL categories
+            marketKnowledge: formData._internalScores.careerRelevance,
+            confidenceLevel: formData._internalScores.confidenceReadiness,
+            networkStrength: formData._internalScores.networkingRelationships,
+            selfManagement: formData._internalScores.selfManagement,
+            interviewPreparedness: formData._internalScores.interviewPreparedness,
+            motivation: formData._internalScores.motivation
+          }
+        }
+      };
+      
+      // Remove internal scores from the data that goes to API (keep it private)
+      const { _internalScores, ...cleanFormData } = enhancedFormData;
+      const finalFormData = cleanFormData;
       
       // Use onSubmit prop if provided
       if (onSubmit) {
-        await onSubmit(formData, resumeFile || undefined);
-        return; // Let parent handle navigation
+        await onSubmit(finalFormData, resumeFile || undefined);
+        return;
       }
       
       // Otherwise use direct API submission
@@ -179,18 +320,16 @@ export default function CCRLForm({ assessmentId, assessmentType, onSubmit }: CCR
       }
       
       console.log('Creating form data for API submission');
-      console.log('Using assessment ID:', assessmentId);
+      console.log('Calculated scores:', finalFormData.scoringData);
       
-      // Create FormData for submission
       const formDataToSubmit = new FormData();
-      formDataToSubmit.append('formData', JSON.stringify(formData));
+      formDataToSubmit.append('formData', JSON.stringify(finalFormData));
       
       if (resumeFile) {
         console.log('Adding resume file:', resumeFile.name);
         formDataToSubmit.append('resume', resumeFile);
       }
       
-      // Submit to API
       const endpoint = `/api/assessment/${assessmentType}/${assessmentId}/submit-with-file`;
       console.log('Submitting to API:', endpoint);
       
@@ -201,16 +340,13 @@ export default function CCRLForm({ assessmentId, assessmentType, onSubmit }: CCR
       
       console.log('API response status:', response.status);
       
-      // Check if response is JSON before parsing
       const contentType = response.headers.get("content-type");
       if (!contentType || !contentType.includes("application/json")) {
-        // If not JSON, get text content for better error message
         const textContent = await response.text();
         console.error('Non-JSON response:', textContent.substring(0, 200));
         throw new Error(`Server returned non-JSON response. Status: ${response.status}`);
       }
       
-      // Now safely parse JSON
       const result = await response.json();
       console.log('Submission successful:', result);
       
@@ -218,21 +354,29 @@ export default function CCRLForm({ assessmentId, assessmentType, onSubmit }: CCR
         throw new Error(result.error || 'Failed to submit assessment');
       }
       
-      // Redirect to results page - with a delay to show the processing screen
+      // Redirect to results page
       setTimeout(() => {
         router.push(result.redirectTo || `/assessment/${assessmentType}/results/${assessmentId}`);
-      }, 5000); // Give the processing screen time to show (5 seconds minimum)
+      }, 5000);
       
     } catch (err) {
       console.error('Error during submission:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to submit. Please try again.';
       setError(errorMessage);
-      setStep('preview'); // Go back to preview on error
+      setStep('preview');
     } finally {
       if (onSubmit) {
-        setIsSubmitting(false); // Only reset isSubmitting if not redirecting
+        setIsSubmitting(false);
       }
     }
+  };
+
+  // 🔥 Internal helper functions
+  const getReadinessLevel = (score: number): string => {
+    if (score >= 85) return "Fully Prepared";
+    if (score >= 70) return "Approaching Readiness";
+    if (score >= 50) return "Developing Competency"; 
+    return "Early Development";
   };
 
   // Go back to edit form
@@ -241,13 +385,54 @@ export default function CCRLForm({ assessmentId, assessmentType, onSubmit }: CCR
     window.scrollTo(0, 0);
   };
 
+  // Render category question (clean UI without weightage visible)
+  const renderCategoryQuestion = (
+    categoryKey: string,
+    title: string,
+    description: string
+  ) => {
+    const options = CATEGORY_WEIGHTAGES[categoryKey] || [];
+    const selectedValue = formData[categoryKey as keyof FormDataType] as string;
+    
+    return (
+      <div className="space-y-4">
+        <h3 className="text-xl font-semibold text-gray-900 pb-2 border-b">{title}</h3>
+        <p className="text-sm text-gray-500 mb-4">{description}</p>
+        
+        <div className="bg-gray-50 p-5 rounded-lg border space-y-3">
+          {options.map((option, index) => (
+            <label 
+              key={index}
+              className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
+                selectedValue === option.text
+                  ? 'border-primary-500 bg-primary-50' 
+                  : 'border-gray-200 bg-white hover:bg-gray-50'
+              }`}
+            >
+              <input
+                type="radio"
+                name={categoryKey}
+                value={option.text}
+                checked={selectedValue === option.text}
+                onChange={handleInputChange}
+                className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
+                required
+              />
+              <span className="ml-3 text-gray-700">{option.text}</span>
+            </label>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   // Render the preview section
   const renderPreview = () => {
     return (
       <div className="space-y-8">
         <div className="bg-white p-6 rounded-lg shadow-md">
           <h2 className="text-xl font-semibold text-gray-900 mb-4">Review Your Assessment</h2>
-          <p className="text-gray-600 mb-6">Please review your answers before submitting for analysis.</p>  
+          <p className="text-gray-600 mb-6">Please review your answers before submitting for analysis.</p>
 
           <div className="space-y-6">
             <div>
@@ -283,71 +468,68 @@ export default function CCRLForm({ assessmentId, assessmentType, onSubmit }: CCR
             <div>
               <h3 className="font-medium text-gray-800">Assessment Responses</h3>
               <div className="mt-2 space-y-4">
-                <div>
-                  <p className="text-sm text-gray-500">Career Relevance and Industry Alignment</p>
-                  <p className="font-medium">{formData.careerRelevance}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Confidence and Emotional Readiness</p>
-                  <p className="font-medium">{formData.confidenceReadiness}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Networking and Professional Relationships</p>
-                  <p className="font-medium">{formData.networkingRelationships}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Skill Renewal and Lifelong Learning</p>
-                  <p className="font-medium">{formData.skillRenewal}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Self Management and Work Life Balance</p>
-                  <p className="font-medium">{formData.selfManagement}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Interview and Job Search Preparedness</p>
-                  <p className="font-medium">{formData.interviewPreparedness}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Motivation and Career Purpose</p>
-                  <p className="font-medium">{formData.motivation}</p>
-                </div>
+                {Object.entries({
+                  careerRelevance: 'Career Relevance and Industry Alignment',
+                  confidenceReadiness: 'Confidence and Emotional Readiness',
+                  networkingRelationships: 'Networking and Professional Relationships',
+                  skillRenewal: 'Skill Renewal and Lifelong Learning',
+                  selfManagement: 'Self Management and Work Life Balance',
+                  interviewPreparedness: 'Interview and Job Search Preparedness',
+                  motivation: 'Motivation and Career Purpose'
+                }).map(([key, label]) => (
+                  <div key={key}>
+                    <p className="text-sm text-gray-500">{label}</p>
+                    <p className="font-medium">{formData[key as keyof FormDataType] as string}</p>
+                  </div>
+                ))}
               </div>
             </div>
+
+            {/* 🔥 DEBUG: Show calculated scores in development mode only */}
+            {process.env.NODE_ENV === 'development' && (
+              <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+                <h4 className="font-medium text-yellow-800 mb-2">Debug: Internal Scores (Hidden from Users)</h4>
+                <div className="text-sm text-yellow-700">
+                  <p>Overall Score: {formData._internalScores.overallScore}%</p>
+                  <p>Total Score: {formData._internalScores.totalScore}/35</p>
+                  <p>Readiness Level: {getReadinessLevel(formData._internalScores.overallScore)}</p>
+                </div>
+              </div>
+            )}
           </div>
 
           {error && (
-          <div className="mt-4 p-3 bg-red-50 text-red-700 rounded-lg">
-            {error}
-          </div>
-        )}
+            <div className="mt-4 p-3 bg-red-50 text-red-700 rounded-lg">
+              {error}
+            </div>
+          )}
         
-        {/* Buttons for navigation/submission */}
-        <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-end">
-          <button 
-            type="button" 
-            className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none"
-            onClick={handleBackToForm}
-            disabled={isSubmitting}
-          >
-            Edit Responses
-          </button>
-          
-          <button 
-            type="button" 
-            className="inline-flex justify-center px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500"
-            onClick={() => {
-              console.log('Submit button clicked');
-              handleFinalSubmit();
+          <div className="mt-6 flex flex-col sm:flex-row gap-3 justify-end">
+            <button 
+              type="button" 
+              className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none"
+              onClick={handleBackToForm}
+              disabled={isSubmitting}
+            >
+              Edit Responses
+            </button>
+            
+            <button 
+              type="button" 
+              className="inline-flex justify-center px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-blue-500"
+              onClick={() => {
+                console.log('Submit button clicked');
+                handleFinalSubmit();
               }}
-            disabled={isSubmitting}
-          >
-            {isSubmitting ? 'Processing...' : 'Confirm & Submit'}
-          </button>
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? 'Processing...' : 'Confirm & Submit'}
+            </button>
+          </div>
         </div>
       </div>
-    </div>
-  );
-};
+    );
+  };
 
   // Render loading state during processing
   const renderProcessing = () => {
@@ -355,18 +537,18 @@ export default function CCRLForm({ assessmentId, assessmentType, onSubmit }: CCR
       <div className="min-h-[50vh] flex flex-col items-center justify-center">
         <div className="w-16 h-16 border-4 border-t-transparent border-[#7e43f1] rounded-full animate-spin"></div>
         <p className="mt-4 text-lg font-medium text-gray-800">Analyzing your assessment...</p>
-        <p className="mt-2 text-gray-600">This may take a minute. We're processing your responses and analyzing your resume.</p>
+        <p className="mt-2 text-gray-600">Processing your responses with advanced scoring system.</p>
       </div>
     );
   };
 
   return (
     <div className="space-y-6">
-      {/* Authentication warning if not logged in */}
+      {/* Authentication warning */}
       {status === 'unauthenticated' && (
         <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg mb-4">
           <p className="text-yellow-700">
-            <strong>Note:</strong> You must be logged in to submit this assessment. Your responses will not be saved otherwise.
+            <strong>Note:</strong> You must be logged in to submit this assessment.
           </p>
         </div>
       )}
@@ -383,7 +565,7 @@ export default function CCRLForm({ assessmentId, assessmentType, onSubmit }: CCR
               {/* Progress bar */}
               <div className="w-full bg-gray-200 rounded-full h-2.5 mt-4">
                 <div 
-                  className="bg-primary-600 h-2.5 rounded-full" 
+                  className="bg-primary-600 h-2.5 rounded-full transition-all duration-300" 
                   style={{ width: `${progressPercentage}%` }}
                 ></div>
               </div>
@@ -529,628 +711,48 @@ export default function CCRLForm({ assessmentId, assessmentType, onSubmit }: CCR
                   </div>
                 </div>
                 
-                {/* Career Relevance Section */}
-                <div className="space-y-4">
-                  <h3 className="text-xl font-semibold text-gray-900 pb-2 border-b">Career Relevance and Industry Alignment</h3>
-                  <p className="text-sm text-gray-500 mb-4">Choose 1 statement that resonates with you.</p>
-                  
-                  <div className="bg-gray-50 p-5 rounded-lg border space-y-3">
-                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                      formData.careerRelevance === "My professional knowledge and skills are up-to-date with the current industry standards."
-                        ? 'border-primary-500 bg-primary-50' 
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="careerRelevance"
-                        value="My professional knowledge and skills are up-to-date with the current industry standards."
-                        checked={formData.careerRelevance === "My professional knowledge and skills are up-to-date with the current industry standards."}
-                        onChange={handleInputChange}
-                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                        required
-                      />
-                      <span className="ml-3 text-gray-700">My professional knowledge and skills are up-to-date with the current industry standards.</span>
-                    </label>
-                    
-                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                      formData.careerRelevance === "I have a clear understanding of the changes and trends in my target industry since my hiatus."
-                        ? 'border-primary-500 bg-primary-50' 
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="careerRelevance"
-                        value="I have a clear understanding of the changes and trends in my target industry since my hiatus."
-                        checked={formData.careerRelevance === "I have a clear understanding of the changes and trends in my target industry since my hiatus."}
-                        onChange={handleInputChange}
-                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                      />
-                      <span className="ml-3 text-gray-700">I have a clear understanding of the changes and trends in my target industry since my hiatus.</span>
-                    </label>
-                    
-                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                      formData.careerRelevance === "I have identified the skills and certifications required for my desired role."
-                        ? 'border-primary-500 bg-primary-50' 
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="careerRelevance"
-                        value="I have identified the skills and certifications required for my desired role."
-                        checked={formData.careerRelevance === "I have identified the skills and certifications required for my desired role."}
-                        onChange={handleInputChange}
-                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                      />
-                      <span className="ml-3 text-gray-700">I have identified the skills and certifications required for my desired role.</span>
-                    </label>
-                    
-                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                      formData.careerRelevance === "My previous experience and achievements align with the expectations of my desired job."
-                        ? 'border-primary-500 bg-primary-50' 
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="careerRelevance"
-                        value="My previous experience and achievements align with the expectations of my desired job."
-                        checked={formData.careerRelevance === "My previous experience and achievements align with the expectations of my desired job."}
-                        onChange={handleInputChange}
-                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                      />
-                      <span className="ml-3 text-gray-700">My previous experience and achievements align with the expectations of my desired job.</span>
-                    </label>
-                    
-                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                      formData.careerRelevance === "I can articulate how my background adds value to the current demands of the industry."
-                        ? 'border-primary-500 bg-primary-50' 
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="careerRelevance"
-                        value="I can articulate how my background adds value to the current demands of the industry."
-                        checked={formData.careerRelevance === "I can articulate how my background adds value to the current demands of the industry."}
-                        onChange={handleInputChange}
-                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                      />
-                      <span className="ml-3 text-gray-700">I can articulate how my background adds value to the current demands of the industry.</span>
-                    </label>
-                  </div>
-                </div>
+                {/* Assessment Categories - Clean UI without visible weightage */}
+                {renderCategoryQuestion(
+                  'careerRelevance',
+                  'Career Relevance and Industry Alignment',
+                  'Choose the statement that best describes your current professional knowledge and industry awareness.'
+                )}
                 
-                {/* Confidence and Emotional Readiness */}
-                <div className="space-y-4">
-                  <h3 className="text-xl font-semibold text-gray-900 pb-2 border-b">Confidence and Emotional Readiness</h3>
-                  <p className="text-sm text-gray-500 mb-4">Choose 1 statement that resonates with you.</p>
-                  
-                  <div className="bg-gray-50 p-5 rounded-lg border space-y-3">
-                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                      formData.confidenceReadiness === "I feel confident about competing with current professionals for the desired role."
-                        ? 'border-primary-500 bg-primary-50' 
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="confidenceReadiness"
-                        value="I feel confident about competing with current professionals for the desired role."
-                        checked={formData.confidenceReadiness === "I feel confident about competing with current professionals for the desired role."}
-                        onChange={handleInputChange}
-                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                        required
-                      />
-                      <span className="ml-3 text-gray-700">I feel confident about competing with current professionals for the desired role.</span>
-                    </label>
-                    
-                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                      formData.confidenceReadiness === "I have strategies to address potential challenges related to my career hiatus."
-                        ? 'border-primary-500 bg-primary-50' 
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="confidenceReadiness"
-                        value="I have strategies to address potential challenges related to my career hiatus."
-                        checked={formData.confidenceReadiness === "I have strategies to address potential challenges related to my career hiatus."}
-                        onChange={handleInputChange}
-                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                      />
-                      <span className="ml-3 text-gray-700">I have strategies to address potential challenges related to my career hiatus.</span>
-                    </label>
-                    
-                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                      formData.confidenceReadiness === "I am emotionally prepared to manage workplace dynamics and responsibilities."
-                        ? 'border-primary-500 bg-primary-50' 
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="confidenceReadiness"
-                        value="I am emotionally prepared to manage workplace dynamics and responsibilities."
-                        checked={formData.confidenceReadiness === "I am emotionally prepared to manage workplace dynamics and responsibilities."}
-                        onChange={handleInputChange}
-                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                      />
-                      <span className="ml-3 text-gray-700">I am emotionally prepared to manage workplace dynamics and responsibilities.</span>
-                    </label>
-                    
-                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                      formData.confidenceReadiness === "I view my career break as an opportunity to reflect and grow professionally."
-                        ? 'border-primary-500 bg-primary-50' 
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="confidenceReadiness"
-                        value="I view my career break as an opportunity to reflect and grow professionally."
-                        checked={formData.confidenceReadiness === "I view my career break as an opportunity to reflect and grow professionally."}
-                        onChange={handleInputChange}
-                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                      />
-                      <span className="ml-3 text-gray-700">I view my career break as an opportunity to reflect and grow professionally.</span>
-                    </label>
-                    
-                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                      formData.confidenceReadiness === "I am adaptable to changes in workplace culture and technological advancements."
-                        ? 'border-primary-500 bg-primary-50' 
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="confidenceReadiness"
-                        value="I am adaptable to changes in workplace culture and technological advancements."
-                        checked={formData.confidenceReadiness === "I am adaptable to changes in workplace culture and technological advancements."}
-                        onChange={handleInputChange}
-                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                      />
-                      <span className="ml-3 text-gray-700">I am adaptable to changes in workplace culture and technological advancements.</span>
-                    </label>
-                  </div>
-                </div>
+                {renderCategoryQuestion(
+                  'confidenceReadiness',
+                  'Confidence and Emotional Readiness',
+                  'Select the option that reflects your confidence level and emotional preparation for returning to work.'
+                )}
                 
-                {/* Networking and Professional Relationships */}
-                <div className="space-y-4">
-                  <h3 className="text-xl font-semibold text-gray-900 pb-2 border-b">Networking and Professional Relationships</h3>
-                  <p className="text-sm text-gray-500 mb-4">Choose 1 statement that resonates with you.</p>
-                  
-                  <div className="bg-gray-50 p-5 rounded-lg border space-y-3">
-                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                      formData.networkingRelationships === "I have an active professional network that can support my career comeback."
-                        ? 'border-primary-500 bg-primary-50' 
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="networkingRelationships"
-                        value="I have an active professional network that can support my career comeback."
-                        checked={formData.networkingRelationships === "I have an active professional network that can support my career comeback."}
-                        onChange={handleInputChange}
-                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                        required
-                      />
-                      <span className="ml-3 text-gray-700">I have an active professional network that can support my career comeback.</span>
-                    </label>
-                    
-                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                      formData.networkingRelationships === "I have re-established connections with former colleagues, mentors, and industry peers."
-                        ? 'border-primary-500 bg-primary-50' 
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="networkingRelationships"
-                        value="I have re-established connections with former colleagues, mentors, and industry peers."
-                        checked={formData.networkingRelationships === "I have re-established connections with former colleagues, mentors, and industry peers."}
-                        onChange={handleInputChange}
-                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                      />
-                      <span className="ml-3 text-gray-700">I have re-established connections with former colleagues, mentors, and industry peers.</span>
-                    </label>
-                    
-                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                      formData.networkingRelationships === "I actively engage in industry events, forums, and professional communities."
-                        ? 'border-primary-500 bg-primary-50' 
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="networkingRelationships"
-                        value="I actively engage in industry events, forums, and professional communities."
-                        checked={formData.networkingRelationships === "I actively engage in industry events, forums, and professional communities."}
-                        onChange={handleInputChange}
-                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                      />
-                      <span className="ml-3 text-gray-700">I actively engage in industry events, forums, and professional communities.</span>
-                    </label>
-                    
-                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                      formData.networkingRelationships === "I can leverage my network to explore job opportunities and gain insights into the job market."
-                        ? 'border-primary-500 bg-primary-50' 
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="networkingRelationships"
-                        value="I can leverage my network to explore job opportunities and gain insights into the job market."
-                        checked={formData.networkingRelationships === "I can leverage my network to explore job opportunities and gain insights into the job market."}
-                        onChange={handleInputChange}
-                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                      />
-                      <span className="ml-3 text-gray-700">I can leverage my network to explore job opportunities and gain insights into the job market.</span>
-                    </label>
-                    
-                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                      formData.networkingRelationships === "I maintain a professional presence through platforms like LinkedIn to showcase my skills."
-                        ? 'border-primary-500 bg-primary-50' 
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="networkingRelationships"
-                        value="I maintain a professional presence through platforms like LinkedIn to showcase my skills."
-                        checked={formData.networkingRelationships === "I maintain a professional presence through platforms like LinkedIn to showcase my skills."}
-                        onChange={handleInputChange}
-                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                      />
-                      <span className="ml-3 text-gray-700">I maintain a professional presence through platforms like LinkedIn to showcase my skills.</span>
-                    </label>
-                  </div>
-                </div>
+                {renderCategoryQuestion(
+                  'networkingRelationships',
+                  'Networking and Professional Relationships',
+                  'Choose the statement that best represents your professional network and relationship building.'
+                )}
                 
-                {/* Skill Renewal and Lifelong Learning */}
-                <div className="space-y-4">
-                  <h3 className="text-xl font-semibold text-gray-900 pb-2 border-b">Skill Renewal and Lifelong Learning</h3>
-                  <p className="text-sm text-gray-500 mb-4">Choose 1 statement that resonates with you.</p>
-                  
-                  <div className="bg-gray-50 p-5 rounded-lg border space-y-3">
-                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                      formData.skillRenewal === "I have completed relevant training, courses, or certifications to refresh or update my skills."
-                        ? 'border-primary-500 bg-primary-50' 
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="skillRenewal"
-                        value="I have completed relevant training, courses, or certifications to refresh or update my skills."
-                        checked={formData.skillRenewal === "I have completed relevant training, courses, or certifications to refresh or update my skills."}
-                        onChange={handleInputChange}
-                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                        required
-                      />
-                      <span className="ml-3 text-gray-700">I have completed relevant training, courses, or certifications to refresh or update my skills.</span>
-                    </label>
-                    
-                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                      formData.skillRenewal === "I am committed to continuous learning to stay relevant in my chosen field."
-                        ? 'border-primary-500 bg-primary-50' 
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="skillRenewal"
-                        value="I am committed to continuous learning to stay relevant in my chosen field."
-                        checked={formData.skillRenewal === "I am committed to continuous learning to stay relevant in my chosen field."}
-                        onChange={handleInputChange}
-                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                      />
-                      <span className="ml-3 text-gray-700">I am committed to continuous learning to stay relevant in my chosen field.</span>
-                    </label>
-                    
-                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                      formData.skillRenewal === "I seek opportunities to gain hands-on experience and practical exposure to new tools or technologies."
-                        ? 'border-primary-500 bg-primary-50' 
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="skillRenewal"
-                        value="I seek opportunities to gain hands-on experience and practical exposure to new tools or technologies."
-                        checked={formData.skillRenewal === "I seek opportunities to gain hands-on experience and practical exposure to new tools or technologies."}
-                        onChange={handleInputChange}
-                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                      />
-                      <span className="ml-3 text-gray-700">I seek opportunities to gain hands-on experience and practical exposure to new tools or technologies.</span>
-                    </label>
-                    
-                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                      formData.skillRenewal === "I actively explore resources to bridge any skill gaps identified during my hiatus."
-                        ? 'border-primary-500 bg-primary-50' 
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="skillRenewal"
-                        value="I actively explore resources to bridge any skill gaps identified during my hiatus."
-                        checked={formData.skillRenewal === "I actively explore resources to bridge any skill gaps identified during my hiatus."}
-                        onChange={handleInputChange}
-                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                      />
-                      <span className="ml-3 text-gray-700">I actively explore resources to bridge any skill gaps identified during my hiatus.</span>
-                    </label>
-                    
-                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                      formData.skillRenewal === "I am open to learning from younger colleagues or mentors who have industry-specific expertise."
-                        ? 'border-primary-500 bg-primary-50' 
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="skillRenewal"
-                        value="I am open to learning from younger colleagues or mentors who have industry-specific expertise."
-                        checked={formData.skillRenewal === "I am open to learning from younger colleagues or mentors who have industry-specific expertise."}
-                        onChange={handleInputChange}
-                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                      />
-                      <span className="ml-3 text-gray-700">I am open to learning from younger colleagues or mentors who have industry-specific expertise.</span>
-                    </label>
-                  </div>
-                </div>
+                {renderCategoryQuestion(
+                  'skillRenewal',
+                  'Skill Renewal and Lifelong Learning',
+                  'Select the option that describes your approach to skill development and continuous learning.'
+                )}
                 
-                {/* Self-Management and Work-Life Balance */}
-                <div className="space-y-4">
-                  <h3 className="text-xl font-semibold text-gray-900 pb-2 border-b">Self Management and Work Life Balance</h3>
-                  <p className="text-sm text-gray-500 mb-4">Choose 1 statement that resonates with you.</p>
-                  
-                  <div className="bg-gray-50 p-5 rounded-lg border space-y-3">
-                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                      formData.selfManagement === "I have strategies in place to manage my time and responsibilities effectively."
-                        ? 'border-primary-500 bg-primary-50' 
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="selfManagement"
-                        value="I have strategies in place to manage my time and responsibilities effectively."
-                        checked={formData.selfManagement === "I have strategies in place to manage my time and responsibilities effectively."}
-                        onChange={handleInputChange}
-                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                        required
-                      />
-                      <span className="ml-3 text-gray-700">I have strategies in place to manage my time and responsibilities effectively.</span>
-                    </label>
-                    
-                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                      formData.selfManagement === "I am prepared to create a balance between my personal and professional life."
-                        ? 'border-primary-500 bg-primary-50' 
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="selfManagement"
-                        value="I am prepared to create a balance between my personal and professional life."
-                        checked={formData.selfManagement === "I am prepared to create a balance between my personal and professional life."}
-                        onChange={handleInputChange}
-                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                      />
-                      <span className="ml-3 text-gray-700">I am prepared to create a balance between my personal and professional life.</span>
-                    </label>
-                    
-                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                      formData.selfManagement === "I am confident in my ability to set boundaries to maintain work-life harmony."
-                        ? 'border-primary-500 bg-primary-50' 
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="selfManagement"
-                        value="I am confident in my ability to set boundaries to maintain work-life harmony."
-                        checked={formData.selfManagement === "I am confident in my ability to set boundaries to maintain work-life harmony."}
-                        onChange={handleInputChange}
-                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                      />
-                      <span className="ml-3 text-gray-700">I am confident in my ability to set boundaries to maintain work-life harmony.</span>
-                    </label>
-                    
-                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                      formData.selfManagement === "I have resolved any personal challenges that might impact my work performance."
-                        ? 'border-primary-500 bg-primary-50' 
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="selfManagement"
-                        value="I have resolved any personal challenges that might impact my work performance."
-                        checked={formData.selfManagement === "I have resolved any personal challenges that might impact my work performance."}
-                        onChange={handleInputChange}
-                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                      />
-                      <span className="ml-3 text-gray-700">I have resolved any personal challenges that might impact my work performance.</span>
-                    </label>
-                    
-                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                      formData.selfManagement === "I have a plan to adjust to a regular work schedule and workplace demands."
-                        ? 'border-primary-500 bg-primary-50' 
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="selfManagement"
-                        value="I have a plan to adjust to a regular work schedule and workplace demands."
-                        checked={formData.selfManagement === "I have a plan to adjust to a regular work schedule and workplace demands."}
-                        onChange={handleInputChange}
-                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                      />
-                      <span className="ml-3 text-gray-700">I have a plan to adjust to a regular work schedule and workplace demands.</span>
-                    </label>
-                  </div>
-                </div>
+                {renderCategoryQuestion(
+                  'selfManagement',
+                  'Self Management and Work Life Balance',
+                  'Choose the statement that reflects your time management and work-life balance capabilities.'
+                )}
                 
-                {/* Interview and Job Search Preparedness */}
-                <div className="space-y-4">
-                  <h3 className="text-xl font-semibold text-gray-900 pb-2 border-b">Interview and Job Search Preparedness</h3>
-                  <p className="text-sm text-gray-500 mb-4">Choose 1 statement that resonates with you.</p>
-                  
-                  <div className="bg-gray-50 p-5 rounded-lg border space-y-3">
-                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                      formData.interviewPreparedness === "My resume and cover letter effectively highlight my skills, experiences, and career goals."
-                        ? 'border-primary-500 bg-primary-50' 
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="interviewPreparedness"
-                        value="My resume and cover letter effectively highlight my skills, experiences, and career goals."
-                        checked={formData.interviewPreparedness === "My resume and cover letter effectively highlight my skills, experiences, and career goals."}
-                        onChange={handleInputChange}
-                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                        required
-                      />
-                      <span className="ml-3 text-gray-700">My resume and cover letter effectively highlight my skills, experiences, and career goals.</span>
-                    </label>
-                    
-                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                      formData.interviewPreparedness === "I am confident in articulating the value of my career break during interviews."
-                        ? 'border-primary-500 bg-primary-50' 
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="interviewPreparedness"
-                        value="I am confident in articulating the value of my career break during interviews."
-                        checked={formData.interviewPreparedness === "I am confident in articulating the value of my career break during interviews."}
-                        onChange={handleInputChange}
-                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                      />
-                      <span className="ml-3 text-gray-700">I am confident in articulating the value of my career break during interviews.</span>
-                    </label>
-                    
-                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                      formData.interviewPreparedness === "I am aware of how to tailor my job applications to specific employers and roles."
-                        ? 'border-primary-500 bg-primary-50' 
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="interviewPreparedness"
-                        value="I am aware of how to tailor my job applications to specific employers and roles."
-                        checked={formData.interviewPreparedness === "I am aware of how to tailor my job applications to specific employers and roles."}
-                        onChange={handleInputChange}
-                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                      />
-                      <span className="ml-3 text-gray-700">I am aware of how to tailor my job applications to specific employers and roles.</span>
-                    </label>
-                    
-                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                      formData.interviewPreparedness === "I have practiced answering potential interview questions to address gaps in my career timeline."
-                        ? 'border-primary-500 bg-primary-50' 
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="interviewPreparedness"
-                        value="I have practiced answering potential interview questions to address gaps in my career timeline."
-                        checked={formData.interviewPreparedness === "I have practiced answering potential interview questions to address gaps in my career timeline."}
-                        onChange={handleInputChange}
-                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                      />
-                      <span className="ml-3 text-gray-700">I have practiced answering potential interview questions to address gaps in my career timeline.</span>
-                    </label>
-                    
-                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                      formData.interviewPreparedness === "I am familiar with digital tools and platforms used in modern recruitment processes."
-                        ? 'border-primary-500 bg-primary-50' 
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="interviewPreparedness"
-                        value="I am familiar with digital tools and platforms used in modern recruitment processes."
-                        checked={formData.interviewPreparedness === "I am familiar with digital tools and platforms used in modern recruitment processes."}
-                        onChange={handleInputChange}
-                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                      />
-                      <span className="ml-3 text-gray-700">I am familiar with digital tools and platforms used in modern recruitment processes.</span>
-                    </label>
-                  </div>
-                </div>
+                {renderCategoryQuestion(
+                  'interviewPreparedness',
+                  'Interview and Job Search Preparedness',
+                  'Select the option that best describes your job search and interview readiness.'
+                )}
                 
-                {/* Motivation and Career Purpose */}
-                <div className="space-y-4">
-                  <h3 className="text-xl font-semibold text-gray-900 pb-2 border-b">Motivation and Career Purpose</h3>
-                  <p className="text-sm text-gray-500 mb-4">Choose 1 statement that resonates with you.</p>
-                  
-                  <div className="bg-gray-50 p-5 rounded-lg border space-y-3">
-                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                      formData.motivation === "I have a clear understanding of why I want to return to the workforce and what I seek in my next role."
-                        ? 'border-primary-500 bg-primary-50' 
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="motivation"
-                        value="I have a clear understanding of why I want to return to the workforce and what I seek in my next role."
-                        checked={formData.motivation === "I have a clear understanding of why I want to return to the workforce and what I seek in my next role."}
-                        onChange={handleInputChange}
-                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                        required
-                      />
-                      <span className="ml-3 text-gray-700">I have a clear understanding of why I want to return to the workforce and what I seek in my next role.</span>
-                    </label>
-                    
-                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                      formData.motivation === "My career goals are aligned with my personal values and long-term aspirations."
-                        ? 'border-primary-500 bg-primary-50' 
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="motivation"
-                        value="My career goals are aligned with my personal values and long-term aspirations."
-                        checked={formData.motivation === "My career goals are aligned with my personal values and long-term aspirations."}
-                        onChange={handleInputChange}
-                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                      />
-                      <span className="ml-3 text-gray-700">My career goals are aligned with my personal values and long-term aspirations.</span>
-                    </label>
-                    
-                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                      formData.motivation === "I am motivated to overcome challenges and remain committed to my career comeback."
-                        ? 'border-primary-500 bg-primary-50' 
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="motivation"
-                        value="I am motivated to overcome challenges and remain committed to my career comeback."
-                        checked={formData.motivation === "I am motivated to overcome challenges and remain committed to my career comeback."}
-                        onChange={handleInputChange}
-                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                      />
-                      <span className="ml-3 text-gray-700">I am motivated to overcome challenges and remain committed to my career comeback.</span>
-                    </label>
-                    
-                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                      formData.motivation === "I find fulfillment in pursuing opportunities that align with my passions and strengths."
-                        ? 'border-primary-500 bg-primary-50' 
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="motivation"
-                        value="I find fulfillment in pursuing opportunities that align with my passions and strengths."
-                        checked={formData.motivation === "I find fulfillment in pursuing opportunities that align with my passions and strengths."}
-                        onChange={handleInputChange}
-                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                      />
-                      <span className="ml-3 text-gray-700">I find fulfillment in pursuing opportunities that align with my passions and strengths.</span>
-                    </label>
-                    
-                    <label className={`flex items-start p-3 border rounded-md cursor-pointer transition-colors ${
-                      formData.motivation === "I am prepared to embrace feedback and adapt my approach to achieve my career objectives."
-                        ? 'border-primary-500 bg-primary-50' 
-                        : 'border-gray-200 bg-white hover:bg-gray-50'
-                    }`}>
-                      <input
-                        type="radio"
-                        name="motivation"
-                        value="I am prepared to embrace feedback and adapt my approach to achieve my career objectives."
-                        checked={formData.motivation === "I am prepared to embrace feedback and adapt my approach to achieve my career objectives."}
-                        onChange={handleInputChange}
-                        className="mt-1 h-4 w-4 text-primary-600 border-gray-300 focus:ring-primary-500"
-                      />
-                      <span className="ml-3 text-gray-700">I am prepared to embrace feedback and adapt my approach to achieve my career objectives.</span>
-                    </label>
-                  </div>
-                </div>
+                {renderCategoryQuestion(
+                  'motivation',
+                  'Motivation and Career Purpose',
+                  'Choose the statement that represents your motivation and clarity about your career comeback.'
+                )}
                 
                 {/* Error message */}
                 {error && (
@@ -1180,6 +782,13 @@ export default function CCRLForm({ assessmentId, assessmentType, onSubmit }: CCR
 
       {step === 'preview' && renderPreview()}
       {step === 'processing' && renderProcessing()}
+      {step === 'analyzing' && (
+        <AssessmentProcessingScreen
+          assessmentType={assessmentType as any}
+          assessmentId={assessmentId}
+          onComplete={() => {}} // Will redirect after timeout
+        />
+      )}
     </div>
   );
 }

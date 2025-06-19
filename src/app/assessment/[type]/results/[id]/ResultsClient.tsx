@@ -5,18 +5,50 @@ import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import AssessmentProcessingScreen from '@/components/assessment/AssessmentProcessingScreen';
 
-// Enhanced recommendation interface that matches the AI prompt output format
+// ENHANCED: Recommendation interface with additional fields
 interface RecommendationWithDetails {
   title: string;
   explanation: string;
   steps: string[];
+  timeframe?: string;
+  priority?: 'HIGH' | 'MEDIUM' | 'LOW';
+  successMetrics?: string[];
 }
 
+// ENHANCED: Resume Analysis interface
+interface ResumeAnalysis {
+  analysis: string;
+  keyFindings: string[];
+  experienceLevel: 'ENTRY' | 'JUNIOR' | 'MID' | 'SENIOR' | 'EXECUTIVE' | 'UNKNOWN';
+  skillsValidation: {
+    claimed: string[];
+    evidenced: string[];
+    missing: string[];
+  };
+  gapAnalysis: string[];
+  credibilityScore: number;
+  recommendations: string[];
+}
+
+// ENHANCED: Career Fit interface
+interface CareerFit {
+  fitLevel: 'EXCELLENT_FIT' | 'GOOD_FIT' | 'PARTIAL_FIT' | 'POOR_FIT' | 'WRONG_CAREER_PATH';
+  fitPercentage: number;
+  honestAssessment: string;
+  realityCheck: string;
+  marketCompetitiveness: string;
+  timeToReadiness: string;
+  criticalGaps: string[];
+  competitiveAdvantages: string[];
+}
+
+// OPTIMIZED: Clean scores interface
 interface ScoresData {
   [key: string]: number;
   overallScore: number;
 }
 
+// Enhanced assessment data interface
 interface AssessmentData {
   scores: ScoresData;
   readinessLevel: string;
@@ -24,6 +56,13 @@ interface AssessmentData {
   summary: string;
   strengths: string[];
   improvements: string[];
+  resumeAnalysis?: ResumeAnalysis;
+  careerFit?: CareerFit;
+  
+  // Top level fields
+  resumeConsistency?: number;
+  evidenceLevel?: 'STRONG' | 'MODERATE' | 'WEAK' | 'INSUFFICIENT';
+  
   categoryAnalysis?: Record<string, {
     score: number;
     strengths: string[];
@@ -33,21 +72,16 @@ interface AssessmentData {
   completedAt?: string;
   submittedAt?: string;
   resumeText?: string;
-  resumeAnalysis?: string;
-  resumeRecommendations?: string[];
   aiProcessed?: boolean;
   aiProcessedAt?: string;
   aiAnalysisStarted?: boolean;
   aiAnalysisStartedAt?: string;
   aiError?: string;
-  // Manual processing fields
   reviewNotes?: string;
   reviewedAt?: string;
-  // Critical redirect fields
   redirectRequired?: boolean;
   manualProcessingOnly?: boolean;
   properRedirectUrl?: string;
-  // 🔥 NEW: Processing screen control
   showProcessingScreen?: boolean;
   processingMessage?: string;
 }
@@ -68,11 +102,9 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
   const [manualStatus, setManualStatus] = useState<'pending_review' | 'in_review' | 'completed' | null>(null);
   const [pollingCount, setPollingCount] = useState(0);
   const [debugInfo, setDebugInfo] = useState<string | null>(null);
-  const contentRef = useRef<HTMLDivElement>(null);
-  
-  // 🔥 NEW: State untuk control processing screen
   const [showProcessingScreen, setShowProcessingScreen] = useState(false);
   const [processingMessage, setProcessingMessage] = useState('');
+  const contentRef = useRef<HTMLDivElement>(null);
 
   // Assessment type labels
   const assessmentTypeLabels: Record<string, string> = {
@@ -87,75 +119,38 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
 
   // Category display mapping
   const categoryDisplayMap: { [key: string]: string } = {
-    // CCRL - Career Comeback Readiness Level
     skillCurrency: 'Skill Renewal',
     marketKnowledge: 'Market Knowledge',
     confidenceLevel: 'Confidence Readiness',
     networkStrength: 'Networking Relationships',
-    
-    // FJRL - First Job Readiness Level
     technicalSkills: 'Technical Skills',
     jobMarketAwareness: 'Job Market Awareness',
     professionalPresentation: 'Professional Presentation',
     interviewPreparation: 'Interview Preparedness',
-    
-    // IJRL - Ideal Job Readiness Level
     careerGoalClarity: 'Career Goal Clarity',
     qualificationGap: 'Qualification Gap',
     industryKnowledge: 'Industry Knowledge',
     networkDevelopment: 'Network Development',
-    
-    // CDRL - Career Development Readiness Level
     leadershipPotential: 'Leadership Potential',
     strategicThinking: 'Strategic Thinking',
     domainExpertise: 'Domain Expertise',
     changeManagement: 'Change Management',
-    
-    // CTRL - Career Transition Readiness Level
     transferableSkills: 'Transferable Skills',
     targetIndustryKnowledge: 'Target Industry Knowledge',
     adaptability: 'Adaptability',
     transitionStrategy: 'Transition Strategy',
-    
-    // RRL - Retirement Readiness Level
     financialPreparation: 'Financial Preparation',
     psychologicalReadiness: 'Psychological Readiness',
     postRetirementPlan: 'Post-Retirement Plan',
     knowledgeTransfer: 'Knowledge Transfer',
-    
-    // IRL - Internship Readiness Level
     academicPreparation: 'Academic Preparation',
     professionalAwareness: 'Professional Awareness',
     practicalExperience: 'Practical Experience',
     learningOrientation: 'Learning Orientation',
-    
-    // Fallback
     careerPlanning: 'Career Planning',
     skillsDevelopment: 'Skills Development',
     professionalNetworking: 'Professional Networking'
   };
-
-  // Get expected categories for each assessment type
-  function getExpectedCategories(assessmentType: string): string[] {
-    switch (assessmentType.toLowerCase()) {
-      case 'fjrl':
-        return ['technicalSkills', 'jobMarketAwareness', 'professionalPresentation', 'interviewPreparation'];
-      case 'ijrl':
-        return ['careerGoalClarity', 'qualificationGap', 'industryKnowledge', 'networkDevelopment'];
-      case 'cdrl':
-        return ['leadershipPotential', 'strategicThinking', 'domainExpertise', 'changeManagement'];
-      case 'ccrl':
-        return ['skillCurrency', 'marketKnowledge', 'confidenceLevel', 'networkStrength'];
-      case 'ctrl':
-        return ['transferableSkills', 'targetIndustryKnowledge', 'adaptability', 'transitionStrategy'];
-      case 'rrl':
-        return ['financialPreparation', 'psychologicalReadiness', 'postRetirementPlan', 'knowledgeTransfer'];
-      case 'irl':
-        return ['academicPreparation', 'professionalAwareness', 'practicalExperience', 'learningOrientation'];
-      default:
-        return ['careerPlanning', 'skillsDevelopment', 'professionalNetworking', 'industryKnowledge'];
-    }
-  }
 
   // Authentication and initial fetch
   useEffect(() => {
@@ -172,14 +167,6 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
   // Auto-redirect for manual processing assessments
   useEffect(() => {
     if (assessment && assessmentData) {
-      console.log('Checking manual processing redirect requirement:', {
-        tier: assessment.tier,
-        price: assessment.price,
-        manualProcessing: assessment.manualProcessing,
-        redirectRequired: assessmentData.redirectRequired,
-        manualProcessingOnly: assessmentData.manualProcessingOnly
-      });
-      
       const isManualProcessing = assessment.tier === 'standard' || 
                                 assessment.tier === 'premium' || 
                                 assessment.manualProcessing === true;
@@ -191,46 +178,28 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
                                        Object.keys(assessmentData.scores).length <= 1 ||
                                        assessmentData.manualProcessingOnly;
       
-      console.log('Redirect decision factors:', {
-        isManualProcessing,
-        redirectRequired,
-        hasOnlyPlaceholderResults,
-        shouldRedirect: isManualProcessing && (redirectRequired || hasOnlyPlaceholderResults)
-      });
-      
       if (isManualProcessing && (redirectRequired || hasOnlyPlaceholderResults)) {
-        console.log('🔄 Manual processing assessment detected - redirecting to thank you page');
-        
         let redirectUrl: string;
         if (assessment.tier === 'premium') {
           redirectUrl = `/assessment/${assessmentType}/premium-results/${assessmentId}`;
-          console.log('Redirecting to premium-results page');
         } else if (assessment.tier === 'standard') {
           redirectUrl = `/assessment/${assessmentType}/standard-results/${assessmentId}`;
-          console.log('Redirecting to standard-results page');
         } else {
-          console.warn('Manual processing assessment with basic tier - unusual case');
           return;
         }
         
-        console.log(`Executing redirect to: ${redirectUrl}`);
         router.replace(redirectUrl);
         return;
       }
-      
-      console.log('✅ Showing results page - either basic tier with AI results or completed manual review');
     }
   }, [assessment, assessmentData, router, assessmentType, assessmentId]);
 
-  // 🔥 NEW: Enhanced polling for processing screen and AI updates
+  // Enhanced polling for processing screen and AI updates
   useEffect(() => {
     if (showProcessingScreen || 
         (assessmentData && assessmentData.aiAnalysisStarted && !assessmentData.aiProcessed && pollingCount < 30)) {
       
-      console.log(`Polling for updates (attempt ${pollingCount + 1})...`);
-      setDebugInfo(`Polling for updates (attempt ${pollingCount + 1})`);
-      
-      const pollInterval = Math.min(10000, 3000 + (pollingCount * 1000)); // Start with 3s, max 10s
+      const pollInterval = Math.min(10000, 3000 + (pollingCount * 1000));
       
       const timer = setTimeout(() => {
         fetchResults();
@@ -241,7 +210,7 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
     }
   }, [showProcessingScreen, assessmentData, pollingCount]);
 
-  // 🔥 ENHANCED: fetchResults function
+  // ENHANCED: fetchResults function with enhanced processing screen logic
   const fetchResults = async () => {
     if (!assessmentType || !assessmentId) {
       setError('Missing assessment type or ID');
@@ -249,9 +218,6 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
     }
     
     try {
-      console.log(`Fetching results for assessment: ${assessmentType}/${assessmentId}`);
-      setDebugInfo(`Fetching results for assessment: ${assessmentType}/${assessmentId}`);
-      
       const now = new Date().getTime();
       const response = await fetch(`/api/assessment/${assessmentType}/results/${assessmentId}?_nocache=${now}`);
       
@@ -266,15 +232,7 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
         throw new Error(errorMessage);
       }
       
-      let data;
-      try {
-        data = await response.json();
-        console.log('Assessment data received:', data);
-      } catch (e) {
-        console.error('Error parsing response JSON:', e);
-        throw new Error('Failed to parse server response');
-      }
-      
+      const data = await response.json();
       setAssessment(data);
       
       const isManualProcessing = data.manualProcessing || 
@@ -289,90 +247,75 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
         } else {
           setAiStatus('pending');
         }
-        
-        console.log(`Manual processing assessment detected. Status: ${data.status}`);
-        setDebugInfo(`Manual processing (tier: ${data.tier}) assessment. Status: ${data.status}`);
       }
       
       const responseData = data.data || {};
       
-      // 🔥 NEW: Check for processing screen flag from API
-      const shouldShowProcessingScreen = responseData.showProcessingScreen === true;
-      const aiAnalysisStarted = responseData.aiAnalysisStarted === true;
-      const aiProcessed = responseData.aiProcessed === true;
+      // Enhanced: Processing screen detection logic
+      const aiProcessed = responseData.aiProcessed || false;
+      const aiAnalysisStarted = responseData.aiAnalysisStarted || false;
+      const aiError = responseData.aiError;
+      const showProcessingScreenFlag = responseData.showProcessingScreen === true;
       
-      console.log('Processing status check:', {
-        shouldShowProcessingScreen,
-        aiAnalysisStarted,
+      console.log('Processing status:', {
         aiProcessed,
-        status: data.status
+        aiAnalysisStarted,
+        aiError: !!aiError,
+        showProcessingScreenFlag,
+        isBasicTier: !isManualProcessing
       });
       
-      // 🔥 CRITICAL: Control processing screen display
-      if (shouldShowProcessingScreen && !aiProcessed) {
-        console.log('🚀 SHOWING PROCESSING SCREEN - AI ANALYSIS IN PROGRESS');
+      // Enhanced processing screen logic for better UX
+      const shouldShowProcessing = !isManualProcessing && (
+        showProcessingScreenFlag || 
+        (!aiProcessed && aiAnalysisStarted && !aiError)
+      );
+      
+      if (shouldShowProcessing) {
+        console.log('Showing processing screen');
         setShowProcessingScreen(true);
-        setProcessingMessage(responseData.processingMessage || 'AI analysis in progress...');
-        setLoading(false); // Stop loading spinner, show processing screen
-        setPollingCount(0); // Reset polling count
-        return; // Don't process results data yet
-      } else if (aiProcessed || (!aiAnalysisStarted && !shouldShowProcessingScreen)) {
-        console.log('✅ SHOWING RESULTS - AI ANALYSIS COMPLETED OR NOT NEEDED');
-        setShowProcessingScreen(false);
-        setProcessingMessage('');
-        // Continue to process and show results
+        setProcessingMessage(
+          responseData.processingMessage || 
+          (aiAnalysisStarted ? 'AI analysis in progress...' : 'Starting AI analysis...')
+        );
+        setLoading(false);
+        setPollingCount(prev => prev === 0 ? 0 : prev);
+        setAiStatus('processing');
+        return;
       }
       
-      const expectedCategories = getExpectedCategories(assessmentType);
+      // Hide processing screen if we reach here
+      setShowProcessingScreen(false);
+      setProcessingMessage('');
       
+      // Only continue with score processing if AI is completed or failed (or manual processing)
+      if (!isManualProcessing && !aiProcessed && !aiError) {
+        console.log('AI not completed yet, showing loading state');
+        setLoading(false);
+        setAiStatus('pending');
+        return;
+      }
+      
+      // Process scores with enhanced validation
       let scoresObj = { overallScore: 70 } as ScoresData;
       
-      if (responseData.scores && typeof responseData.scores === 'object' && !Array.isArray(responseData.scores)) {
-        const receivedScores = responseData.scores;
-        
-        console.log('Received scores:', receivedScores);
-        
-        if (Object.keys(receivedScores).length > 1) {
-          const scoreValues = Object.entries(receivedScores)
-            .filter(([key]) => key !== 'overallScore')
-            .map(([_, value]) => typeof value === 'number' ? value : Number(value));
-          
-          const uniqueScores = new Set(scoreValues);
-          console.log(`Score values: ${scoreValues.join(', ')}`);
-          console.log(`Unique score count: ${uniqueScores.size} of ${scoreValues.length}`);
-          
-          if (uniqueScores.size === 1 && scoreValues.length > 1) {
-            console.warn('WARNING: All scores are identical. This may indicate an issue with AI analysis.');
-            setDebugInfo(`Warning: All scores are identical (${scoreValues[0]}). This may indicate an issue.`);
-          }
-        }
-        
-        expectedCategories.forEach(category => {
-          if (!receivedScores.hasOwnProperty(category)) {
-            console.warn(`Expected category ${category} missing from response`);
-          }
-        });
-        
-        Object.entries(receivedScores).forEach(([key, value]) => {
+      if (responseData.scores && typeof responseData.scores === 'object') {
+        Object.entries(responseData.scores).forEach(([key, value]) => {
           if (typeof value === 'number' && !isNaN(value) && value >= 0 && value <= 100) {
             scoresObj[key] = value;
           } else if (value !== undefined) {
             const numValue = Number(value);
             if (!isNaN(numValue) && numValue >= 0 && numValue <= 100) {
               scoresObj[key] = numValue;
-              console.log(`Converted score ${key} from ${value} to ${numValue}`);
-            } else {
-              console.warn(`Invalid score value for ${key}: ${value}, ignoring`);
             }
           }
         });
       }
-      
+
+      // Ensure overall score exists
       if (!scoresObj.hasOwnProperty('overallScore') || 
           typeof scoresObj.overallScore !== 'number' || 
-          isNaN(scoresObj.overallScore) || 
-          scoresObj.overallScore < 0 || 
-          scoresObj.overallScore > 100) {
+          isNaN(scoresObj.overallScore)) {
         
         const categoryScores = Object.entries(scoresObj)
           .filter(([key]) => key !== 'overallScore')
@@ -382,23 +325,21 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
           scoresObj.overallScore = Math.round(
             categoryScores.reduce((sum, score) => sum + score, 0) / categoryScores.length
           );
-          console.log(`Calculated overallScore: ${scoresObj.overallScore} from ${categoryScores.length} categories`);
-        } else {
-          scoresObj.overallScore = 70;
-          console.log(`Using default overallScore: ${scoresObj.overallScore}`);
         }
       }
       
       scoresObj.overallScore = Math.round(scoresObj.overallScore);
-      
+
+      // Normalize recommendations
       const normalizedRecommendations = normalizeRecommendations(responseData.recommendations || []);
       
+      // Calculate readiness level
       let readinessLevel = responseData.readinessLevel || '';
       if (!readinessLevel) {
         readinessLevel = calculateReadinessLevel(scoresObj.overallScore);
-        console.log(`Calculated readiness level: ${readinessLevel}`);
       }
       
+      // Process enhanced data fields
       const processedData: AssessmentData = {
         scores: scoresObj,
         readinessLevel: readinessLevel,
@@ -406,15 +347,17 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
         summary: responseData.summary || 'Assessment completed. This provides insights into your current career readiness.',
         strengths: responseData.strengths || ["Completed comprehensive career assessment"],
         improvements: responseData.improvements || ["Continue developing your skills and knowledge"],
+        resumeAnalysis: responseData.resumeAnalysis,
+        careerFit: responseData.careerFit,
+        resumeConsistency: responseData.resumeConsistency,
+        evidenceLevel: responseData.evidenceLevel,
         categoryAnalysis: responseData.categoryAnalysis,
         completedAt: responseData.completedAt || data.completedAt || new Date().toISOString(),
         submittedAt: responseData.submittedAt || data.createdAt || new Date().toISOString(),
         resumeText: responseData.resumeText,
-        resumeAnalysis: responseData.resumeAnalysis,
-        resumeRecommendations: responseData.resumeRecommendations,
         aiProcessed: responseData.aiProcessed || false,
         aiAnalysisStarted: aiAnalysisStarted,
-        aiAnalysisStartedAt: responseData.aiAnalysisStartedAt || responseData.aiProcessingStarted,
+        aiAnalysisStartedAt: responseData.aiAnalysisStartedAt,
         aiProcessedAt: responseData.aiProcessedAt,
         aiError: responseData.aiError,
         reviewNotes: data.reviewNotes,
@@ -422,54 +365,61 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
         redirectRequired: responseData.redirectRequired,
         manualProcessingOnly: responseData.manualProcessingOnly,
         properRedirectUrl: responseData.properRedirectUrl,
-        showProcessingScreen: shouldShowProcessingScreen,
+        showProcessingScreen: shouldShowProcessing,
         processingMessage: responseData.processingMessage,
       };
       
+      // Update AI status based on current state
       if (processedData.aiProcessed) {
+        console.log('AI analysis completed');
         setAiStatus('completed');
-        setDebugInfo('AI analysis is complete');
-      } else if (processedData.aiAnalysisStarted) {
+      } else if (processedData.aiAnalysisStarted && !processedData.aiError) {
+        console.log('AI analysis in progress');
         setAiStatus('processing');
-        setDebugInfo('AI analysis in progress');
       } else if (processedData.aiError) {
+        console.log('AI analysis failed:', processedData.aiError);
         setAiStatus('failed');
-        setDebugInfo(`AI analysis failed: ${processedData.aiError}`);
       } else {
-        setDebugInfo('No AI analysis started yet');
+        console.log('AI analysis pending');
+        setAiStatus('pending');
       }
       
-      console.log('Processed assessment data:', processedData);
       setAssessmentData(processedData);
       setLoading(false);
       setError('');
+      
     } catch (err) {
       console.error('Error fetching assessment results:', err);
       setError(err instanceof Error ? err.message : 'Error loading assessment results. Please try again.');
       setLoading(false);
       setShowProcessingScreen(false);
       setAiStatus('failed');
-      setDebugInfo(`Error: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }
   };
 
-  // 🔥 NEW: Handle processing screen completion
+  // Handle processing screen completion
   const handleProcessingComplete = () => {
-    console.log('🎉 Processing complete - refreshing results');
     setShowProcessingScreen(false);
     setPollingCount(0);
     fetchResults();
   };
 
+  // Normalize recommendations helper
   const normalizeRecommendations = (recommendations: any[]): RecommendationWithDetails[] => {
     if (!Array.isArray(recommendations)) {
-      console.warn('Recommendations is not an array, using empty array instead');
       recommendations = [];
     }
     
     return recommendations.map(rec => {
       if (rec && typeof rec === 'object' && rec.title && rec.explanation && Array.isArray(rec.steps)) {
-        return rec as RecommendationWithDetails;
+        return {
+          title: rec.title,
+          explanation: rec.explanation,
+          steps: rec.steps,
+          timeframe: rec.timeframe || '1-3 months',
+          priority: rec.priority || 'MEDIUM',
+          successMetrics: rec.successMetrics || []
+        } as RecommendationWithDetails;
       }
       else if (typeof rec === 'string') {
         return {
@@ -479,18 +429,10 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
             "Research resources and methods to implement this recommendation",
             "Create a specific action plan with measurable goals",
             "Track your progress and adjust as needed"
-          ]
-        };
-      }
-      else if (rec && typeof rec === 'object') {
-        return {
-          title: rec.title || "Career Development Recommendation",
-          explanation: rec.explanation || rec.description || "This will help you address gaps in your current career readiness.",
-          steps: Array.isArray(rec.steps) ? rec.steps : [
-            "Develop a detailed plan for implementation",
-            "Seek resources and support to help you succeed",
-            "Set specific milestones to track your progress"
-          ]
+          ],
+          timeframe: '1-3 months',
+          priority: 'MEDIUM',
+          successMetrics: []
         };
       }
       return {
@@ -500,7 +442,10 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
           "Identify specific skills or knowledge areas to develop",
           "Find appropriate resources or training opportunities",
           "Practice and apply what you learn in real-world settings"
-        ]
+        ],
+        timeframe: '1-3 months',
+        priority: 'MEDIUM',
+        successMetrics: []
       };
     });
   };
@@ -514,7 +459,6 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
 
   const handleRefreshResults = () => {
     setLoading(true);
-    setDebugInfo('Manually refreshing results...');
     fetchResults();
   };
 
@@ -541,6 +485,59 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
     }
   };
 
+  // Career fit helper functions
+  const getFitLevelColor = (fitLevel: string): string => {
+    switch (fitLevel) {
+      case 'EXCELLENT_FIT':
+        return 'border-green-500 bg-green-50';
+      case 'GOOD_FIT':
+        return 'border-blue-500 bg-blue-50';
+      case 'PARTIAL_FIT':
+        return 'border-yellow-500 bg-yellow-50';
+      case 'POOR_FIT':
+        return 'border-orange-500 bg-orange-50';
+      case 'WRONG_CAREER_PATH':
+        return 'border-red-500 bg-red-50';
+      default:
+        return 'border-gray-500 bg-gray-50';
+    }
+  };
+
+  const getFitLevelBadge = (fitLevel: string): string => {
+    switch (fitLevel) {
+      case 'EXCELLENT_FIT':
+        return 'bg-green-200 text-green-800';
+      case 'GOOD_FIT':
+        return 'bg-blue-200 text-blue-800';
+      case 'PARTIAL_FIT':
+        return 'bg-yellow-200 text-yellow-800';
+      case 'POOR_FIT':
+        return 'bg-orange-200 text-orange-800';
+      case 'WRONG_CAREER_PATH':
+        return 'bg-red-200 text-red-800';
+      default:
+        return 'bg-gray-200 text-gray-800';
+    }
+  };
+
+  const getFitLevelLabel = (fitLevel: string): string => {
+    switch (fitLevel) {
+      case 'EXCELLENT_FIT':
+        return 'Excellent Match';
+      case 'GOOD_FIT':
+        return 'Strong Potential';
+      case 'PARTIAL_FIT':
+        return 'Some Gaps Exist';
+      case 'POOR_FIT':
+        return 'Needs Major Development';
+      case 'WRONG_CAREER_PATH':
+        return 'Consider Different Path';
+      default:
+        return 'Assessment Needed';
+    }
+  };
+
+  // Enhanced print functionality
   const handlePrint = () => {
     const printWindow = window.open('', '_blank');
     
@@ -551,6 +548,7 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
     
     const overallScore = assessmentData?.scores?.overallScore ?? 70;
     
+    // Generate category scores HTML with enhanced data
     const categoryScoresHTML = assessmentData && assessmentData.scores 
       ? Object.entries(assessmentData.scores)
           .filter(([key]) => key !== 'overallScore')
@@ -572,298 +570,129 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
                 <div class="score-bar-container">
                   <div class="score-bar" style="width: ${scoreValue}%; background-color: ${scoreColor};"></div>
                 </div>
-                
-                ${assessmentData.categoryAnalysis && assessmentData.categoryAnalysis[category] ? `
-                  <div class="category-analysis">
-                    ${assessmentData.categoryAnalysis[category].strengths && assessmentData.categoryAnalysis[category].strengths.length > 0 ? `
-                      <div class="category-strengths">
-                        <h4>Strengths:</h4>
-                        <ul>
-                          ${assessmentData.categoryAnalysis[category].strengths.map(strength => 
-                            `<li>${strength}</li>`
-                          ).join('')}
-                        </ul>
-                      </div>
-                    ` : ''}
-                    
-                    ${assessmentData.categoryAnalysis[category].improvements && assessmentData.categoryAnalysis[category].improvements.length > 0 ? `
-                      <div class="category-improvements">
-                        <h4>Areas to improve:</h4>
-                        <ul>
-                          ${assessmentData.categoryAnalysis[category].improvements.map(improvement => 
-                            `<li>${improvement}</li>`
-                          ).join('')}
-                        </ul>
-                      </div>
-                    ` : ''}
-                  </div>
-                ` : ''}
               </div>
             `;
           }).join('') 
       : '<p>No detailed category scores available</p>';
+
+    // Generate resume analysis HTML
+    const resumeAnalysisHTML = assessmentData?.resumeAnalysis ? `
+      <div class="section">
+        <h2>Resume Analysis</h2>
+        <div class="resume-quality">
+          <div class="flex items-center justify-between">
+            <h3>Resume Quality Assessment</h3>
+            <div class="credibility-score">
+              <span class="score">${assessmentData.resumeAnalysis.credibilityScore}%</span>
+              <span class="level">${assessmentData.resumeAnalysis.experienceLevel}</span>
+            </div>
+          </div>
+          <p>${assessmentData.resumeAnalysis.analysis}</p>
+          
+          ${assessmentData.resumeAnalysis.keyFindings.length > 0 ? `
+            <div class="key-findings">
+              <h4>Key Findings:</h4>
+              <ul>
+                ${assessmentData.resumeAnalysis.keyFindings.map(finding => `<li>${finding}</li>`).join('')}
+              </ul>
+            </div>
+          ` : ''}
+          
+          ${assessmentData.resumeAnalysis.gapAnalysis.length > 0 ? `
+            <div class="gap-analysis">
+              <h4>Gap Analysis:</h4>
+              <ul>
+                ${assessmentData.resumeAnalysis.gapAnalysis.map(gap => `<li>${gap}</li>`).join('')}
+              </ul>
+            </div>
+          ` : ''}
+        </div>
+      </div>
+    ` : '';
+
+    // Generate career fit HTML
+    const careerFitHTML = assessmentData?.careerFit ? `
+      <div class="section">
+        <h2>Career Fit Analysis</h2>
+        <div class="career-fit">
+          <div class="fit-header">
+            <h3>Fit Level: ${assessmentData.careerFit.fitLevel.replace(/_/g, ' ')}</h3>
+            <div class="fit-percentage">${assessmentData.careerFit.fitPercentage}% Match</div>
+          </div>
+          
+          <div class="honest-assessment">
+            <h4>Honest Assessment:</h4>
+            <p>${assessmentData.careerFit.honestAssessment}</p>
+          </div>
+          
+          <div class="reality-check">
+            <h4>Reality Check:</h4>
+            <p>${assessmentData.careerFit.realityCheck}</p>
+          </div>
+          
+          <div class="market-info">
+            <div class="market-competitiveness">
+              <h4>Market Competitiveness:</h4>
+              <p>${assessmentData.careerFit.marketCompetitiveness}</p>
+            </div>
+            <div class="time-to-readiness">
+              <h4>Time to Full Readiness:</h4>
+              <p>${assessmentData.careerFit.timeToReadiness}</p>
+            </div>
+          </div>
+          
+          ${assessmentData.careerFit.criticalGaps.length > 0 ? `
+            <div class="critical-gaps">
+              <h4>Critical Gaps to Address:</h4>
+              <ul>
+                ${assessmentData.careerFit.criticalGaps.map(gap => `<li>${gap}</li>`).join('')}
+              </ul>
+            </div>
+          ` : ''}
+        </div>
+      </div>
+    ` : '';
     
     const contentToPrint = `
       <!DOCTYPE html>
       <html>
       <head>
-        <title>Assessment Results - ${assessmentTypeLabels[assessmentType] || assessmentType}</title>
+        <title>Enhanced Assessment Results - ${assessmentTypeLabels[assessmentType] || assessmentType}</title>
         <meta charset="utf-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
         <style>
-          @media print {
-            @page { 
-              size: portrait;
-              margin: 1cm;
-            }
-          }
-          
-          body {
-            font-family: Arial, sans-serif;
-            line-height: 1.5;
-            color: #333;
-            padding: 20px;
-            max-width: 1000px;
-            margin: 0 auto;
-          }
-          
-          .header {
-            background-color: #5a67d8;
-            color: white;
-            padding: 20px;
-            margin-bottom: 20px;
-            border-radius: 10px;
-          }
-          
-          .section {
-            margin-bottom: 30px;
-            padding: 20px;
-            border: 1px solid #ddd;
-            border-radius: 10px;
-            break-inside: avoid;
-          }
-          
-          h1 {
-            font-size: 24px;
-            margin: 0 0 10px 0;
-          }
-          
-          h2 {
-            font-size: 20px;
-            margin: 0 0 15px 0;
-            color: #4a5568;
-            border-bottom: 2px solid #e2e8f0;
-            padding-bottom: 5px;
-          }
-          
-          h3 {
-            font-size: 18px;
-            margin: 0 0 10px 0;
-            color: #2d3748;
-          }
-          
-          h4 {
-            font-size: 16px;
-            margin: 10px 0 5px 0;
-            color: #4a5568;
-          }
-          
-          .score-container {
-            display: flex;
-            align-items: center;
-            margin-bottom: 15px;
-          }
-          
-          .score-circle {
-            width: 100px;
-            height: 100px;
-            border-radius: 50%;
-            background-color: #f7fafc;
-            border: 10px solid ${overallScore >= 80 ? '#48bb78' : 
-                               overallScore >= 60 ? '#4299e1' : 
-                               overallScore >= 40 ? '#ecc94b' : 
-                               overallScore >= 20 ? '#ed8936' : '#f56565'};
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-size: 24px;
-            font-weight: bold;
-            margin-right: 20px;
-          }
-          
-          .score-info {
-            flex: 1;
-          }
-          
-          .readiness-level {
-            font-weight: bold;
-            font-size: 20px;
-            color: ${assessmentData?.readinessLevel === "Fully Prepared" ? '#48bb78' : 
-                   assessmentData?.readinessLevel === "Approaching Readiness" ? '#4299e1' : 
-                   assessmentData?.readinessLevel === "Developing Competency" ? '#ecc94b' : '#f56565'};
-            margin: 10px 0;
-          }
-          
-          .summary {
-            margin-top: 10px;
-            line-height: 1.6;
-          }
-          
-          .two-columns {
-            display: flex;
-            gap: 20px;
-            margin-bottom: 20px;
-          }
-          
-          .column {
-            flex: 1;
-            padding: 15px;
-            border-radius: 10px;
-          }
-          
-          .strengths {
-            background-color: #f0fff4;
-            border: 1px solid #c6f6d5;
-          }
-          
-          .improvements {
-            background-color: #fffbeb;
-            border: 1px solid #feebc8;
-          }
-          
-          .score-row {
-            margin-bottom: 25px;
-            break-inside: avoid;
-            padding-bottom: 15px;
-            border-bottom: 1px solid #edf2f7;
-          }
-          
-          .score-row:last-child {
-            border-bottom: none;
-          }
-          
-          .score-label {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 5px;
-            font-weight: 500;
-          }
-          
-          .score-bar-container {
-            height: 10px;
-            background-color: #edf2f7;
-            border-radius: 5px;
-            overflow: hidden;
-            margin-bottom: 10px;
-          }
-          
-          .score-bar {
-            height: 100%;
-            background-color: #4299e1;
-            border-radius: 5px;
-          }
-          
-          .category-analysis {
-            margin-top: 10px;
-            padding-left: 15px;
-            border-left: 3px solid #cbd5e0;
-            font-size: 14px;
-          }
-          
-          .category-strengths h4 {
-            color: #38a169;
-            margin-bottom: 5px;
-          }
-          
-          .category-improvements h4 {
-            color: #dd6b20;
-            margin-bottom: 5px;
-            margin-top: 10px;
-          }
-          
-          ul, ol {
-            margin-top: 5px;
-            padding-left: 25px;
-            margin-bottom: 10px;
-          }
-          
-          li {
-            margin-bottom: 5px;
-          }
-          
-          .recommendation {
-            background-color: #ebf8ff;
-            border: 1px solid #bee3f8;
-            border-radius: 10px;
-            padding: 15px;
-            margin-bottom: 20px;
-            break-inside: avoid;
-          }
-          
-          .recommendation-title {
-            font-size: 18px;
-            font-weight: bold;
-            color: #2b6cb0;
-            margin-bottom: 10px;
-          }
-          
-          .recommendation-explanation {
-            margin-bottom: 15px;
-          }
-          
-          .implementation-steps {
-            background-color: #fff;
-            border: 1px solid #bee3f8;
-            border-radius: 8px;
-            padding: 12px;
-          }
-          
-          .footer {
-            margin-top: 30px;
-            padding-top: 15px;
-            border-top: 1px solid #e2e8f0;
-            font-size: 12px;
-            color: #718096;
-            text-align: center;
-          }
-
-          .review-notes {
-            background-color: #f0f9ff;
-            border: 1px solid #bae6fd;
-            padding: 20px;
-            border-radius: 10px;
-            margin-bottom: 20px;
-          }
-
-          .review-notes h3 {
-            color: #0369a1;
-            margin-bottom: 10px;
-          }
-          
-          @media print {
-            body {
-              padding: 0;
-            }
-            
-            .no-print {
-              display: none;
-            }
-            
-            .section {
-              page-break-inside: avoid;
-            }
-            
-            .header {
-              background-color: #f7fafc !important;
-              color: #000 !important;
-              border: 1px solid #000;
-            }
-            
-            * {
-              -webkit-print-color-adjust: exact !important;
-              print-color-adjust: exact !important;
-            }
-          }
+          body { font-family: Arial, sans-serif; line-height: 1.5; color: #333; padding: 20px; max-width: 1000px; margin: 0 auto; }
+          .header { background-color: #5a67d8; color: white; padding: 20px; margin-bottom: 20px; border-radius: 10px; }
+          .section { margin-bottom: 30px; padding: 20px; border: 1px solid #ddd; border-radius: 10px; break-inside: avoid; }
+          h1 { font-size: 24px; margin: 0 0 10px 0; }
+          h2 { font-size: 20px; margin: 0 0 15px 0; color: #4a5568; border-bottom: 2px solid #e2e8f0; padding-bottom: 5px; }
+          h3 { font-size: 18px; margin: 0 0 10px 0; color: #2d3748; }
+          h4 { font-size: 16px; margin: 10px 0 5px 0; color: #4a5568; }
+          .score-circle { width: 100px; height: 100px; border-radius: 50%; background-color: #f7fafc; border: 10px solid ${overallScore >= 80 ? '#48bb78' : overallScore >= 60 ? '#4299e1' : overallScore >= 40 ? '#ecc94b' : '#f56565'}; display: flex; justify-content: center; align-items: center; font-size: 24px; font-weight: bold; margin-right: 20px; }
+          .score-container { display: flex; align-items: center; margin-bottom: 15px; }
+          .score-info { flex: 1; }
+          .readiness-level { font-weight: bold; font-size: 20px; margin: 10px 0; }
+          .two-columns { display: flex; gap: 20px; margin-bottom: 20px; }
+          .column { flex: 1; padding: 15px; border-radius: 10px; }
+          .strengths { background-color: #f0fff4; border: 1px solid #c6f6d5; }
+          .improvements { background-color: #fffbeb; border: 1px solid #feebc8; }
+          .score-row { margin-bottom: 15px; padding-bottom: 10px; border-bottom: 1px solid #edf2f7; }
+          .score-label { display: flex; justify-content: space-between; margin-bottom: 5px; font-weight: 500; }
+          .score-bar-container { height: 8px; background-color: #edf2f7; border-radius: 4px; overflow: hidden; }
+          .score-bar { height: 100%; background-color: #4299e1; border-radius: 4px; }
+          ul, ol { margin-top: 5px; padding-left: 25px; margin-bottom: 10px; }
+          li { margin-bottom: 5px; }
+          .recommendation { background-color: #ebf8ff; border: 1px solid #bee3f8; border-radius: 10px; padding: 15px; margin-bottom: 20px; break-inside: avoid; }
+          .recommendation-title { font-size: 18px; font-weight: bold; color: #2b6cb0; margin-bottom: 10px; }
+          .footer { margin-top: 30px; padding-top: 15px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #718096; text-align: center; }
+          .career-fit { background-color: #f8f9fa; padding: 15px; border-radius: 8px; }
+          .fit-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+          .fit-percentage { font-size: 24px; font-weight: bold; }
+          .market-info { display: flex; gap: 20px; margin-top: 15px; }
+          .market-info > div { flex: 1; }
+          .resume-quality { background-color: #f8f9fa; padding: 15px; border-radius: 8px; }
+          .credibility-score { text-align: right; }
+          .score { font-size: 20px; font-weight: bold; margin-right: 10px; }
+          .level { background-color: #e2e8f0; padding: 3px 8px; border-radius: 4px; font-size: 12px; }
         </style>
       </head>
       <body>
@@ -883,13 +712,8 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
           </div>
         </div>
         
-        ${assessmentData?.reviewNotes ? `
-        <div class="section review-notes">
-          <h2>Expert Review</h2>
-          <p>Reviewed on ${new Date(assessmentData.reviewedAt || new Date()).toLocaleDateString()}</p>
-          <div class="whitespace-pre-wrap">${assessmentData.reviewNotes}</div>
-        </div>
-        ` : ''}
+        ${careerFitHTML}
+        ${resumeAnalysisHTML}
         
         <div class="section">
           <h2>Key Insights</h2>
@@ -919,26 +743,28 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
           ${assessmentData?.recommendations?.map((rec, index) => `
             <div class="recommendation">
               <div class="recommendation-title">${index + 1}. ${rec.title}</div>
-              <div class="recommendation-explanation">${rec.explanation}</div>
-              <div class="implementation-steps">
-                <h3>Implementation Steps:</h3>
+              <div style="margin-bottom: 10px;">${rec.explanation}</div>
+              ${rec.timeframe ? `<div style="margin-bottom: 10px;"><strong>Timeframe:</strong> ${rec.timeframe}</div>` : ''}
+              ${rec.priority ? `<div style="margin-bottom: 10px;"><strong>Priority:</strong> ${rec.priority}</div>` : ''}
+              <div style="background-color: white; padding: 10px; border-radius: 5px;">
+                <h3 style="margin-top: 0;">Implementation Steps:</h3>
                 <ol>
                   ${rec.steps.map(step => `<li>${step}</li>`).join('')}
                 </ol>
+                ${rec.successMetrics && rec.successMetrics.length > 0 ? `
+                  <h4>Success Metrics:</h4>
+                  <ul>
+                    ${rec.successMetrics.map(metric => `<li>${metric}</li>`).join('')}
+                  </ul>
+                ` : ''}
               </div>
             </div>
           `).join('') || '<p>No specific recommendations available</p>'}
         </div>
         
         <div class="footer">
-          <p>This report was generated on ${new Date().toLocaleString()} based on your assessment responses.</p>
+          <p>This enhanced report was generated on ${new Date().toLocaleString()} based on your assessment responses and resume analysis.</p>
           <p>© ${new Date().getFullYear()} KareerFit Assessment System</p>
-        </div>
-        
-        <div class="no-print" style="text-align: center; margin-top: 30px;">
-          <button onclick="window.print();" style="padding: 10px 20px; background-color: #4299e1; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold;">
-            Print or Save as PDF
-          </button>
         </div>
       </body>
       </html>
@@ -955,9 +781,8 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
     };
   };
 
-  // 🔥 NEW: Show processing screen if needed
+  // Show processing screen if needed
   if (showProcessingScreen) {
-    console.log('🚀 RENDERING PROCESSING SCREEN');
     return (
       <AssessmentProcessingScreen
         assessmentType={assessmentType as any}
@@ -967,43 +792,54 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
     );
   }
 
-  // Loading state
+  // Enhanced loading state for different scenarios
   if (loading || status === 'loading') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-t-transparent border-[#7e43f1] rounded-full animate-spin mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading results...</p>
+          <p className="mt-4 text-gray-600">Loading assessment...</p>
         </div>
       </div>
     );
   }
 
-  // Enhanced error handling
+  // Show processing state for AI assessments that haven't completed yet
+  if (assessment && !assessment.manualProcessing && 
+      assessment.tier !== 'standard' && assessment.tier !== 'premium' &&
+      (!assessmentData?.aiProcessed && !assessmentData?.aiError)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center max-w-md mx-auto p-8">
+          <div className="relative">
+            <div className="w-20 h-20 border-4 border-t-transparent border-[#7e43f1] rounded-full animate-spin mx-auto mb-6"></div>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="w-12 h-12 bg-[#7e43f1] rounded-full opacity-20 animate-pulse"></div>
+            </div>
+          </div>
+          <h3 className="text-xl font-semibold text-gray-800 mb-2">Processing Your Assessment</h3>
+          <p className="text-gray-600 mb-4">
+            Our AI is analyzing your responses and resume to provide personalized insights.
+          </p>
+          <div className="flex items-center justify-center space-x-2 text-sm text-gray-500">
+            <div className="w-2 h-2 bg-[#7e43f1] rounded-full animate-bounce"></div>
+            <div className="w-2 h-2 bg-[#7e43f1] rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+            <div className="w-2 h-2 bg-[#7e43f1] rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+            <span className="ml-2">This may take a few moments</span>
+          </div>
+          <button
+            onClick={handleRefreshResults}
+            className="mt-6 px-4 py-2 text-sm text-[#7e43f1] hover:bg-purple-50 rounded-lg transition-colors"
+          >
+            Check Status
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Error handling
   if (error) {
-    if (error.includes('manual processing') || error.includes('expert review')) {
-      let redirectUrl: string;
-      
-      const currentPath = window.location.pathname;
-      const pathParts = currentPath.split('/');
-      const typeFromPath = pathParts[2];
-      const idFromPath = pathParts[4];
-      
-      if (typeFromPath && idFromPath) {
-        if (error.includes('premium') || currentPath.includes('premium')) {
-          redirectUrl = `/assessment/${typeFromPath}/premium-results/${idFromPath}`;
-        } else if (error.includes('standard') || currentPath.includes('standard')) {
-          redirectUrl = `/assessment/${typeFromPath}/standard-results/${idFromPath}`;
-        } else {
-          redirectUrl = `/assessment/${typeFromPath}/standard-results/${idFromPath}`;
-        }
-        
-        console.log('Error indicates manual processing - redirecting to:', redirectUrl);
-        router.replace(redirectUrl);
-        return null;
-      }
-    }
-    
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="bg-white p-8 rounded-lg shadow-lg max-w-md w-full">
@@ -1014,11 +850,6 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
           </div>
           <h2 className="text-xl font-bold text-center mb-4">Error</h2>
           <p className="text-gray-600 text-center mb-6">{error}</p>
-          {debugInfo && (
-            <div className="mb-6 p-3 bg-gray-100 text-sm text-gray-700 rounded-lg overflow-auto max-h-32">
-              <strong>Debug Info:</strong> {debugInfo}
-            </div>
-          )}
           <div className="flex justify-center space-x-3">
             <button
               onClick={fetchResults}
@@ -1043,21 +874,14 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="bg-white p-8 rounded-lg shadow-lg max-w-md w-full text-center">
-          <div className="text-gray-400 mb-4">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
-          </div>
           <h2 className="text-xl font-bold mb-4">No Results Found</h2>
           <p className="text-gray-600 mb-6">We couldn't find any results for this assessment.</p>
-          <div className="flex justify-center">
-            <button
-              onClick={() => router.push('/dashboard')}
-              className="bg-[#7e43f1] hover:bg-[#6a38d1] text-white px-4 py-2 rounded-lg"
-            >
-              Go to Dashboard
-            </button>
-          </div>
+          <button
+            onClick={() => router.push('/dashboard')}
+            className="bg-[#7e43f1] hover:bg-[#6a38d1] text-white px-4 py-2 rounded-lg"
+          >
+            Go to Dashboard
+          </button>
         </div>
       </div>
     );
@@ -1071,37 +895,12 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
   const overallScore = scores.overallScore || 70;
   const summary = assessmentData.summary || 'Assessment completed successfully.';
   const completedAt = assessmentData.completedAt || new Date().toISOString();
-  const categoryAnalysis = assessmentData.categoryAnalysis || {};
   const readinessLevel = assessmentData.readinessLevel || calculateReadinessLevel(overallScore);
   const readinessLevelColor = getReadinessLevelColor(readinessLevel);
-  
-  const categoryScores = Object.entries(scores)
-    .filter(([key]) => key !== 'overallScore')
-    .map(([_, value]) => value);
-  
-  const hasUniformScores = categoryScores.length > 1 && 
-    new Set(categoryScores).size === 1;
 
   return (
     <div className="print-container min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl mx-auto" ref={contentRef}>
-        {/* Debug info - development only */}
-        {process.env.NODE_ENV === 'development' && (
-          <div className="print-hidden mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded text-sm">
-            <strong>Debug Info:</strong> {debugInfo}
-            <div>Show Processing Screen: {showProcessingScreen ? 'YES' : 'NO'}</div>
-            <div>Overall Score: {overallScore}</div>
-            <div>Readiness Level: {readinessLevel}</div>
-            <div>AI Status: {aiStatus}</div>
-            <div>Category Scores: {Object.entries(scores).filter(([key]) => key !== 'overallScore').map(([key, value]) => `${key}=${value}`).join(', ')}</div>
-            {hasUniformScores && (
-              <div className="mt-2 text-red-600 font-bold">
-                WARNING: All category scores are identical ({categoryScores[0]}). This may indicate an issue with the AI analysis.
-              </div>
-            )}
-          </div>
-        )}
-
         {/* Header section */}
         <div className="bg-white rounded-xl shadow-md overflow-hidden mb-8">
           <div className="print-header bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] p-6 text-white">
@@ -1147,82 +946,202 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
                   <span className="font-medium">Readiness Level: </span>
                   <span className={`font-bold ${readinessLevelColor}`}>{readinessLevel}</span>
                 </div>
+                
+                {/* Evidence Level Indicator */}
+                {assessmentData.evidenceLevel && (
+                  <div className="mt-2">
+                    <span className="text-sm text-gray-600">Evidence Level: </span>
+                    <span className={`text-sm font-semibold px-2 py-1 rounded ${
+                      assessmentData.evidenceLevel === 'STRONG' ? 'bg-green-100 text-green-800' :
+                      assessmentData.evidenceLevel === 'MODERATE' ? 'bg-blue-100 text-blue-800' :
+                      assessmentData.evidenceLevel === 'WEAK' ? 'bg-yellow-100 text-yellow-800' :
+                      'bg-red-100 text-red-800'
+                    }`}>
+                      {assessmentData.evidenceLevel}
+                    </span>
+                  </div>
+                )}
               </div>
               <p className="mt-4 text-gray-600 max-w-xl mx-auto">{summary}</p>
-              
-              {/* Status indicators */}
-              {manualStatus === 'pending_review' && (
-                <div className="print-hidden mt-4 p-3 bg-yellow-50 text-yellow-700 rounded-lg flex items-center justify-center">
-                  <svg className="h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <span>Your assessment is waiting for expert review. We'll notify you when it's complete.</span>
-                  <button 
-                    onClick={handleRefreshResults}
-                    className="ml-3 text-xs underline hover:text-yellow-800"
-                  >
-                    Refresh
-                  </button>
-                </div>
-              )}
-              
-              {manualStatus === 'in_review' && (
-                <div className="print-hidden mt-4 p-3 bg-blue-50 text-blue-700 rounded-lg flex items-center justify-center">
-                  <svg className="h-5 w-5 mr-2" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                  </svg>
-                  <span>Your assessment is currently being reviewed by our experts. This typically takes 1-2 business days.</span>
-                  <button 
-                    onClick={handleRefreshResults}
-                    className="ml-3 text-xs underline hover:text-blue-800"
-                  >
-                    Refresh
-                  </button>
-                </div>
-              )}
-              
-              {!manualStatus && aiStatus === 'processing' && (
-                <div className="print-hidden mt-4 p-3 bg-blue-50 text-blue-700 rounded-lg flex items-center justify-center">
-                  <div className="w-4 h-4 border-2 border-t-transparent border-blue-700 rounded-full animate-spin mr-2"></div>
-                  <span>AI analysis in progress... This may take a few minutes.</span>
-                  <button 
-                    onClick={handleRefreshResults}
-                    className="ml-3 text-xs underline hover:text-blue-800"
-                  >
-                    Refresh
-                  </button>
-                </div>
-              )}
-              
-              {!manualStatus && aiStatus === 'failed' && (
-                <div className="print-hidden mt-4 p-3 bg-red-50 text-red-700 rounded-lg flex items-center justify-center">
-                  <span>AI analysis encountered an error. Your results may be incomplete.</span>
-                  <button 
-                    onClick={handleRefreshResults}
-                    className="ml-3 text-xs underline hover:text-red-800"
-                  >
-                    Try Again
-                  </button>
-                </div>
-              )}
-              
-              {hasUniformScores && (
-                <div className="print-hidden mt-4 p-3 bg-yellow-50 text-yellow-700 rounded-lg">
-                  <p>
-                    <strong>Note:</strong> The assessment shows identical scores across all categories, which is unusual. 
-                    We're working to improve the variety in our analysis. You may want to refresh the results or try again later.
-                  </p>
-                  <button 
-                    onClick={handleRefreshResults}
-                    className="mt-2 text-sm underline hover:text-yellow-800"
-                  >
-                    Refresh Results
-                  </button>
-                </div>
-              )}
             </div>
           </div>
         </div>
+
+        {/* Career Fit Analysis */}
+        {assessmentData.careerFit && (
+          <div className="bg-white rounded-xl shadow-md overflow-hidden mb-8">
+            <div className="p-6">
+              <h2 className="text-xl font-semibold text-gray-800 mb-4">Career Fit Analysis</h2>
+              
+              <div className={`p-6 rounded-lg border-l-4 ${getFitLevelColor(assessmentData.careerFit.fitLevel)}`}>
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 className="text-lg font-bold">
+                      Fit Level: {assessmentData.careerFit.fitLevel.replace(/_/g, ' ')}
+                    </h3>
+                    <div className="text-2xl font-bold mt-1">
+                      {assessmentData.careerFit.fitPercentage}% Match
+                    </div>
+                  </div>
+                  <div className={`px-4 py-2 rounded-full text-sm font-bold ${getFitLevelBadge(assessmentData.careerFit.fitLevel)}`}>
+                    {getFitLevelLabel(assessmentData.careerFit.fitLevel)}
+                  </div>
+                </div>
+                
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="font-semibold mb-2 text-gray-800">Honest Assessment:</h4>
+                    <p className="text-gray-700">{assessmentData.careerFit.honestAssessment}</p>
+                  </div>
+                  
+                  <div>
+                    <h4 className="font-semibold mb-2 text-gray-800">Reality Check:</h4>
+                    <p className="text-gray-700">{assessmentData.careerFit.realityCheck}</p>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <h4 className="font-semibold mb-2 text-gray-800">Market Competitiveness:</h4>
+                      <p className="text-sm text-gray-600">{assessmentData.careerFit.marketCompetitiveness}</p>
+                    </div>
+                    <div>
+                      <h4 className="font-semibold mb-2 text-gray-800">Time to Full Readiness:</h4>
+                      <p className="text-sm text-gray-600">{assessmentData.careerFit.timeToReadiness}</p>
+                    </div>
+                  </div>
+                  
+                  {assessmentData.careerFit.criticalGaps.length > 0 && (
+                    <div>
+                      <h4 className="font-semibold mb-2 text-gray-800">Critical Gaps to Address:</h4>
+                      <ul className="list-disc list-inside space-y-1 text-gray-700">
+                        {assessmentData.careerFit.criticalGaps.map((gap, index) => (
+                          <li key={index}>{gap}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  
+                  {assessmentData.careerFit.competitiveAdvantages.length > 0 && (
+                    <div>
+                      <h4 className="font-semibold mb-2 text-gray-800">Your Competitive Advantages:</h4>
+                      <ul className="list-disc list-inside space-y-1 text-gray-700">
+                        {assessmentData.careerFit.competitiveAdvantages.map((advantage, index) => (
+                          <li key={index}>{advantage}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Resume Analysis */}
+        {assessmentData.resumeAnalysis && (
+          <div className="bg-white rounded-xl shadow-md overflow-hidden mb-8">
+            <div className="p-6">
+              <h2 className="text-xl font-semibold text-gray-800 mb-4">Resume Analysis</h2>
+              
+              <div className="bg-gray-50 p-6 rounded-lg">
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="font-semibold">Resume Quality Assessment</h3>
+                  <div className="flex items-center space-x-3">
+                    <div className="text-right">
+                      <div className="font-bold text-lg">
+                        {assessmentData.resumeAnalysis.credibilityScore}%
+                      </div>
+                      <div className="text-sm text-gray-600">Credibility</div>
+                    </div>
+                    <div className={`px-3 py-1 rounded-full text-sm font-bold ${
+                      assessmentData.resumeAnalysis.credibilityScore >= 80 ? 'bg-green-200 text-green-800' :
+                      assessmentData.resumeAnalysis.credibilityScore >= 60 ? 'bg-yellow-200 text-yellow-800' :
+                      'bg-red-200 text-red-800'
+                    }`}>
+                      {assessmentData.resumeAnalysis.experienceLevel}
+                    </div>
+                  </div>
+                </div>
+                
+                <p className="text-gray-700 mb-4">{assessmentData.resumeAnalysis.analysis}</p>
+                
+                {/* Key Findings */}
+                {assessmentData.resumeAnalysis.keyFindings.length > 0 && (
+                  <div className="mb-4">
+                    <h4 className="font-semibold mb-2">Key Findings:</h4>
+                    <ul className="list-disc list-inside space-y-1 text-gray-600">
+                      {assessmentData.resumeAnalysis.keyFindings.map((finding, index) => (
+                        <li key={index}>{finding}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                
+                {/* Skills Validation */}
+                {assessmentData.resumeAnalysis.skillsValidation && (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+                    {assessmentData.resumeAnalysis.skillsValidation.evidenced.length > 0 && (
+                      <div className="bg-green-50 p-3 rounded border border-green-200">
+                        <h5 className="font-semibold text-green-800 mb-2">Evidenced Skills</h5>
+                        <ul className="text-sm text-green-700 space-y-1">
+                          {assessmentData.resumeAnalysis.skillsValidation.evidenced.map((skill, i) => (
+                            <li key={i}>• {skill}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    
+                    {assessmentData.resumeAnalysis.skillsValidation.claimed.length > 0 && (
+                      <div className="bg-blue-50 p-3 rounded border border-blue-200">
+                        <h5 className="font-semibold text-blue-800 mb-2">Claimed Skills</h5>
+                        <ul className="text-sm text-blue-700 space-y-1">
+                          {assessmentData.resumeAnalysis.skillsValidation.claimed.map((skill, i) => (
+                            <li key={i}>• {skill}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    
+                    {assessmentData.resumeAnalysis.skillsValidation.missing.length > 0 && (
+                      <div className="bg-red-50 p-3 rounded border border-red-200">
+                        <h5 className="font-semibold text-red-800 mb-2">Unproven Claims</h5>
+                        <ul className="text-sm text-red-700 space-y-1">
+                          {assessmentData.resumeAnalysis.skillsValidation.missing.map((skill, i) => (
+                            <li key={i}>• {skill}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+                
+                {/* Gap Analysis */}
+                {assessmentData.resumeAnalysis.gapAnalysis.length > 0 && (
+                  <div className="mb-4">
+                    <h4 className="font-semibold mb-2">Gap Analysis:</h4>
+                    <ul className="list-disc list-inside space-y-1 text-gray-600">
+                      {assessmentData.resumeAnalysis.gapAnalysis.map((gap, index) => (
+                        <li key={index}>{gap}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                
+                {/* Resume Recommendations */}
+                {assessmentData.resumeAnalysis.recommendations.length > 0 && (
+                  <div>
+                    <h4 className="font-semibold mb-2">Resume Improvement Recommendations:</h4>
+                    <ul className="list-disc list-inside space-y-1 text-gray-600">
+                      {assessmentData.resumeAnalysis.recommendations.map((rec, index) => (
+                        <li key={index}>{rec}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Expert Review Notes */}
         {assessment.reviewNotes && manualStatus === 'completed' && (
@@ -1241,7 +1160,7 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
           </div>
         )}
 
-        {/* Strengths and Improvements */}
+        {/* Enhanced Strengths and Improvements */}
         {(strengths.length > 0 || improvements.length > 0) && (
           <div className="bg-white rounded-xl shadow-md overflow-hidden mb-8">
             <div className="p-6">
@@ -1249,7 +1168,7 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
               
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {strengths.length > 0 && (
-                  <div className="bg-green-50 p-5 rounded-lg print-bg-light">
+                  <div className="bg-green-50 p-5 rounded-lg print-bg-light border border-green-200">
                     <h3 className="text-lg font-medium text-green-800 mb-3">Your Strengths</h3>
                     <ul className="list-disc list-inside space-y-2">
                       {strengths.map((strength, index) => (
@@ -1260,7 +1179,7 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
                 )}
                 
                 {improvements.length > 0 && (
-                  <div className="bg-yellow-50 p-5 rounded-lg print-bg-light">
+                  <div className="bg-yellow-50 p-5 rounded-lg print-bg-light border border-yellow-200">
                     <h3 className="text-lg font-medium text-yellow-800 mb-3">Areas for Improvement</h3>
                     <ul className="list-disc list-inside space-y-2">
                       {improvements.map((improvement, index) => (
@@ -1279,6 +1198,29 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
           <div className="p-6">
             <h2 className="text-xl font-semibold text-gray-800 mb-4">Category Scores</h2>
             
+            {/* Resume Consistency Indicator */}
+            {assessmentData.resumeConsistency && (
+              <div className="bg-blue-50 p-4 rounded-lg mb-6 border border-blue-200">
+                <div className="flex justify-between items-center">
+                  <h3 className="font-semibold text-blue-800">Resume Consistency</h3>
+                  <div className="flex items-center">
+                    <span className="font-bold text-lg mr-2">{assessmentData.resumeConsistency}%</span>
+                    <div className={`px-2 py-1 rounded text-xs font-bold ${
+                      assessmentData.resumeConsistency >= 80 ? 'bg-green-200 text-green-800' :
+                      assessmentData.resumeConsistency >= 60 ? 'bg-yellow-200 text-yellow-800' :
+                      'bg-red-200 text-red-800'
+                    }`}>
+                      {assessmentData.resumeConsistency >= 80 ? 'Strong Match' :
+                       assessmentData.resumeConsistency >= 60 ? 'Moderate Match' : 'Weak Match'}
+                    </div>
+                  </div>
+                </div>
+                <p className="text-sm text-blue-700 mt-2">
+                  How well your assessment responses align with your resume evidence
+                </p>
+              </div>
+            )}
+            
             {Object.keys(scores).filter(key => key !== 'overallScore').length === 0 ? (
               <div className="text-center py-8 text-gray-500">
                 <p>No detailed category scores available for this assessment.</p>
@@ -1289,7 +1231,6 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
                   .filter(([key]) => key !== 'overallScore')
                   .map(([category, score], index) => {
                     const numericScore = typeof score === 'number' ? Math.round(score) : 0;
-                    const analysis = categoryAnalysis?.[category];
                     const displayName = categoryDisplayMap[category] || formatCategoryName(category);
                     
                     return (
@@ -1302,38 +1243,12 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
                           </div>
                         </div>
                         
-                        <div className="w-full bg-gray-200 rounded-full h-3 mb-4">
+                        <div className="w-full bg-gray-200 rounded-full h-3 mb-2">
                           <div
                             className={`h-3 rounded-full ${getScoreColor(numericScore)}`}
                             style={{ width: `${numericScore}%` }}
                           ></div>
                         </div>
-                        
-                        {analysis && (
-                          <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {analysis.strengths && analysis.strengths.length > 0 && (
-                              <div className="bg-green-50 p-3 rounded-md">
-                                <h4 className="text-sm font-medium text-green-700 mb-2">Strengths:</h4>
-                                <ul className="list-disc list-inside text-sm text-gray-600 space-y-1">
-                                  {analysis.strengths.map((str, i) => (
-                                    <li key={i}>{str}</li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-                            
-                            {analysis.improvements && analysis.improvements.length > 0 && (
-                              <div className="bg-yellow-50 p-3 rounded-md">
-                                <h4 className="text-sm font-medium text-yellow-700 mb-2">Areas to focus on:</h4>
-                                <ul className="list-disc list-inside text-sm text-gray-600 space-y-1">
-                                  {analysis.improvements.map((imp, i) => (
-                                    <li key={i}>{imp}</li>
-                                  ))}
-                                </ul>
-                              </div>
-                            )}
-                          </div>
-                        )}
                       </div>
                     );
                   })}
@@ -1342,7 +1257,7 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
           </div>
         </div>
 
-        {/* Recommendations */}
+        {/* Enhanced Recommendations */}
         {recommendations && recommendations.length > 0 && (
           <div className="bg-white rounded-xl shadow-md overflow-hidden mb-8">
             <div className="p-6">
@@ -1355,14 +1270,34 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
                       <div className="flex-shrink-0 h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-sm mt-0.5 mr-3">
                         {index + 1}
                       </div>
-                      <h3 className="text-lg font-bold text-blue-800">{recommendation.title}</h3>
+                      <div className="flex-1">
+                        <h3 className="text-lg font-bold text-blue-800 mb-2">{recommendation.title}</h3>
+                        
+                        {/* Priority and Timeframe */}
+                        <div className="flex items-center space-x-4 mb-3">
+                          {recommendation.priority && (
+                            <span className={`px-2 py-1 rounded text-xs font-bold ${
+                              recommendation.priority === 'HIGH' ? 'bg-red-200 text-red-800' :
+                              recommendation.priority === 'MEDIUM' ? 'bg-yellow-200 text-yellow-800' :
+                              'bg-green-200 text-green-800'
+                            }`}>
+                              {recommendation.priority} PRIORITY
+                            </span>
+                          )}
+                          {recommendation.timeframe && (
+                            <span className="px-2 py-1 bg-gray-200 text-gray-800 rounded text-xs font-bold">
+                              {recommendation.timeframe}
+                            </span>
+                          )}
+                        </div>
+                      </div>
                     </div>
                     
                     <div className="ml-11">
                       <p className="text-gray-700 mb-4 font-medium">{recommendation.explanation}</p>
                       
                       {recommendation.steps && recommendation.steps.length > 0 && (
-                        <div className="mt-4 bg-white p-4 rounded-lg border border-blue-100">
+                        <div className="bg-white p-4 rounded-lg border border-blue-100 mb-4">
                           <h4 className="text-md font-bold text-blue-700 mb-3">Implementation Steps:</h4>
                           <ol className="list-decimal list-inside space-y-3 text-gray-800">
                             {recommendation.steps.map((step, stepIndex) => (
@@ -1371,6 +1306,17 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
                               </li>
                             ))}
                           </ol>
+                        </div>
+                      )}
+                      
+                      {recommendation.successMetrics && recommendation.successMetrics.length > 0 && (
+                        <div className="bg-green-50 p-4 rounded-lg border border-green-100">
+                          <h4 className="text-md font-bold text-green-700 mb-3">Success Metrics:</h4>
+                          <ul className="list-disc list-inside space-y-2 text-green-800">
+                            {recommendation.successMetrics.map((metric, metricIndex) => (
+                              <li key={metricIndex}>{metric}</li>
+                            ))}
+                          </ul>
                         </div>
                       )}
                     </div>
@@ -1411,7 +1357,7 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
                 onClick={handlePrint}
                 className="bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] hover:from-[#7e43f1] hover:to-[#38b6ff] text-white px-6 py-3 rounded-lg font-medium transition-colors"
               >
-                Download Results
+                Download Enhanced Results
               </button>
             )
           )}
