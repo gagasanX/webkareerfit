@@ -11,36 +11,32 @@ type UseIdleTimerOptions = {
 };
 
 export default function useIdleTimer({
-  timeout = 7200000, // 2 hours in milliseconds
+  timeout = 3600000, // 🔥 REDUCE TO 1 HOUR instead of 2 hours
   onIdle = () => signOut({ callbackUrl: '/login' }),
-  debounce = 500,
+  debounce = 2000, // 🔥 INCREASE DEBOUNCE to reduce frequency
   enabled = true,
 }: UseIdleTimerOptions = {}) {
-  // Always define refs, regardless of enabled state
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const idleTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Function to reset the timer
   const resetTimer = () => {
     if (!enabled) return;
     
-    // Clear existing timeouts
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
     }
 
-    // Set a new timeout
     timeoutRef.current = setTimeout(() => {
-      // User has been idle for the specified time, trigger the idle callback
-      console.log('User inactive for specified duration, logging out');
+      if (process.env.NODE_ENV === 'development') {
+        console.log('User inactive, logging out');
+      }
       onIdle();
     }, timeout);
 
-    // Store the last activity time in localStorage
-    localStorage.setItem('lastActivityTime', Date.now().toString());
+    // 🔥 REMOVE localStorage usage - cause browser cache conflicts
+    // localStorage.setItem('lastActivityTime', Date.now().toString());
   };
 
-  // Debounced function to handle user activity
   const handleUserActivity = () => {
     if (!enabled) return;
     
@@ -56,39 +52,34 @@ export default function useIdleTimer({
   useEffect(() => {
     if (!enabled) return;
     
-    // Events to track user activity
+    // 🔥 REDUCE EVENT LISTENERS - Remove frequent ones like mousemove, scroll
     const events = [
-      'mousedown',
-      'mousemove',
-      'keypress',
-      'scroll',
-      'touchstart',
       'click',
       'keydown',
+      'touchstart',
+      // Removed: 'mousedown', 'mousemove', 'keypress', 'scroll'
     ];
 
-    // Check if session should already be expired based on stored timestamp
-    const lastActivity = localStorage.getItem('lastActivityTime');
-    if (lastActivity) {
-      const lastActivityTime = parseInt(lastActivity, 10);
-      const now = Date.now();
-      
-      if (now - lastActivityTime > timeout) {
-        console.log('Session already expired based on stored timestamp');
-        onIdle();
-        return;
-      }
-    }
+    // 🔥 REMOVE localStorage check - cause session conflicts
+    // const lastActivity = localStorage.getItem('lastActivityTime');
+    // if (lastActivity) {
+    //   const lastActivityTime = parseInt(lastActivity, 10);
+    //   const now = Date.now();
+    //   
+    //   if (now - lastActivityTime > timeout) {
+    //     console.log('Session already expired based on stored timestamp');
+    //     onIdle();
+    //     return;
+    //   }
+    // }
 
-    // Initial timer reset
     resetTimer();
 
-    // Add event listeners
+    // Add event listeners with passive option for better performance
     events.forEach(event => {
-      window.addEventListener(event, handleUserActivity);
+      window.addEventListener(event, handleUserActivity, { passive: true });
     });
 
-    // Cleanup on unmount
     return () => {
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
@@ -102,7 +93,7 @@ export default function useIdleTimer({
         window.removeEventListener(event, handleUserActivity);
       });
     };
-  }, [timeout, onIdle, debounce, enabled]); // Added enabled to dependencies
+  }, [timeout, onIdle, debounce, enabled]);
   
   return null;
 }

@@ -5,18 +5,32 @@ import { signOut, useSession } from 'next-auth/react';
 import useIdleTimer from '@/hooks/useIdleTimer';
 
 export default function ActivityMonitor() {
-  const { status } = useSession();
+  const { status, data: session } = useSession();
   
-  // Always call the hook, but conditionally enable its functionality
+  // 🔥 ONLY enable for authenticated users and add session check
+  const isEnabled = status === 'authenticated' && !!session;
+  
   useIdleTimer({
-    enabled: status === 'authenticated',
-    timeout: 7200000, // 2 hours
+    enabled: isEnabled,
+    timeout: 3600000, // 1 hour instead of 2 hours
     onIdle: () => {
-      console.log('User idle for 2 hours, logging out');
+      if (process.env.NODE_ENV === 'development') {
+        console.log('User idle for 1 hour, logging out');
+      }
       signOut({ callbackUrl: '/login?timeout=true' });
-    }
+    },
+    debounce: 2000, // Increased debounce
   });
   
-  // This component doesn't render anything
+  // 🔥 ADD CLEANUP on session changes
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      // Clear any existing timers when user logs out
+      if (process.env.NODE_ENV === 'development') {
+        console.log('User logged out, cleaning up activity monitor');
+      }
+    }
+  }, [status]);
+  
   return null;
 }

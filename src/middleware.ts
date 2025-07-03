@@ -5,7 +5,10 @@ import { getToken } from 'next-auth/jwt';
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname;
   
-  console.log("Middleware checking path:", path);
+  // Remove excessive logging in production
+  if (process.env.NODE_ENV === 'development') {
+    console.log("Middleware checking path:", path);
+  }
 
   // List of public paths that don't require authentication
   const publicPaths = [
@@ -25,7 +28,7 @@ export async function middleware(request: NextRequest) {
     '/clerk-auth/register'
   ];
 
-  // Check if the current path is a public path
+  // Optimize path checking with early returns
   const isPublicPath = publicPaths.includes(path) || 
     path.startsWith('/api/auth/') ||
     path.includes('/_next/') || 
@@ -37,50 +40,43 @@ export async function middleware(request: NextRequest) {
     path.endsWith('.jpg') ||
     path.endsWith('.svg');
 
-  // Special handling for homepage
   const isHomepage = path === '/';
 
-  // Get the token, if it exists
+  // Get token with optimized settings
   const token = await getToken({
     req: request,
     secret: process.env.NEXTAUTH_SECRET,
   });
 
-  // Debug token info
-  if (token) {
-    console.log("Token found for path:", path, "- Role:", token.role, "- Admin:", token.isAdmin, "- Clerk:", token.isClerk, "- Affiliate:", token.isAffiliate);
-    
-    // Redirect from homepage to dashboard if user is authenticated
-    if (isHomepage) {
-      if (token.isAdmin) {
-        return NextResponse.redirect(new URL('/admin/dashboard', request.url));
-      } else if (token.isClerk) {
-        return NextResponse.redirect(new URL('/clerk/dashboard', request.url));
-      } else {
-        return NextResponse.redirect(new URL('/dashboard', request.url));
-      }
-    }
-  } else {
-    console.log("No token found for path:", path);
+  // Reduce logging
+  if (process.env.NODE_ENV === 'development' && token) {
+    console.log("Token found for:", path, "Role:", token.role);
   }
 
-  // Public paths (other than homepage) should always be accessible
+  // Homepage redirects
+  if (isHomepage && token) {
+    if (token.isAdmin) {
+      return NextResponse.redirect(new URL('/admin/dashboard', request.url));
+    } else if (token.isClerk) {
+      return NextResponse.redirect(new URL('/clerk/dashboard', request.url));
+    } else {
+      return NextResponse.redirect(new URL('/dashboard', request.url));
+    }
+  }
+
+  // Public paths handling
   if (isPublicPath || isHomepage) {
-    // For auth pages, redirect to appropriate dashboard if already logged in
     if (token) {
       if ((path === '/admin-auth/login' || path === '/admin-auth/register') && token.isAdmin) {
-        console.log("Admin already logged in, redirecting to admin dashboard");
         return NextResponse.redirect(new URL('/admin/dashboard', request.url));
       }
       
       if ((path === '/clerk-auth/login' || path === '/clerk-auth/register') && 
           (token.isClerk || token.isAdmin)) {
-        console.log("Clerk already logged in, redirecting to clerk dashboard");
         return NextResponse.redirect(new URL('/clerk/dashboard', request.url));
       }
       
       if (path === '/login' || path === '/register') {
-        console.log("User already logged in, redirecting to dashboard");
         return NextResponse.redirect(new URL('/dashboard', request.url));
       }
     }
@@ -90,8 +86,6 @@ export async function middleware(request: NextRequest) {
 
   // Protected routes - redirect to login if not authenticated
   if (!token) {
-    console.log("No auth token for protected path:", path);
-    
     let loginPath = '/login';
     
     if (path.startsWith('/admin')) {
@@ -106,51 +100,19 @@ export async function middleware(request: NextRequest) {
   }
 
   // Role-based access control
-  
-  // Admin route protection
-  if (path.startsWith('/admin')) {
-    if (!token.isAdmin) {
-      console.log("Non-admin attempting to access admin route:", path);
-      return NextResponse.redirect(new URL('/dashboard', request.url));
-    }
+  if (path.startsWith('/admin') && !token.isAdmin) {
+    return NextResponse.redirect(new URL('/dashboard', request.url));
   }
 
-  // Clerk route protection
-  if (path.startsWith('/clerk')) {
-    if (!token.isClerk && !token.isAdmin) {
-      console.log("Non-clerk attempting to access clerk route:", path);
-      return NextResponse.redirect(new URL('/dashboard', request.url));
-    }
+  if (path.startsWith('/clerk') && !token.isClerk && !token.isAdmin) {
+    return NextResponse.redirect(new URL('/dashboard', request.url));
   }
 
-  // AFFILIATE PROTECTION - USE API CALL INSTEAD OF DIRECT DB
+  // 🔥 REMOVE EXPENSIVE API CALL - Handle affiliate check client-side instead
   if (path.startsWith('/affiliate') && path !== '/affiliate/join') {
-    try {
-      // Make API call to check affiliate status
-      const response = await fetch(new URL('/api/user/affiliate-status', request.url), {
-        headers: {
-          'Authorization': `Bearer ${JSON.stringify(token)}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      if (!response.ok) {
-        console.log("Failed to check affiliate status, redirecting to join");
-        return NextResponse.redirect(new URL('/affiliate/join', request.url));
-      }
-      
-      const { isAffiliate } = await response.json();
-      
-      if (!isAffiliate) {
-        console.log("User is not an affiliate, redirecting to join");
-        return NextResponse.redirect(new URL('/affiliate/join', request.url));
-      } else {
-        console.log("Affiliate access granted for:", path);
-      }
-    } catch (error) {
-      console.error("Error checking affiliate status:", error);
-      // Fallback: allow access if we can't check
-      console.log("Allowing affiliate access due to check error");
+    // Just check token affiliate status instead of API call
+    if (!token.isAffiliate) {
+      return NextResponse.redirect(new URL('/affiliate/join', request.url));
     }
   }
 

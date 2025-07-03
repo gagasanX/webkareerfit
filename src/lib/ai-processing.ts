@@ -1,18 +1,25 @@
 // /src/lib/ai-processing.ts
 import OpenAI from 'openai';
 import { prisma } from '@/lib/db';
+import { 
+  processAssessmentWithAssistants, 
+  isAssistantsAPIConfigured,
+  AssessmentContext 
+} from '@/lib/assistants-api';
 
 // Initialize OpenAI client
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// 🔥 NEW: Processing lock management
+// 🔥 Processing configuration
 const PROCESSING_TIMEOUT = 10 * 60 * 1000; // 10 minutes max processing time
 const CONCURRENT_LOCK_TIME = 5 * 60 * 1000; // 5 minutes to prevent concurrent processing
 const MAX_RETRY_ATTEMPTS = 3;
 
-// ENHANCED: Main function with comprehensive locking and state management
+/**
+ * 🚀 ENHANCED: Main function with Assistants API support and comprehensive locking
+ */
 export async function processAssessmentWithAI(assessmentId: string, assessmentType: string): Promise<void> {
   console.log(`[AI Processing] 🚀 Starting ENHANCED AI analysis for ${assessmentType} assessment: ${assessmentId}`);
   
@@ -64,7 +71,6 @@ export async function processAssessmentWithAI(assessmentId: string, assessmentTy
     
     // 🔥 STEP 3: Validate required data
     const responses = data.responses;
-    const resumeText = data.resumeText || data.resumeContent || '';
     const personalInfo = data.personalInfo || {};
     
     if (!responses) {
@@ -72,152 +78,263 @@ export async function processAssessmentWithAI(assessmentId: string, assessmentTy
     }
     
     console.log(`[AI Processing] 📋 Assessment data validated for ${assessmentId}`);
-    console.log(`[AI Processing] 📄 Resume available: ${!!resumeText} (${resumeText.length} chars)`);
-    console.log(`[AI Processing] 🎯 Target role: ${personalInfo.jobPosition || 'Not specified'}`);
     
-    // 🔥 STEP 4: IMMEDIATELY mark as processing to prevent concurrent runs
-    console.log(`[AI Processing] 🔒 Acquiring processing lock for ${assessmentId}`);
-    await prisma.assessment.update({
-      where: { id: assessmentId },
-      data: {
-        data: {
-          ...data,
-          aiAnalysisStarted: true,
-          aiAnalysisStartedAt: new Date().toISOString(),
-          aiProcessed: false,
-          aiProcessingInProgress: true,
-          aiError: null, // Clear previous errors
-          aiRetryCount: (data.aiRetryCount || 0) + 1,
-          showProcessingScreen: true,
-          processingMessage: 'AI analysis in progress...'
-        },
-        status: 'processing'
-      }
-    });
+    // 🔥 STEP 4: DETERMINE PROCESSING METHOD
+    const shouldUseAssistants = isAssistantsAPIConfigured() && 
+                               (data.processingMethod === 'assistants_api' || 
+                                data.threadId || 
+                                data.fileId ||
+                                data.hasResumeContent);
     
-    console.log(`[AI Processing] 🔒 Processing lock acquired, starting analysis...`);
-    
-    // 🔥 STEP 5: Sequential AI processing with delays to avoid rate limits
-    console.log('[AI Processing] 🧠 Starting sequential AI analysis to avoid rate limits...');
-    
-    // Process scores first
-    console.log('[AI Processing] 📊 Processing scores...');
-    const scoresResult = await processScores(responses, assessmentType, resumeText, personalInfo);
-    await delay(2000); // 2 second delay
-    
-    // Process resume analysis  
-    console.log('[AI Processing] 📄 Processing resume analysis...');
-    const resumeAnalysis = await processResumeAnalysis(resumeText, responses, assessmentType, personalInfo);
-    await delay(2000); // 2 second delay
-    
-    // Process career fit
-    console.log('[AI Processing] 🎯 Processing career fit analysis...');
-    const careerFit = await assessCareerFit(responses, assessmentType, personalInfo.jobPosition || '', resumeText);
-    await delay(2000); // 2 second delay
-    
-    // Process recommendations
-    console.log('[AI Processing] 💡 Processing recommendations...');
-    const recommendations = await processRecommendations(responses, assessmentType, resumeText, personalInfo);
-    await delay(1000); // 1 second delay
-    
-    // Process strengths and improvements (use fallbacks to avoid more API calls)
-    console.log('[AI Processing] ⚡ Processing strengths and improvements...');
-    const strengths = await processStrengthsSimple(responses, assessmentType, resumeText);
-    const improvements = await processImprovementsSimple(responses, assessmentType, resumeText);
-    
-    // 🔥 STEP 6: Extract and validate results
-    const scores = scoresResult.scores;
-    const evidenceLevel = scoresResult.evidenceLevel;
-    
-    // Calculate readiness level from overall score
-    const overallScore = scores.overallScore || 70;
-    const readinessLevel = calculateReadinessLevel(overallScore);
-    
-    // 🔥 STEP 7: Create comprehensive assessment data
-    const processedData = {
-      ...data,
-      scores,
-      recommendations,
-      strengths,
-      improvements,
-      resumeAnalysis,
-      careerFit,
-      evidenceLevel,
-      resumeConsistency: scores.resumeConsistency,
-      readinessLevel,
-      summary: generateEnhancedSummary(overallScore, readinessLevel, assessmentType, careerFit, resumeAnalysis),
-      
-      // 🔥 CRITICAL: Mark as completed and clear processing flags
-      aiProcessed: true,
-      aiProcessedAt: new Date().toISOString(),
-      aiAnalysisStarted: true,
-      aiAnalysisStartedAt: data.aiAnalysisStartedAt,
-      aiProcessingInProgress: false, // Clear processing flag
-      aiError: null, // Clear any previous errors
-      showProcessingScreen: false, // Hide processing screen
-      processingMessage: null // Clear processing message
-    };
-    
-    // 🔥 STEP 8: Update assessment with final results
-    console.log(`[AI Processing] 💾 Saving final results for ${assessmentId}`);
-    await prisma.assessment.update({
-      where: { id: assessmentId },
-      data: {
-        data: processedData,
-        status: 'completed'
-      }
-    });
-    
-    console.log(`[AI Processing] ✅ Successfully completed ENHANCED AI analysis for ${assessmentId}`);
-    console.log(`[AI Processing] 📊 Overall score: ${overallScore}% | Readiness: ${readinessLevel}`);
-    console.log(`[AI Processing] 🎯 Career fit: ${careerFit.fitLevel} (${careerFit.fitPercentage}%)`);
-    console.log(`[AI Processing] 🔓 Processing lock released for ${assessmentId}`);
+    if (shouldUseAssistants) {
+      console.log(`[AI Processing] 🤖 Using Assistants API method for ${assessmentId}`);
+      await processWithAssistantsAPI(assessmentId, assessmentType, data);
+    } else {
+      console.log(`[AI Processing] 🔄 Using legacy processing method for ${assessmentId}`);
+      await processWithLegacyMethod(assessmentId, assessmentType, data);
+    }
     
   } catch (error) {
     console.error(`[AI Processing] ❌ Error processing assessment ${assessmentId}:`, error);
-    
-    // 🔥 STEP 9: Enhanced error handling with retry logic
-    try {
-      const assessment = await prisma.assessment.findUnique({
-        where: { id: assessmentId }
-      });
-      
-      if (assessment) {
-        const data = assessment.data as Record<string, any> || {};
-        const retryCount = (data.aiRetryCount || 0);
-        const canRetry = retryCount < MAX_RETRY_ATTEMPTS;
-        
-        console.log(`[AI Processing] 📝 Updating assessment with error (retry ${retryCount}/${MAX_RETRY_ATTEMPTS})`);
-        
-        await prisma.assessment.update({
-          where: { id: assessmentId },
-          data: {
-            data: {
-              ...data,
-              aiError: error instanceof Error ? error.message : 'Unknown AI processing error',
-              aiProcessed: false,
-              aiProcessingInProgress: false, // Release processing lock
-              aiAnalysisStarted: canRetry, // Keep started flag if can retry
-              showProcessingScreen: false,
-              processingMessage: canRetry ? 'Analysis failed, will retry...' : 'Analysis failed',
-              aiRetryCount: retryCount,
-              lastErrorAt: new Date().toISOString()
-            },
-            status: canRetry ? 'pending' : 'failed'
-          }
-        });
-        
-        console.log(`[AI Processing] 🔓 Processing lock released for ${assessmentId} (error)`);
-      }
-    } catch (updateError) {
-      console.error(`[AI Processing] ❌ Failed to update assessment with error:`, updateError);
-    }
-    
+    await handleProcessingError(assessmentId, error);
     throw error;
   }
 }
 
-// 🔥 NEW: Helper function to reset stuck processing state
+/**
+ * 🤖 NEW: Process using Assistants API (when file was uploaded)
+ */
+async function processWithAssistantsAPI(
+  assessmentId: string, 
+  assessmentType: string, 
+  data: Record<string, any>
+): Promise<void> {
+  console.log(`[AI Processing] 🤖 Processing with Assistants API: ${assessmentId}`);
+  
+  // Mark as processing
+  await prisma.assessment.update({
+    where: { id: assessmentId },
+    data: {
+      data: {
+        ...data,
+        aiAnalysisStarted: true,
+        aiAnalysisStartedAt: new Date().toISOString(),
+        aiProcessed: false,
+        aiProcessingInProgress: true,
+        aiError: null,
+        aiRetryCount: (data.aiRetryCount || 0) + 1,
+        showProcessingScreen: true,
+        processingMessage: 'AI analysis in progress with advanced document processing...'
+      },
+      status: 'processing'
+    }
+  });
+  
+  try {
+    // Check if we already have Assistants API results from submission
+    if (data.threadId && data.fileId && data.scores && data.documentAnalysis) {
+      console.log(`[AI Processing] ✅ Assistants API results already available for ${assessmentId}`);
+      
+      // Just mark as completed
+      await prisma.assessment.update({
+        where: { id: assessmentId },
+        data: {
+          data: {
+            ...data,
+            aiProcessed: true,
+            aiProcessedAt: new Date().toISOString(),
+            aiProcessingInProgress: false,
+            showProcessingScreen: false,
+            processingMessage: null
+          },
+          status: 'completed'
+        }
+      });
+      
+      console.log(`[AI Processing] 🔓 Processing completed for ${assessmentId} using existing Assistants API results`);
+      return;
+    }
+    
+    // If we need to process with Assistants API but don't have results yet
+    // This means we need to run the analysis now (fallback scenario)
+    console.log(`[AI Processing] ⚠️ Assistants API processing requested but no complete results found`);
+    
+    // Try to re-process if we have the necessary data
+    if (data.responses && data.personalInfo) {
+      // Fallback to legacy method since we can't re-upload file here
+      console.log(`[AI Processing] 🔄 Falling back to legacy method for ${assessmentId}`);
+      await processWithLegacyMethod(assessmentId, assessmentType, data);
+    } else {
+      throw new Error('Insufficient data for processing');
+    }
+    
+  } catch (error) {
+    console.error(`[AI Processing] ❌ Assistants API processing failed for ${assessmentId}:`, error);
+    
+    // Fallback to legacy method
+    console.log(`[AI Processing] 🔄 Falling back to legacy method for ${assessmentId}`);
+    await processWithLegacyMethod(assessmentId, assessmentType, data);
+  }
+}
+
+/**
+ * 🔄 Process using legacy method (existing implementation enhanced)
+ */
+async function processWithLegacyMethod(
+  assessmentId: string, 
+  assessmentType: string, 
+  data: Record<string, any>
+): Promise<void> {
+  console.log(`[AI Processing] 🔄 Processing with legacy method: ${assessmentId}`);
+  
+  const responses = data.responses;
+  const resumeText = data.resumeText || data.resumeContent || '';
+  const personalInfo = data.personalInfo || {};
+  
+  // 🔥 STEP 4: IMMEDIATELY mark as processing to prevent concurrent runs
+  console.log(`[AI Processing] 🔒 Acquiring processing lock for ${assessmentId}`);
+  await prisma.assessment.update({
+    where: { id: assessmentId },
+    data: {
+      data: {
+        ...data,
+        aiAnalysisStarted: true,
+        aiAnalysisStartedAt: new Date().toISOString(),
+        aiProcessed: false,
+        aiProcessingInProgress: true,
+        aiError: null,
+        aiRetryCount: (data.aiRetryCount || 0) + 1,
+        showProcessingScreen: true,
+        processingMessage: 'AI analysis in progress...'
+      },
+      status: 'processing'
+    }
+  });
+  
+  console.log(`[AI Processing] 🔒 Processing lock acquired, starting analysis...`);
+  
+  // 🔥 STEP 5: Sequential AI processing with delays to avoid rate limits
+  console.log('[AI Processing] 🧠 Starting sequential AI analysis to avoid rate limits...');
+  
+  // Process scores first
+  console.log('[AI Processing] 📊 Processing scores...');
+  const scoresResult = await processScores(responses, assessmentType, resumeText, personalInfo);
+  await delay(2000); // 2 second delay
+  
+  // Process resume analysis  
+  console.log('[AI Processing] 📄 Processing resume analysis...');
+  const resumeAnalysis = await processResumeAnalysis(resumeText, responses, assessmentType, personalInfo);
+  await delay(2000); // 2 second delay
+  
+  // Process career fit
+  console.log('[AI Processing] 🎯 Processing career fit analysis...');
+  const careerFit = await assessCareerFit(responses, assessmentType, personalInfo.jobPosition || '', resumeText);
+  await delay(2000); // 2 second delay
+  
+  // Process recommendations
+  console.log('[AI Processing] 💡 Processing recommendations...');
+  const recommendations = await processRecommendations(responses, assessmentType, resumeText, personalInfo);
+  await delay(1000); // 1 second delay
+  
+  // Process strengths and improvements (use fallbacks to avoid more API calls)
+  console.log('[AI Processing] ⚡ Processing strengths and improvements...');
+  const strengths = await processStrengthsSimple(responses, assessmentType, resumeText);
+  const improvements = await processImprovementsSimple(responses, assessmentType, resumeText);
+  
+  // 🔥 STEP 6: Extract and validate results
+  const scores = scoresResult.scores;
+  const evidenceLevel = scoresResult.evidenceLevel;
+  
+  // Calculate readiness level from overall score
+  const overallScore = scores.overallScore || 70;
+  const readinessLevel = calculateReadinessLevel(overallScore);
+  
+  // 🔥 STEP 7: Create comprehensive assessment data
+  const processedData = {
+    ...data,
+    scores,
+    recommendations,
+    strengths,
+    improvements,
+    resumeAnalysis,
+    careerFit,
+    evidenceLevel,
+    resumeConsistency: scores.resumeConsistency,
+    readinessLevel,
+    summary: generateEnhancedSummary(overallScore, readinessLevel, assessmentType, careerFit, resumeAnalysis),
+    
+    // 🔥 CRITICAL: Mark as completed and clear processing flags
+    aiProcessed: true,
+    aiProcessedAt: new Date().toISOString(),
+    aiAnalysisStarted: true,
+    aiAnalysisStartedAt: data.aiAnalysisStartedAt,
+    aiProcessingInProgress: false, // Clear processing flag
+    aiError: null, // Clear any previous errors
+    showProcessingScreen: false, // Hide processing screen
+    processingMessage: null, // Clear processing message
+    processingMethod: 'legacy'
+  };
+  
+  // 🔥 STEP 8: Update assessment with final results
+  console.log(`[AI Processing] 💾 Saving final results for ${assessmentId}`);
+  await prisma.assessment.update({
+    where: { id: assessmentId },
+    data: {
+      data: processedData,
+      status: 'completed'
+    }
+  });
+  
+  console.log(`[AI Processing] ✅ Successfully completed ENHANCED AI analysis for ${assessmentId}`);
+  console.log(`[AI Processing] 📊 Overall score: ${overallScore}% | Readiness: ${readinessLevel}`);
+  console.log(`[AI Processing] 🎯 Career fit: ${careerFit.fitLevel} (${careerFit.fitPercentage}%)`);
+  console.log(`[AI Processing] 🔓 Processing lock released for ${assessmentId}`);
+}
+
+/**
+ * ❌ Enhanced error handling with retry logic
+ */
+async function handleProcessingError(assessmentId: string, error: any): Promise<void> {
+  try {
+    const assessment = await prisma.assessment.findUnique({
+      where: { id: assessmentId }
+    });
+    
+    if (assessment) {
+      const data = assessment.data as Record<string, any> || {};
+      const retryCount = (data.aiRetryCount || 0);
+      const canRetry = retryCount < MAX_RETRY_ATTEMPTS;
+      
+      console.log(`[AI Processing] 📝 Updating assessment with error (retry ${retryCount}/${MAX_RETRY_ATTEMPTS})`);
+      
+      await prisma.assessment.update({
+        where: { id: assessmentId },
+        data: {
+          data: {
+            ...data,
+            aiError: error instanceof Error ? error.message : 'Unknown AI processing error',
+            aiProcessed: false,
+            aiProcessingInProgress: false, // Release processing lock
+            aiAnalysisStarted: canRetry, // Keep started flag if can retry
+            showProcessingScreen: false,
+            processingMessage: canRetry ? 'Analysis failed, will retry...' : 'Analysis failed',
+            aiRetryCount: retryCount,
+            lastErrorAt: new Date().toISOString()
+          },
+          status: canRetry ? 'pending' : 'failed'
+        }
+      });
+      
+      console.log(`[AI Processing] 🔓 Processing lock released for ${assessmentId} (error)`);
+    }
+  } catch (updateError) {
+    console.error(`[AI Processing] ❌ Failed to update assessment with error:`, updateError);
+  }
+}
+
+/**
+ * 🔄 NEW: Helper function to reset stuck processing state
+ */
 async function resetProcessingState(assessmentId: string): Promise<void> {
   try {
     const assessment = await prisma.assessment.findUnique({
@@ -245,12 +362,16 @@ async function resetProcessingState(assessmentId: string): Promise<void> {
   }
 }
 
-// 🔥 NEW: Delay helper function
+/**
+ * 🔧 NEW: Delay helper function
+ */
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-// ENHANCED: Process scores with resume context and honest assessment
+/**
+ * 📊 ENHANCED: Process scores with resume context and honest assessment
+ */
 export async function processScores(
   responses: any, 
   assessmentType: string, 
@@ -357,7 +478,9 @@ Return ONLY valid JSON:
   }
 }
 
-// NEW: Comprehensive resume analysis
+/**
+ * 📄 NEW: Comprehensive resume analysis
+ */
 export async function processResumeAnalysis(
   resumeText: string, 
   responses: any, 
@@ -473,7 +596,9 @@ Return ONLY valid JSON:
   }
 }
 
-// NEW: Career fit assessment with resume context
+/**
+ * 🎯 NEW: Career fit assessment with resume context
+ */
 export async function assessCareerFit(
   responses: any, 
   assessmentType: string, 
@@ -568,7 +693,9 @@ Return ONLY valid JSON:
   }
 }
 
-// ENHANCED: Process recommendations with resume context
+/**
+ * 💡 ENHANCED: Process recommendations with resume context
+ */
 export async function processRecommendations(
   responses: any, 
   assessmentType: string, 
@@ -653,7 +780,9 @@ Return ONLY valid JSON array of 3-5 recommendations:
   }
 }
 
-// Simple versions to avoid additional API calls
+/**
+ * ⚡ Simple versions to avoid additional API calls
+ */
 async function processStrengthsSimple(responses: any, assessmentType: string, resumeText: string): Promise<string[]> {
   if (resumeText && resumeText.length > 100) {
     return [
@@ -686,7 +815,9 @@ async function processImprovementsSimple(responses: any, assessmentType: string,
   }
 }
 
-// ENHANCED: Generate honest summary with career fit context
+/**
+ * 📝 ENHANCED: Generate honest summary with career fit context
+ */
 function generateEnhancedSummary(
   overallScore: number, 
   readinessLevel: string, 
@@ -729,6 +860,9 @@ function generateEnhancedSummary(
   return honestFeedback;
 }
 
+/**
+ * 🔧 Helper Functions
+ */
 function validateAndAdjustScores(scores: any, responses: any, resumeText: string): any {
   const scoreValues = Object.entries(scores)
     .filter(([key]) => !['overallScore', 'resumeConsistency', 'evidenceLevel'].includes(key))

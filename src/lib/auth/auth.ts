@@ -15,14 +15,12 @@ declare module "next-auth/jwt" {
   }
 }
 
-// Workaround for bcrypt with enhanced error handling
+// Optimized password comparison
 const compare = async (data: string, hash: string) => {
   try {
     if (bcryptModule && typeof bcryptModule.compare === 'function') {
-      console.log("Using bcryptjs to compare passwords");
       return await bcryptModule.compare(data, hash);
     } else {
-      // Simple fallback for development (NOT SECURE)
       console.warn("⚠️ Bcrypt not available, using insecure fallback. DO NOT USE IN PRODUCTION!");
       return data === hash;
     }
@@ -32,7 +30,6 @@ const compare = async (data: string, hash: string) => {
   }
 };
 
-// Define UserRole type to match Prisma schema
 type UserRole = 'USER' | 'CLERK' | 'ADMIN';
 
 // Extend Session type
@@ -66,53 +63,36 @@ export const authOptions: NextAuthOptions = {
         password: { label: "Password", type: "password" }
       },
       async authorize(credentials) {
-        console.log("🔑 AUTHORIZE: Starting authorization process");
+        // Reduce logging in production
+        if (process.env.NODE_ENV === 'development') {
+          console.log("🔑 AUTHORIZE: Starting authorization process");
+        }
         
         if (!credentials?.email || !credentials?.password) {
-          console.log("❌ AUTHORIZE: Missing email or password");
           return null;
         }
 
         try {
-          // Find the user in the database
-          console.log(`🔍 AUTHORIZE: Looking up user with email: ${credentials.email}`);
-          
           const user = await prisma.user.findUnique({
-            where: {
-              email: credentials.email
-            }
+            where: { email: credentials.email }
           });
 
           if (!user) {
-            console.log("❌ AUTHORIZE: User not found in database");
             throw new Error("Invalid email or password");
           }
-          
-          console.log(`✅ AUTHORIZE: User found: ID ${user.id}, Role: ${user.role}`);
 
-          // Verify the password
-          console.log("🔒 AUTHORIZE: Verifying password");
-          const isPasswordValid = await compare(
-            credentials.password,
-            user.password
-          );
+          const isPasswordValid = await compare(credentials.password, user.password);
 
           if (!isPasswordValid) {
-            console.log("❌ AUTHORIZE: Password verification failed");
             throw new Error("Invalid email or password");
           }
-          
-          console.log("✅ AUTHORIZE: Password verified successfully");
 
           // Determine role statuses with explicit Boolean conversion
           const userRole = (user.role || 'USER') as UserRole;
           const isAdmin = Boolean(user.isAdmin);
           const isClerk = Boolean(userRole === 'CLERK' || userRole === 'ADMIN' || user.isClerk || isAdmin);
           const isAffiliate = Boolean(user.isAffiliate);
-          
-          console.log(`👤 AUTHORIZE: Role calculation - Role: ${userRole}, Admin: ${isAdmin}, Clerk: ${isClerk}, Affiliate: ${isAffiliate}`);
 
-          // Return the user with proper typing
           return {
             id: user.id,
             email: user.email,
@@ -138,47 +118,53 @@ export const authOptions: NextAuthOptions = {
   callbacks: {
     async jwt({ token, user }) {
       if (user) {
-        console.log("🔄 JWT: Adding user data to token");
         token.id = user.id;
         token.role = user.role;
         token.isAdmin = Boolean(user.isAdmin);
         token.isClerk = Boolean(user.isClerk);
         token.isAffiliate = Boolean(user.isAffiliate);
-        
-        console.log(`🔐 JWT: Token created with ID: ${token.id}, Role: ${token.role}, Admin: ${token.isAdmin}, Clerk: ${token.isClerk}`);
       }
       return token;
     },
     async session({ session, token }) {
       if (token && session.user) {
-        console.log("🔄 SESSION: Adding token data to session");
         session.user.id = token.id;
         session.user.role = token.role as UserRole;
         session.user.isAdmin = Boolean(token.isAdmin);
         session.user.isClerk = Boolean(token.isClerk);
         session.user.isAffiliate = Boolean(token.isAffiliate);
-        
-        console.log(`👥 SESSION: Session updated with ID: ${session.user.id}, Role: ${session.user.role}`);
       }
       return session;
     }
   },
   session: {
     strategy: "jwt",
-    maxAge: 30 * 24 * 60 * 60 // 30 days
+    // 🔥 REDUCE SESSION TIME TO PREVENT CACHE ISSUES
+    maxAge: 24 * 60 * 60, // 24 hours instead of 30 days
+    updateAge: 60 * 60, // Update session every hour
   },
-  debug: process.env.NODE_ENV === 'development',
+  jwt: {
+    // 🔥 ADD JWT CONFIG FOR BETTER TOKEN MANAGEMENT
+    maxAge: 24 * 60 * 60, // 24 hours
+  },
+  // 🔥 DISABLE DEBUG IN PRODUCTION
+  debug: false,
   secret: process.env.NEXTAUTH_SECRET || "your-fallback-secret-for-development",
+  
+  // 🔥 REMOVE EXCESSIVE LOGGING
   logger: {
     error(code, metadata) {
       console.error(`[Auth] Error: ${code}`, metadata);
     },
     warn(code) {
-      console.warn(`[Auth] Warning: ${code}`);
+      if (process.env.NODE_ENV === 'development') {
+        console.warn(`[Auth] Warning: ${code}`);
+      }
     },
     debug(code, metadata) {
+      // Only log in development and reduce verbosity
       if (process.env.NODE_ENV === 'development') {
-        console.log(`[Auth] Debug: ${code}`, metadata);
+        console.log(`[Auth] ${code}`);
       }
     }
   }
