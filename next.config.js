@@ -2,20 +2,25 @@
 const nextConfig = {
   // 🔥 PERFORMANCE CRITICAL SETTINGS
   reactStrictMode: true,
-  swcMinify: true,
   compress: true,
   
-  // 🔥 BUNDLE OPTIMIZATION FOR VERCEL FREE
+  // 🔥 FIXED: Updated experimental options for Next.js 15
   experimental: {
     optimizeCss: true,
     optimizeServerReact: true,
-    // Modern bundling
-    turbotrace: {
-      logLevel: 'error'
-    }
+    // 🔥 CRITICAL FIX: Server Actions configuration for Codespaces
+    serverActions: {
+      allowedOrigins: [
+        'localhost:3000',
+        '*.app.github.dev', // GitHub Codespaces
+        '*.githubpreview.dev', // GitHub Codespaces preview
+        'my.kareerfit.com',
+        '*.vercel.app',
+      ],
+    },
   },
 
-  // 🔥 COMPILER OPTIMIZATIONS
+  // 🔥 COMPILER OPTIMIZATIONS  
   compiler: {
     removeConsole: process.env.NODE_ENV === 'production' ? {
       exclude: ['error', 'warn'],
@@ -103,7 +108,7 @@ const nextConfig = {
     return config;
   },
 
-  // 🔥 HEADERS FOR BETTER CACHING & PERFORMANCE
+  // 🔥 HEADERS FOR BETTER CACHING & PERFORMANCE + CODESPACES FIX
   async headers() {
     return [
       {
@@ -122,6 +127,19 @@ const nextConfig = {
             key: 'Cache-Control',
             value: 'no-store, max-age=0',
           },
+          // 🔥 FIX: Allow Codespaces forwarded headers
+          {
+            key: 'Access-Control-Allow-Origin',
+            value: '*',
+          },
+          {
+            key: 'Access-Control-Allow-Methods', 
+            value: 'GET,OPTIONS,PATCH,DELETE,POST,PUT',
+          },
+          {
+            key: 'Access-Control-Allow-Headers',
+            value: 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, x-forwarded-host, origin',
+          },
         ],
       },
       {
@@ -131,10 +149,11 @@ const nextConfig = {
             key: 'X-DNS-Prefetch-Control',
             value: 'on'
           },
-          {
+          // 🔥 CONDITIONAL: Only add HSTS in production
+          ...(process.env.NODE_ENV === 'production' ? [{
             key: 'Strict-Transport-Security',
             value: 'max-age=63072000; includeSubDomains; preload'
-          },
+          }] : []),
           {
             key: 'X-Frame-Options',
             value: 'DENY'

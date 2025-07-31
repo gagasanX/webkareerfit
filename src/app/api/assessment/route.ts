@@ -182,7 +182,7 @@ export async function GET(request: NextRequest) {
         status: assessment.status,
         createdAt: assessment.createdAt,
         updatedAt: assessment.updatedAt,
-        payment: assessment.payment?.[0] || null, // ✅ FIXED: lowercase 'payment'
+        payment: assessment.payment || null,
         questionnaire_completed: assessmentData?.questionnaire_completed || false, // ✅ FIXED: proper type casting
       };
     });

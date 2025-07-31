@@ -22,7 +22,7 @@ export async function POST(request: { json: () => PromiseLike<{ code: any; asses
       where: { code },
     });
     
-    if (!coupon || coupon.isUsed || new Date() > coupon.expiresAt) {
+    if (!coupon || coupon.currentUses >= coupon.maxUses || new Date() > coupon.expiresAt) {
       return NextResponse.json({ message: 'Invalid or expired coupon' }, { status: 400 });
     }
     

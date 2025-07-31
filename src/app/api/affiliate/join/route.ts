@@ -3,7 +3,6 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth/auth';
 import { prisma } from '@/lib/db';
 
-// Define interface for application data
 interface AffiliateApplicationData {
   fullName: string;
   email: string;
@@ -16,7 +15,6 @@ interface AffiliateApplicationData {
 
 export async function POST(request: NextRequest) {
   try {
-    // Get session
     const session = await getServerSession(authOptions);
     
     if (!session || !session.user?.id) {
@@ -25,7 +23,6 @@ export async function POST(request: NextRequest) {
     
     const userId = session.user.id;
     
-    // Check if user is already an affiliate
     const existingUser = await prisma.user.findUnique({
       where: { id: userId },
     });
@@ -43,10 +40,8 @@ export async function POST(request: NextRequest) {
       });
     }
     
-    // Parse request data
     const data: AffiliateApplicationData = await request.json();
     
-    // Validate required fields
     if (!data.fullName || !data.email || !data.phone || !data.howPromote || !data.acceptTerms) {
       return NextResponse.json(
         { error: 'Missing required fields' },
@@ -54,15 +49,12 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    // Generate affiliate code
     const randomString = Math.random().toString(36).substring(2, 8).toUpperCase();
     const affiliateCode = `KF-${randomString}`;
     
     console.log(`Creating affiliate for user ${userId} with code ${affiliateCode}`);
     
-    // Transaction to ensure all operations succeed together
     await prisma.$transaction(async (tx) => {
-      // Step 1: Update user to be an affiliate
       await tx.user.update({
         where: { id: userId },
         data: {
@@ -71,7 +63,6 @@ export async function POST(request: NextRequest) {
         },
       });
       
-      // Step 2: Create affiliate application record
       await tx.affiliateApplication.create({
         data: {
           userId,
@@ -81,12 +72,11 @@ export async function POST(request: NextRequest) {
           website: data.website || '',
           socialMedia: data.socialMedia || '',
           howPromote: data.howPromote,
-          status: 'approved', // Auto approve for now
+          status: 'approved',
           notes: 'Auto-approved individual affiliate'
         }
       });
       
-      // Step 3: Create affiliate stats record
       const existingStats = await tx.affiliateStats.findUnique({
         where: { userId }
       });
@@ -105,11 +95,12 @@ export async function POST(request: NextRequest) {
     
     console.log(`Successfully created affiliate ${affiliateCode} for user ${userId}`);
     
+    // 🚀 EXPERT FIX: Return session refresh instruction
     return NextResponse.json({
       success: true,
       message: 'Affiliate registration completed successfully',
       affiliateCode,
-      requiresRefresh: true // Signal that session needs refresh
+      sessionRefresh: true // Signal for client to refresh session
     });
     
   } catch (error) {

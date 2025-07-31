@@ -1,22 +1,21 @@
 import { prisma } from '@/lib/db';
-import { sendReceiptEmail, generateReceiptNumber } from './emailService';
+import { engineMailer, generateReceiptNumber } from './enginemailerService';
 
 // Map assessment types to readable names
 const assessmentLabels = {
   fjrl: 'First Job Readiness Level',
   ijrl: 'Ideal Job Readiness Level',
-  cdrl: 'Career Development Readiness Level', 
+  cdrl: 'Career Development Readiness Level',
   ccrl: 'Career Comeback Readiness Level',
   ctrl: 'Career Transition Readiness Level',
   rrl: 'Retirement Readiness Level',
   irl: 'Internship Readiness Level',
 };
 
-/**
- * Send receipt for a completed payment
- */
 export async function sendPaymentReceipt(paymentId: string): Promise<boolean> {
   try {
+    console.log(`Sending payment receipt for payment: ${paymentId}`);
+    
     // Get payment with related data
     const payment = await prisma.payment.findUnique({
       where: { id: paymentId },
@@ -34,11 +33,8 @@ export async function sendPaymentReceipt(paymentId: string): Promise<boolean> {
     
     // Calculate discount if coupon was used
     let discount = 0;
-    if (payment.coupon) {
-      // Get assessment base price
-      const basePrice = getAssessmentBasePrice(payment.assessment.type);
-      
-      // Calculate discount
+    if (payment.coupon && payment.assessment) {
+      const basePrice = getAssessmentBasePrice(payment.assessment.tier || 'basic');
       const discountAmount = (basePrice * payment.coupon.discountPercentage) / 100;
       discount = payment.coupon.maxDiscount && discountAmount > payment.coupon.maxDiscount
         ? payment.coupon.maxDiscount
@@ -53,7 +49,9 @@ export async function sendPaymentReceipt(paymentId: string): Promise<boolean> {
       ? 'Coupon (100% discount)'
       : payment.method === 'card'
       ? 'Credit/Debit Card'
-      : 'FPX Online Banking';
+      : payment.method === 'fpx'
+      ? 'FPX Online Banking'
+      : payment.method || 'Online Payment';
     
     // Get assessment type name
     const assessmentType = payment.assessment.type;
@@ -61,7 +59,7 @@ export async function sendPaymentReceipt(paymentId: string): Promise<boolean> {
                           payment.assessment.type.toUpperCase();
     
     // Send receipt email
-    const sent = await sendReceiptEmail({
+    const sent = await engineMailer.sendReceiptEmail({
       userName: payment.user.name || 'Valued Customer',
       email: payment.user.email || '',
       receiptNumber,
@@ -75,6 +73,12 @@ export async function sendPaymentReceipt(paymentId: string): Promise<boolean> {
       couponCode: payment.coupon?.code
     });
     
+    if (sent) {
+      console.log(`Receipt email sent successfully for payment: ${paymentId}`);
+    } else {
+      console.error(`Failed to send receipt email for payment: ${paymentId}`);
+    }
+    
     return sent;
   } catch (error) {
     console.error('Error sending payment receipt:', error);
@@ -82,19 +86,12 @@ export async function sendPaymentReceipt(paymentId: string): Promise<boolean> {
   }
 }
 
-/**
- * Get base price for an assessment type
- */
-function getAssessmentBasePrice(type: string): number {
-  const prices = {
-    fjrl: 50,  // First Job Readiness Level
-    ijrl: 60,  // Ideal Job Readiness Level
-    cdrl: 75,  // Career Development Readiness Level
-    ccrl: 80,  // Career Comeback Readiness Level
-    ctrl: 100, // Career Transition Readiness Level
-    rrl: 120,  // Retirement Readiness Level
-    irl: 40,   // Internship Readiness Level
+function getAssessmentBasePrice(tier: string): number {
+  const tierPrices = {
+    basic: 50,
+    standard: 100,
+    premium: 250
   };
   
-  return prices[type as keyof typeof prices] || 50;
+  return tierPrices[tier as keyof typeof tierPrices] || 50;
 }

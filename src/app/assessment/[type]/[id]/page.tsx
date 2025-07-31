@@ -129,7 +129,7 @@ export default function AssessmentPage() {
       }
       
       // Use the correct endpoint for file uploads
-      const endpoint = `/api/assessment/${type}/${id}/submit-with-file`;
+      const endpoint = `/api/assessment/${type}/${id}/submit-with-google-vision`;
       console.log('Submitting to endpoint:', endpoint);
       
       // Make the API request

@@ -63,6 +63,16 @@ interface AssessmentData {
   resumeConsistency?: number;
   evidenceLevel?: 'STRONG' | 'MODERATE' | 'WEAK' | 'INSUFFICIENT';
   
+  // 🔥 NEW: Personal info fields
+  personalInfo?: {
+    name: string;
+    email: string;
+    phone: string;
+    personality: string[];
+    jobPosition: string;
+  };
+  qualification?: string;
+  
   categoryAnalysis?: Record<string, {
     score: number;
     strengths: string[];
@@ -150,6 +160,62 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
     careerPlanning: 'Career Planning',
     skillsDevelopment: 'Skills Development',
     professionalNetworking: 'Professional Networking'
+  };
+
+  // 🔥 NEW: Helper functions to extract user data
+  const getUserName = (): string => {
+    // Priority: 1. Assessment form data, 2. Session data, 3. Default
+    return assessment?.submission?.personalInfo?.name || 
+           assessment?.data?.personalInfo?.name ||
+           assessmentData?.personalInfo?.name ||
+           session?.user?.name || 
+           '';
+  };
+
+  const getUserEmail = (): string => {
+    // Priority: 1. Assessment form data, 2. Session data, 3. Default  
+    return assessment?.submission?.personalInfo?.email ||
+           assessment?.data?.personalInfo?.email ||
+           assessmentData?.personalInfo?.email ||
+           session?.user?.email || 
+           '';
+  };
+
+  const getUserTargetPosition = (): string => {
+    // Get target job position from assessment data
+    return assessment?.submission?.personalInfo?.jobPosition ||
+           assessment?.data?.personalInfo?.jobPosition ||
+           assessmentData?.personalInfo?.jobPosition ||
+           '';
+  };
+
+  const getUserQualification = (): string => {
+    // Get highest qualification from assessment data
+    return assessment?.submission?.qualification ||
+           assessment?.data?.qualification ||
+           assessmentData?.qualification ||
+           '';
+  };
+
+  const getUserInitials = (): string => {
+    const name = getUserName();
+    if (!name) return '👤';
+    
+    const parts = name.trim().split(' ');
+    if (parts.length === 1) {
+      return parts[0].charAt(0).toUpperCase();
+    }
+    return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+  };
+
+  const getUserPersonalities = (): string[] => {
+    // Get selected personality types
+    const personalities = assessment?.submission?.personalInfo?.personality ||
+                         assessment?.data?.personalInfo?.personality ||
+                         assessmentData?.personalInfo?.personality ||
+                         [];
+    
+    return Array.isArray(personalities) ? personalities : [];
   };
 
   // Authentication and initial fetch
@@ -351,6 +417,11 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
         careerFit: responseData.careerFit,
         resumeConsistency: responseData.resumeConsistency,
         evidenceLevel: responseData.evidenceLevel,
+        
+        // 🔥 NEW: Include personal info
+        personalInfo: responseData.personalInfo || data.submission?.personalInfo,
+        qualification: responseData.qualification || data.submission?.qualification,
+        
         categoryAnalysis: responseData.categoryAnalysis,
         completedAt: responseData.completedAt || data.completedAt || new Date().toISOString(),
         submittedAt: responseData.submittedAt || data.createdAt || new Date().toISOString(),
@@ -537,7 +608,7 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
     }
   };
 
-  // Enhanced print functionality
+  // 🔥 ENHANCED: Print functionality with user info
   const handlePrint = () => {
     const printWindow = window.open('', '_blank');
     
@@ -547,6 +618,44 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
     }
     
     const overallScore = assessmentData?.scores?.overallScore ?? 70;
+    const userName = getUserName();
+    const userEmail = getUserEmail();
+    const targetPosition = getUserTargetPosition();
+    const qualification = getUserQualification();
+    const personalities = getUserPersonalities();
+    
+    // Generate user info section for print
+    const userInfoHTML = `
+      <div class="user-info-section">
+        <h2>Participant Information</h2>
+        <div class="user-details">
+          <div class="user-detail-row">
+            <strong>Name:</strong> ${userName || 'Not provided'}
+          </div>
+          <div class="user-detail-row">
+            <strong>Email:</strong> ${userEmail || 'Not provided'}
+          </div>
+          ${targetPosition ? `
+            <div class="user-detail-row">
+              <strong>Target Position:</strong> ${targetPosition}
+            </div>
+          ` : ''}
+          ${qualification ? `
+            <div class="user-detail-row">
+              <strong>Highest Qualification:</strong> ${qualification}
+            </div>
+          ` : ''}
+          ${personalities.length > 0 ? `
+            <div class="user-detail-row">
+              <strong>Personality Types:</strong> 
+              <div class="personality-tags">
+                ${personalities.map(p => `<span class="personality-tag">${p.split(' - ')[0]}</span>`).join('')}
+              </div>
+            </div>
+          ` : ''}
+        </div>
+      </div>
+    `;
     
     // Generate category scores HTML with enhanced data
     const categoryScoresHTML = assessmentData && assessmentData.scores 
@@ -693,6 +802,14 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
           .credibility-score { text-align: right; }
           .score { font-size: 20px; font-weight: bold; margin-right: 10px; }
           .level { background-color: #e2e8f0; padding: 3px 8px; border-radius: 4px; font-size: 12px; }
+          
+          /* 🔥 NEW: User info styles */
+          .user-info-section { background-color: #f8fafc; border: 1px solid #e2e8f0; }
+          .user-details { grid-template-columns: 1fr 1fr; gap: 15px; }
+          .user-detail-row { margin-bottom: 10px; padding: 8px 0; border-bottom: 1px solid #e2e8f0; }
+          .user-detail-row:last-child { border-bottom: none; }
+          .personality-tags { margin-top: 5px; }
+          .personality-tag { display: inline-block; background-color: #e6fffa; color: #234e52; padding: 2px 8px; margin: 2px; border-radius: 12px; font-size: 12px; }
         </style>
       </head>
       <body>
@@ -700,6 +817,8 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
           <h1>${assessmentTypeLabels[assessmentType] || assessmentType} Results</h1>
           <p>Completed on ${new Date(assessmentData?.completedAt || new Date()).toLocaleDateString()}</p>
         </div>
+        
+        ${userInfoHTML}
         
         <div class="section">
           <h2>Overall Score</h2>
@@ -763,7 +882,7 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
         </div>
         
         <div class="footer">
-          <p>This enhanced report was generated on ${new Date().toLocaleString()} based on your assessment responses and resume analysis.</p>
+          <p>This enhanced report was generated on ${new Date().toLocaleString()} for ${userName || 'Assessment Participant'}.</p>
           <p>© ${new Date().getFullYear()} KareerFit Assessment System</p>
         </div>
       </body>
@@ -901,7 +1020,7 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
   return (
     <div className="print-container min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl mx-auto" ref={contentRef}>
-        {/* Header section */}
+        {/* 🔥 ENHANCED Header section with User Info */}
         <div className="bg-white rounded-xl shadow-md overflow-hidden mb-8">
           <div className="print-header bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] p-6 text-white">
             <h1 className="text-2xl font-bold">
@@ -910,6 +1029,52 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
             <p className="text-white/80 mt-1">
               Completed on {new Date(completedAt).toLocaleDateString()}
             </p>
+          </div>
+
+          {/* 🔥 NEW: User Information Section */}
+          <div className="p-6 border-b bg-gray-50">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                {/* User Avatar/Icon */}
+                <div className="h-12 w-12 rounded-full bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] flex items-center justify-center text-white font-bold text-lg">
+                  {getUserInitials()}
+                </div>
+                
+                {/* User Details */}
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-800">
+                    {getUserName() || 'Assessment Participant'}
+                  </h3>
+                  <p className="text-sm text-gray-600">
+                    {getUserEmail() || session?.user?.email || 'No email provided'}
+                  </p>
+                  {getUserTargetPosition() && (
+                    <p className="text-sm text-blue-600 font-medium">
+                      Target Role: {getUserTargetPosition()}
+                    </p>
+                  )}
+                </div>
+              </div>
+              
+              {/* Assessment Status Badge */}
+              <div className="text-right">
+                <div className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
+                  ✅ Assessment Completed
+                </div>
+                {assessmentData?.evidenceLevel && (
+                  <div className="mt-2">
+                    <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-bold ${
+                      assessmentData.evidenceLevel === 'STRONG' ? 'bg-green-200 text-green-800' :
+                      assessmentData.evidenceLevel === 'MODERATE' ? 'bg-blue-200 text-blue-800' :
+                      assessmentData.evidenceLevel === 'WEAK' ? 'bg-yellow-200 text-yellow-800' :
+                      'bg-red-200 text-red-800'
+                    }`}>
+                      {assessmentData.evidenceLevel} Evidence
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* Overall score */}

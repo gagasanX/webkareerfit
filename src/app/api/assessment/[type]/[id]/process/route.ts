@@ -1,9 +1,9 @@
-// app/api/assessment/[type]/[id]/process/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth/auth';
 import { prisma } from '@/lib/db';
 import { getOpenAIInstance, isOpenAIConfigured } from '@/lib/openai';
+import { sendAssessmentEmail } from '@/lib/email/sendAssessmentEmail';
 
 /**
  * GET: Checks the processing status of an assessment
@@ -97,6 +97,16 @@ export async function POST(
         processingTimeMs: Date.now() - startTime
       });
 
+      // 🚀 SEND ASSESSMENT COMPLETION EMAIL
+      sendAssessmentEmail({
+        userId: assessment.userId,
+        assessmentId: assessment.id,
+        assessmentType: params.type
+      }).catch((emailError) => {
+        console.error('Failed to send assessment completion email:', emailError);
+        // Don't fail the assessment if email fails
+      });
+
       return NextResponse.json({
         success: true,
         status: 'completed',
@@ -122,6 +132,15 @@ export async function POST(
         usedFallback: true,
         fallbackReason: aiError instanceof Error ? aiError.message : 'AI processing failed',
         processingTimeMs: Date.now() - startTime
+      });
+      
+      // 🚀 SEND EMAIL FOR FALLBACK RESULTS TOO
+      sendAssessmentEmail({
+        userId: assessment.userId,
+        assessmentId: assessment.id,
+        assessmentType: params.type
+      }).catch((emailError) => {
+        console.error('Failed to send assessment completion email (fallback):', emailError);
       });
       
       return NextResponse.json({

@@ -45,6 +45,30 @@ export async function GET(
 
     console.log(`Assessment status: ${assessment.status}, Has submission: ${hasSubmission}`);
 
+    // 🔥 EXTRACT PERSONAL INFO from multiple sources
+    const personalInfo = data.personalInfo || 
+                        data.submission?.personalInfo ||
+                        data.userContext ||
+                        {
+                          name: data.name || '',
+                          email: data.email || '',
+                          phone: data.phone || '',
+                          personality: data.personality || [],
+                          jobPosition: data.jobPosition || data.targetRole || ''
+                        };
+
+    const qualification = data.qualification || 
+                         data.submission?.qualification ||
+                         '';
+
+    // 🔥 DEBUG: Log personal info extraction
+    console.log('📋 Personal Info Sources Check:');
+    console.log('  - data.personalInfo:', !!data.personalInfo);
+    console.log('  - data.submission.personalInfo:', !!data.submission?.personalInfo);
+    console.log('  - data.userContext:', !!data.userContext);
+    console.log('📋 Final personalInfo:', personalInfo);
+    console.log('📋 Final qualification:', qualification);
+
     // CRITICAL: Simple tier-based manual processing detection
     const isManualProcessing = assessment.tier === 'standard' || 
                               assessment.tier === 'premium' || 
@@ -57,7 +81,7 @@ export async function GET(
       finalDecision: isManualProcessing ? 'MANUAL' : 'AI'
     });
 
-    // Helper function to create properly formatted response data
+    // 🔥 ENHANCED: Helper function to create properly formatted response data
     const createResponseData = (assessmentData: any, additionalData: any = {}) => {
       return {
         id: assessment.id,
@@ -70,9 +94,34 @@ export async function GET(
         completedAt: (assessment as any).completedAt || assessment.updatedAt,
         reviewNotes: (assessment as any).reviewNotes,
         reviewedAt: (assessment as any).reviewedAt,
+        
+        // 🔥 INCLUDE SUBMISSION DATA for ResultsClient compatibility
+        submission: {
+          personalInfo,
+          qualification,
+          responses: assessmentData?.responses || {},
+          submittedAt: assessmentData?.submittedAt || assessment.createdAt
+        },
+        
         data: {
           ...assessmentData,
           ...additionalData,
+          
+          // 🔥 ENSURE PERSONAL INFO is always available at multiple levels
+          personalInfo,
+          qualification,
+          
+          // User context for additional compatibility
+          userContext: {
+            name: personalInfo?.name || '',
+            email: personalInfo?.email || '',
+            phone: personalInfo?.phone || '',
+            targetRole: personalInfo?.jobPosition || '',
+            qualification,
+            personalities: personalInfo?.personality || [],
+            submissionDate: assessmentData?.submittedAt || assessment.createdAt
+          },
+
           // Ensure new fields are explicitly included
           resumeAnalysis: assessmentData?.resumeAnalysis,
           careerFit: assessmentData?.careerFit,
@@ -93,7 +142,10 @@ export async function GET(
           summary: assessmentData?.summary,
           readinessLevel: assessmentData?.readinessLevel,
           responses: assessmentData?.responses,
-          personalInfo: assessmentData?.personalInfo
+
+          // Ensure compatibility fields
+          completedAt: (assessment as any).completedAt || assessment.updatedAt,
+          submittedAt: assessmentData?.submittedAt || assessment.createdAt
         }
       };
     };
@@ -133,6 +185,8 @@ export async function GET(
           // Mark as started
           const updatedData = {
             ...data,
+            personalInfo, // 🔥 ENSURE personalInfo included
+            qualification, // 🔥 ENSURE qualification included
             aiAnalysisStarted: true,
             aiAnalysisStartedAt: new Date().toISOString()
           };
@@ -196,7 +250,14 @@ export async function GET(
       // Case 3: AI analysis completed - return full results
       if (aiProcessed) {
         console.log('✅ AI ANALYSIS COMPLETED - RETURNING FULL RESULTS');
-        return NextResponse.json(createResponseData(data));
+        
+        // 🔥 FINAL DEBUG: Confirm personalInfo in response
+        const finalResponse = createResponseData(data);
+        console.log('📋 Final response personalInfo check:');
+        console.log('  - response.data.personalInfo:', !!finalResponse.data.personalInfo);
+        console.log('  - response.submission.personalInfo:', !!finalResponse.submission.personalInfo);
+        
+        return NextResponse.json(finalResponse);
       }
 
       // Case 4: AI analysis failed - return results with fallback data
@@ -208,7 +269,14 @@ export async function GET(
 
     // Fallback: Return assessment data (shouldn't reach here for basic tier with submissions)
     console.log('🔄 FALLBACK - RETURNING ASSESSMENT DATA');
-    return NextResponse.json(createResponseData(data));
+    const fallbackResponse = createResponseData(data);
+    
+    // 🔥 FALLBACK DEBUG: Log personalInfo availability
+    console.log('📋 Fallback response personalInfo check:');
+    console.log('  - response.data.personalInfo:', !!fallbackResponse.data.personalInfo);
+    console.log('  - response.submission.personalInfo:', !!fallbackResponse.submission.personalInfo);
+    
+    return NextResponse.json(fallbackResponse);
 
   } catch (error) {
     console.error('Error in results endpoint:', error);

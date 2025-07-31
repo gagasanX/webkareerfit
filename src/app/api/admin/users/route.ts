@@ -229,7 +229,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       });
 
       // 2. Delete AffiliateTransactions related to this user
-      await tx.affiliateTransaction.deleteMany({ where: { userId: id } });
+      await tx.referral.deleteMany({ where: { affiliateId: id } });
 
       // 3. Delete Payments made by this user
       //   Also, payments linked to assessments taken by this user will be handled when assessments are deleted if Payment.assessmentId is non-nullable and onDelete: Cascade is not set on Assessment.

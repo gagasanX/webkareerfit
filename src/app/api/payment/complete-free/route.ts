@@ -1,4 +1,3 @@
-// /src/app/api/payment/complete-free/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth/auth';
@@ -116,7 +115,7 @@ export async function POST(request: NextRequest) {
       console.log(`Assessment status updated to: in_progress`);
     });
     
-    // Send receipt email
+    // 🚀 SEND RECEIPT EMAIL (already exists, keeping it)
     if (paymentId) {
       sendPaymentReceipt(paymentId).catch((err: Error) => {
         console.error('Failed to send receipt email for free assessment:', err);

@@ -1,99 +1,92 @@
+// /src/hooks/useIdleTimer.ts
 'use client';
 
-import { useEffect, useRef } from 'react';
-import { signOut } from 'next-auth/react';
+import { useEffect, useRef, useCallback } from 'react';
 
-type UseIdleTimerOptions = {
-  timeout?: number;
-  onIdle?: () => void;
+interface UseIdleTimerProps {
+  enabled: boolean;
+  timeout: number;
+  onIdle: () => void;
   debounce?: number;
-  enabled?: boolean;
-};
+}
 
 export default function useIdleTimer({
-  timeout = 3600000, // 🔥 REDUCE TO 1 HOUR instead of 2 hours
-  onIdle = () => signOut({ callbackUrl: '/login' }),
-  debounce = 2000, // 🔥 INCREASE DEBOUNCE to reduce frequency
-  enabled = true,
-}: UseIdleTimerOptions = {}) {
+  enabled,
+  timeout,
+  onIdle,
+  debounce = 1000
+}: UseIdleTimerProps) {
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const idleTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
-  const resetTimer = () => {
-    if (!enabled) return;
-    
+  const resetTimeout = useCallback(() => {
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
     }
+    
+    if (enabled) {
+      timeoutRef.current = setTimeout(() => {
+        onIdle();
+      }, timeout);
+    }
+  }, [enabled, timeout, onIdle]);
 
-    timeoutRef.current = setTimeout(() => {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('User inactive, logging out');
-      }
-      onIdle();
-    }, timeout);
-
-    // 🔥 REMOVE localStorage usage - cause browser cache conflicts
-    // localStorage.setItem('lastActivityTime', Date.now().toString());
-  };
-
-  const handleUserActivity = () => {
+  const handleActivity = useCallback(() => {
     if (!enabled) return;
     
-    if (idleTimerRef.current) {
-      clearTimeout(idleTimerRef.current);
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
     }
-
-    idleTimerRef.current = setTimeout(() => {
-      resetTimer();
+    
+    debounceRef.current = setTimeout(() => {
+      resetTimeout();
     }, debounce);
-  };
+  }, [enabled, resetTimeout, debounce]);
 
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled) {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+      return;
+    }
+
+    // Activity events
+    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart', 'click'];
     
-    // 🔥 REDUCE EVENT LISTENERS - Remove frequent ones like mousemove, scroll
-    const events = [
-      'click',
-      'keydown',
-      'touchstart',
-      // Removed: 'mousedown', 'mousemove', 'keypress', 'scroll'
-    ];
-
-    // 🔥 REMOVE localStorage check - cause session conflicts
-    // const lastActivity = localStorage.getItem('lastActivityTime');
-    // if (lastActivity) {
-    //   const lastActivityTime = parseInt(lastActivity, 10);
-    //   const now = Date.now();
-    //   
-    //   if (now - lastActivityTime > timeout) {
-    //     console.log('Session already expired based on stored timestamp');
-    //     onIdle();
-    //     return;
-    //   }
-    // }
-
-    resetTimer();
-
-    // Add event listeners with passive option for better performance
     events.forEach(event => {
-      window.addEventListener(event, handleUserActivity, { passive: true });
+      document.addEventListener(event, handleActivity, true);
     });
 
+    // Start initial timeout
+    resetTimeout();
+
+    return () => {
+      events.forEach(event => {
+        document.removeEventListener(event, handleActivity, true);
+      });
+      
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+    };
+  }, [enabled, handleActivity, resetTimeout]);
+
+  // Cleanup on unmount
+  useEffect(() => {
     return () => {
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
       }
-      
-      if (idleTimerRef.current) {
-        clearTimeout(idleTimerRef.current);
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
       }
-
-      events.forEach(event => {
-        window.removeEventListener(event, handleUserActivity);
-      });
     };
-  }, [timeout, onIdle, debounce, enabled]);
-  
-  return null;
+  }, []);
 }

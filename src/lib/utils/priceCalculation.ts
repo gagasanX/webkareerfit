@@ -1,14 +1,8 @@
-// /src/lib/utils/priceCalculation.ts
-// CRITICAL: Replace entire file with this - removes pricing conflicts
-
-/**
- * TIER PRICING - SINGLE SOURCE OF TRUTH
- * This is the ONLY pricing system used throughout the application
- */
+// /src/lib/utils/priceCalculation.ts - COMPLETE VERSION
 export const TIER_PRICES = {
-  basic: 50,      // AI processing
-  standard: 100,  // Manual processing
-  premium: 250,   // Manual processing
+  basic: 50,
+  standard: 100,
+  premium: 250,
 } as const;
 
 export type TierType = keyof typeof TIER_PRICES;
@@ -21,31 +15,16 @@ export interface DiscountCalculation {
   savings: number;
 }
 
-/**
- * Get tier price - ONLY function needed for pricing
- */
+// EXISTING FUNCTIONS (keep as is)
 export function getTierPrice(tier: string): number {
   const normalizedTier = tier.toLowerCase() as TierType;
-  
   if (normalizedTier in TIER_PRICES) {
     return TIER_PRICES[normalizedTier];
   }
-  
   console.warn(`Invalid tier '${tier}', defaulting to basic`);
   return TIER_PRICES.basic;
 }
 
-/**
- * Determine if tier requires manual processing
- */
-export function isManualProcessingTier(tier: string): boolean {
-  const normalizedTier = tier.toLowerCase();
-  return normalizedTier === 'standard' || normalizedTier === 'premium';
-}
-
-/**
- * Calculate discount with proper floating point handling
- */
 export function calculateDiscount(
   basePrice: number,
   discountPercentage: number,
@@ -78,16 +57,10 @@ export function calculateDiscount(
   };
 }
 
-/**
- * Format currency for display (Malaysian Ringgit)
- */
 export function formatCurrency(amount: number): string {
   return `RM ${amount.toFixed(2)}`;
 }
 
-/**
- * Validate coupon and return discount calculation
- */
 export interface CouponValidation {
   isValid: boolean;
   message: string;
@@ -104,7 +77,6 @@ export function validateCoupon(
   },
   basePrice: number
 ): CouponValidation {
-  // Check usage limit (FIXED: use correct schema properties)
   if (coupon.currentUses >= coupon.maxUses) {
     return {
       isValid: false,
@@ -139,16 +111,21 @@ export function validateCoupon(
   }
 }
 
-/**
- * Get assessment price based on tier (simplified)
- */
+// ADD MISSING FUNCTIONS that your code calls
+export function getAssessmentBasePrice(assessmentType: string): number {
+  // Default to basic tier pricing for assessment types
+  return TIER_PRICES.basic;
+}
+
 export function getAssessmentPrice(tier: string): number {
   return getTierPrice(tier);
 }
 
-/**
- * Determine processing type based on tier
- */
+export function isManualProcessingTier(tier: string): boolean {
+  const normalizedTier = tier.toLowerCase();
+  return normalizedTier === 'standard' || normalizedTier === 'premium';
+}
+
 export function getProcessingType(tier: string): 'ai' | 'manual' {
   return isManualProcessingTier(tier) ? 'manual' : 'ai';
 }

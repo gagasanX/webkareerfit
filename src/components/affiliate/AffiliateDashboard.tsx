@@ -234,8 +234,8 @@ export default function AffiliateDashboard() {
         <h2 className="text-lg font-medium mb-4">How the Program Works</h2>
         <ol className="list-decimal pl-5 space-y-2">
           <li>Share your referral code or link with friends, family, or anyone.</li>
-          <li>When they register and complete an assessment using your referral code, you will receive 10% of their payment amount.</li>
-          <li>You can withdraw your commission after reaching a minimum amount of RM100.</li>
+          <li>When they register and complete an assessment using your referral code, you will receive % of their payment amount.</li>
+          <li>You can withdraw your commission after reaching a minimum amount of RM30.</li>
         </ol>
         <div className="mt-4">
           <Link href="/affiliate/faq">

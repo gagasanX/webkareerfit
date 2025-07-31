@@ -313,9 +313,9 @@ export default function AssessmentInstanceClient() {
         setDebugInfo(`Including resume: ${resumeFile.name}`);
       }
       
-      // Submit to the submit-with-file endpoint
-      console.log(`Submitting to endpoint: /api/assessment/${type}/${id}/submit-with-file`);
-      const response = await fetch(`/api/assessment/${type}/${id}/submit-with-file`, {
+      // Submit to the submit endpoint
+      console.log(`Submitting to endpoint: /api/assessment/${type}/${id}/submit-with-google-vision`);
+      const response = await fetch(`/api/assessment/${type}/${id}/submit-with-google-vision`, {
         method: 'POST',
         body: formData
         // Don't set Content-Type header for multipart/form-data

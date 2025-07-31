@@ -115,7 +115,7 @@ export async function PUT(
         data: {
           assignedClerkId: session.user.id,
           status: 'in_review',
-          reviewStartedAt: new Date(),
+          reviewedAt: new Date(),
         },
       });
       
@@ -146,7 +146,7 @@ export async function PUT(
         data: {
           status: 'completed',
           reviewNotes,
-          reviewCompletedAt: new Date(),
+          reviewedAt: new Date(),
           data: {
             ...(assessment.data as object || {}),
             reviewedBy: user.name || user.email,

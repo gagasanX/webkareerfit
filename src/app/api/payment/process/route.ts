@@ -4,11 +4,12 @@ import { prisma } from '@/lib/db';
 import { authOptions } from '@/lib/auth/auth';
 import { 
   validateCoupon,
-  formatCurrency 
+  formatCurrency,
+  getTierPrice  // Use existing function
 } from '@/lib/utils/priceCalculation';
 import { calculateCommission } from '@/lib/utils/commissionCalculation';
+import { sendPaymentReceipt } from '@/lib/email/sendReceipt';
 
-// Define extended session user type
 type ExtendedUser = {
   id: string;
   name?: string | null;
@@ -17,19 +18,6 @@ type ExtendedUser = {
   isAdmin?: boolean;
   isAffiliate?: boolean;
   referredBy?: string | null;
-};
-
-type SimulatedPaymentResponse = {
-  success: boolean;
-  paymentId: string;
-  redirectUrl?: string;
-};
-
-type PaymentRequestData = {
-  assessmentId: string;
-  paymentMethod: string;
-  couponCode?: string;
-  amount: number;
 };
 
 export async function POST(req: NextRequest) {
@@ -43,9 +31,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const data: PaymentRequestData = await req.json();
+    const data = await req.json();
     
-    // Validate request data
     if (!data.assessmentId || !data.paymentMethod || data.amount === undefined) {
       return NextResponse.json(
         { error: 'Missing required payment information' },
@@ -53,7 +40,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Fetch the assessment
     const assessment = await prisma.assessment.findUnique({
       where: { id: data.assessmentId },
       include: { payment: true },
@@ -66,7 +52,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Check if assessment belongs to the authenticated user
     if (assessment.userId !== (session.user as ExtendedUser).id) {
       return NextResponse.json(
         { error: 'You do not have permission to pay for this assessment' },
@@ -74,7 +59,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Check if assessment is already paid
     if (assessment.payment && assessment.payment.status === 'completed') {
       return NextResponse.json(
         { error: 'This assessment has already been paid for' },
@@ -82,12 +66,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Use assessment price as base price (which may already be discounted)
-    let finalAmount = Number(assessment.price);
+    // Use assessment tier price (fixed)
+    let finalAmount = getTierPrice(assessment.tier || 'basic');
     let appliedCoupon = null;
     let discountInfo = null;
 
-    // Process additional coupon if provided
     if (data.couponCode) {
       const coupon = await prisma.coupon.findUnique({
         where: { code: data.couponCode },
@@ -100,7 +83,6 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      // Validate coupon
       const validation = validateCoupon(coupon, finalAmount);
       
       if (!validation.isValid) {
@@ -116,7 +98,6 @@ export async function POST(req: NextRequest) {
       discountInfo = discountCalc;
     }
 
-    // Verify the amount matches what client sent
     if (Math.abs(finalAmount - data.amount) > 0.01) {
       return NextResponse.json(
         { 
@@ -128,8 +109,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Get the ORIGINAL assessment price for commission calculation (before any discounts)
-    const originalAssessmentPrice = await getOriginalAssessmentPrice(assessment.type, assessment.tier);
+    // Get original price for commission
+    const originalAssessmentPrice = getTierPrice(assessment.tier || 'basic');
 
     // Create or update payment record
     let payment;
@@ -157,7 +138,6 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // If new coupon is being used, increment its usage count
     if (appliedCoupon) {
       await prisma.coupon.update({
         where: { id: appliedCoupon.id },
@@ -168,14 +148,12 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Simulate payment gateway response
-    const simulatedPaymentResponse: SimulatedPaymentResponse = {
+    const simulatedPaymentResponse = {
       success: true,
       paymentId: `sim_${Date.now()}`,
       redirectUrl: `${process.env.NEXT_PUBLIC_BASE_URL || ''}/payment/status?id=${assessment.id}`,
     };
 
-    // Update payment with gateway reference and mark as completed
     await prisma.payment.update({
       where: { id: payment.id },
       data: {
@@ -184,7 +162,13 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Process affiliate commission using ORIGINAL price
+    // 🚀 SEND RECEIPT EMAIL AFTER PAYMENT COMPLETION
+    sendPaymentReceipt(payment.id).catch((emailError) => {
+      console.error('Failed to send receipt email:', emailError);
+      // Don't fail the payment if email fails
+    });
+
+    // Process affiliate commission
     await processAffiliateCommission(
       (session.user as ExtendedUser).id,
       payment.id,
@@ -199,7 +183,6 @@ export async function POST(req: NextRequest) {
       formattedAmount: formatCurrency(finalAmount),
     };
 
-    // Include discount information if coupon was applied
     if (discountInfo) {
       response.discountInfo = {
         originalPrice: discountInfo.originalPrice,
@@ -220,35 +203,27 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// Helper function to get original assessment price
-async function getOriginalAssessmentPrice(assessmentType: string, tier?: string): Promise<number> {
-  const { getAssessmentBasePrice, getTierPrice } = await import('@/lib/utils/priceCalculation');
-  
-  if (tier) {
-    return getTierPrice(tier);
-  }
-  
-  return getAssessmentBasePrice(assessmentType);
-}
-
-// Helper function to process affiliate commission
+// Helper function for affiliate commission with proper queries
 async function processAffiliateCommission(
   userId: string,
   paymentId: string,
   originalPrice: number
 ): Promise<void> {
   try {
-    // Get user details including referrer
+    // Include name and email in query
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { referredBy: true }
+      select: { 
+        referredBy: true,
+        name: true,
+        email: true
+      }
     });
 
     if (!user?.referredBy) {
-      return; // No referrer, no commission
+      return;
     }
 
-    // Find the affiliate (referrer)
     const affiliate = await prisma.user.findUnique({
       where: { affiliateCode: user.referredBy },
       select: { 
@@ -259,15 +234,14 @@ async function processAffiliateCommission(
     });
 
     if (!affiliate?.isAffiliate) {
-      return; // Referrer is not an active affiliate
+      return;
     }
 
-    // Calculate commission based on original price
-    const commissionCalc = calculateCommission(originalPrice);
-    const commissionAmount = commissionCalc.commissionAmount;
+    // Use simple calculateCommission function
+    const commissionAmount = calculateCommission(originalPrice);
 
     if (commissionAmount <= 0) {
-      return; // No commission for this price tier
+      return;
     }
 
     console.log('Processing affiliate commission:', {
@@ -277,13 +251,18 @@ async function processAffiliateCommission(
       paymentId
     });
 
-    // Create affiliate transaction
-    await prisma.affiliateTransaction.create({
+    // Use existing referral table structure
+    await prisma.referral.create({
       data: {
-        userId: affiliate.id,
+        affiliateId: affiliate.id,
+        userName: user.name || 'Anonymous',
+        email: user.email || '',
+        assessmentId: '', // Optional field
+        assessmentType: '',
         paymentId: paymentId,
-        amount: commissionAmount,
-        status: 'pending', // Will be paid out later
+        status: 'completed',
+        commission: commissionAmount,
+        paidOut: false
       },
     });
 
@@ -301,7 +280,6 @@ async function processAffiliateCommission(
         },
       });
     } else {
-      // Create stats if they don't exist
       await prisma.affiliateStats.create({
         data: {
           userId: affiliate.id,
@@ -315,6 +293,5 @@ async function processAffiliateCommission(
     console.log(`Commission of RM${commissionAmount} processed for affiliate ${affiliate.id}`);
   } catch (error) {
     console.error('Error processing affiliate commission:', error);
-    // Don't throw error - commission processing shouldn't fail payment
   }
 }

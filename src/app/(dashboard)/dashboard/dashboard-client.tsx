@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useSession, signOut } from 'next-auth/react';
 import Link from 'next/link';
 import { User, Assessment, assessmentTypes } from '@/app/types';
+import ReferralWelcome from './ReferralWelcome'; // 🚀 ADD REFERRAL WELCOME IMPORT
 
 // Icon components
 const HomeIcon = () => (
@@ -706,6 +707,9 @@ export default function DashboardClient() {
           </div>
         </header>
         
+        {/* 🚀 REFERRAL WELCOME BANNER - ADDED HERE */}
+        <ReferralWelcome />
+        
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
           {/* Left column (2/3 width on large screens) */}
           <div className="lg:col-span-2 space-y-4 sm:space-y-6">
@@ -1115,7 +1119,7 @@ export default function DashboardClient() {
             {!user.isAffiliate && (
               <div className="bg-gradient-to-r from-[#fcb3b3] to-[#7e43f1] rounded-xl shadow-sm p-4 sm:p-5 text-white">
                 <h3 className="font-medium mb-2">Become an Affiliate</h3>
-                <p className="text-sm text-white/90 mb-4">Earn commissions by referring others to KareerFit assessments.</p>
+                <p className="text-sm text-white/90 mb-4">Earn commissions by referring others to KAREERfit assessments.</p>
                 <Link href="/affiliate/join" className="inline-block bg-white text-[#7e43f1] px-4 py-2 rounded-lg text-sm font-medium hover:shadow-lg transition-shadow">
                   Join Program
                 </Link>

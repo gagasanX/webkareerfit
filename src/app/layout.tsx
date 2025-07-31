@@ -1,7 +1,6 @@
+// /src/app/layout.tsx - CLEAN VERSION
 import Providers from './providers';
 import './globals.css';
-import ActivityMonitor from '@/components/ActivityMonitor';
-import GrammarlyAttributesCleaner from '@/components/GrammarlyAttributesCleaner';
 
 export default function RootLayout({
   children,
@@ -9,14 +8,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
         <meta name="grammarly-disable-extension" content="true" />
       </head>
-      <body>
+      <body suppressHydrationWarning>
         <Providers>
-          <ActivityMonitor />
-          <GrammarlyAttributesCleaner />
           {children}
         </Providers>
       </body>
