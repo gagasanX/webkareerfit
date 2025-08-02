@@ -55,7 +55,7 @@ export async function POST(
     const assessmentData = assessment.data as Record<string, any> || {};
     const responses = assessmentData.responses || {};
     
-    console.log(`Starting AI processing for assessment: ${assessment.id} (${params.type})`);
+    console.log(`Starting AI processing for assessment: ${assessment.id} (${(await params).type})`);
     
     // Check if OpenAI is configured
     if (!isOpenAIConfigured()) {
@@ -83,7 +83,7 @@ export async function POST(
     try {
       // Call OpenAI API
       console.log(`Calling OpenAI for assessment ${assessment.id}`);
-      const analysisResult = await callOpenAI(params.type, responses);
+      const analysisResult = await callOpenAI((await params).type, responses);
       
       console.log(`OpenAI processing successful for assessment ${assessment.id}`);
       
@@ -101,7 +101,7 @@ export async function POST(
       sendAssessmentEmail({
         userId: assessment.userId,
         assessmentId: assessment.id,
-        assessmentType: params.type
+        assessmentType: (await params).type
       }).catch((emailError) => {
         console.error('Failed to send assessment completion email:', emailError);
         // Don't fail the assessment if email fails
@@ -120,7 +120,7 @@ export async function POST(
       
       // Create fallback analysis
       console.log(`Using fallback analysis for assessment ${assessment.id}`);
-      const fallbackAnalysis = createFallbackAnalysis(params.type, responses);
+      const fallbackAnalysis = createFallbackAnalysis((await params).type, responses);
       
       // Update with fallback
       await updateAssessment(assessment.id, 'completed', {
@@ -138,7 +138,7 @@ export async function POST(
       sendAssessmentEmail({
         userId: assessment.userId,
         assessmentId: assessment.id,
-        assessmentType: params.type
+        assessmentType: (await params).type
       }).catch((emailError) => {
         console.error('Failed to send assessment completion email (fallback):', emailError);
       });
@@ -158,11 +158,11 @@ export async function POST(
     
     try {
       const assessment = await prisma.assessment.findUnique({
-        where: { id: params.id }
+        where: { id: (await params).id }
       });
       
       if (assessment) {
-        await updateAssessment(params.id, 'error', {
+        await updateAssessment((await params).id, 'error', {
           ...(assessment.data as Record<string, any> || {}),
           analysisStatus: 'error',
           processingError: error instanceof Error ? error.message : 'Unknown error'
@@ -185,7 +185,7 @@ export async function POST(
  * Validates the request and retrieves the assessment
  */
 async function validateRequest(params: { type: string, id: string }) {
-  if (!params || !params.id || !params.type) {
+  if (!params || !(await params).id || !(await params).type) {
     return { 
       error: NextResponse.json({ error: 'Invalid parameters' }, { status: 400 }) 
     };
@@ -202,7 +202,7 @@ async function validateRequest(params: { type: string, id: string }) {
   
   // Get assessment
   const assessment = await prisma.assessment.findUnique({
-    where: { id: params.id }
+    where: { id: (await params).id }
   });
   
   if (!assessment) {
