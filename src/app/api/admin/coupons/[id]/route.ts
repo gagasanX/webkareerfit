@@ -3,14 +3,11 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth/auth';
 import { prisma } from '@/lib/db';
 
-interface Params {
-  params: {
-    id: string;
-  };
-}
-
 // GET - Retrieve a specific coupon by ID
-export async function GET(request: NextRequest, { params }: Params) {
+export async function GET(
+  request: NextRequest, 
+  { params }: { params: { id: string } }
+) {
   try {
     const { id } = params;
     
@@ -69,7 +66,10 @@ export async function GET(request: NextRequest, { params }: Params) {
 }
 
 // PATCH - Update a coupon
-export async function PATCH(request: NextRequest, { params }: Params) {
+export async function PATCH(
+  request: NextRequest, 
+  { params }: { params: { id: string } }
+) {
   try {
     const { id } = params;
     
@@ -169,7 +169,10 @@ export async function PATCH(request: NextRequest, { params }: Params) {
 }
 
 // DELETE - Delete a coupon
-export async function DELETE(request: NextRequest, { params }: Params) {
+export async function DELETE(
+  request: NextRequest, 
+  { params }: { params: { id: string } }
+) {
   try {
     const { id } = params;
     
