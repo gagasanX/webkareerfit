@@ -1,41 +1,38 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // 🔥 PERFORMANCE CRITICAL SETTINGS
+  // 🔥 ESSENTIAL SETTINGS ONLY - Simplified to prevent webpack conflicts
   reactStrictMode: true,
   compress: true,
   
-  // 🔥 FIXED: Updated experimental options for Next.js 15
+  // 🔥 SIMPLIFIED: Minimal experimental options for Next.js 15
   experimental: {
     optimizeCss: true,
-    optimizeServerReact: true,
-    // 🔥 CRITICAL FIX: Server Actions configuration for Codespaces
+    // 🔥 CRITICAL FIX: Server Actions configuration
     serverActions: {
       allowedOrigins: [
         'localhost:3000',
-        '*.app.github.dev', // GitHub Codespaces
-        '*.githubpreview.dev', // GitHub Codespaces preview
+        '*.app.github.dev',
+        '*.githubpreview.dev',
         'my.kareerfit.com',
         '*.vercel.app',
       ],
     },
   },
 
-  // 🔥 COMPILER OPTIMIZATIONS  
+  // 🔥 BASIC COMPILER SETTINGS
   compiler: {
     removeConsole: process.env.NODE_ENV === 'production' ? {
       exclude: ['error', 'warn'],
     } : false,
   },
 
-  // 🔥 IMAGE OPTIMIZATION
+  // 🔥 BASIC IMAGE OPTIMIZATION
   images: {
     domains: ['localhost', 'res.cloudinary.com'],
     formats: ['image/webp', 'image/avif'],
-    deviceSizes: [640, 828, 1200, 1920],
-    imageSizes: [16, 32, 48, 64, 96, 128, 256],
-    minimumCacheTTL: 60,
   },
 
+  // 🔥 ENVIRONMENT VARIABLES
   env: {
     BILLPLZ_CALLBACK_URL: process.env.NODE_ENV === 'production' 
       ? 'https://my.kareerfit.com/api/payment/webhook/billplz' 
@@ -45,70 +42,33 @@ const nextConfig = {
       : 'http://localhost:3000/payment/status',
   },
 
-  // 🔥 WEBPACK OPTIMIZATION FOR SPEED
+  // 🔥 SIMPLIFIED WEBPACK - Remove complex optimizations that cause conflicts
   webpack: (config, { isServer, dev }) => {
-    // Production optimizations
-    if (!dev) {
-      // Advanced code splitting
-      config.optimization.splitChunks = {
-        chunks: 'all',
-        minSize: 20000,
-        maxSize: 200000,
-        cacheGroups: {
-          framework: {
-            chunks: 'all',
-            name: 'framework',
-            test: /(?<!node_modules.*)[\\/]node_modules[\\/](react|react-dom|scheduler|prop-types|use-subscription)[\\/]/,
-            priority: 40,
-            enforce: true,
-          },
-          lib: {
-            test: /[\\/]node_modules[\\/]/,
-            name: 'lib',
-            priority: 30,
-            minChunks: 1,
-          },
-          commons: {
-            name: 'commons',
-            minChunks: 2,
-            priority: 20,
-          },
-          shared: {
-            name: 'shared',
-            chunks: 'all',
-            test: /[\\/]src[\\/]/,
-            minChunks: 2,
-            priority: 10,
-          },
-        },
-      };
-
-      // Tree shaking
-      config.optimization.usedExports = true;
-      config.optimization.sideEffects = false;
-    }
-
-    // Client-side fallbacks
+    // Basic client-side fallbacks only
     if (!isServer) {
       config.resolve.fallback = {
         fs: false,
         path: false,
         os: false,
         crypto: false,
+        stream: false,
+        buffer: false,
       };
     }
 
-    // Optimize imports
+    // 🔥 FIX: Ensure proper module resolution
     config.resolve.alias = {
       ...config.resolve.alias,
-      '@heroicons/react/24/outline': '@heroicons/react/24/outline',
-      '@heroicons/react/24/solid': '@heroicons/react/24/solid',
+      '@': require('path').resolve(__dirname, 'src'),
     };
+
+    // 🔥 FIX: Handle potential circular dependency issues
+    config.resolve.symlinks = false;
 
     return config;
   },
 
-  // 🔥 HEADERS FOR BETTER CACHING & PERFORMANCE + CODESPACES FIX
+  // 🔥 BASIC HEADERS ONLY
   async headers() {
     return [
       {
@@ -127,55 +87,12 @@ const nextConfig = {
             key: 'Cache-Control',
             value: 'no-store, max-age=0',
           },
-          // 🔥 FIX: Allow Codespaces forwarded headers
-          {
-            key: 'Access-Control-Allow-Origin',
-            value: '*',
-          },
-          {
-            key: 'Access-Control-Allow-Methods', 
-            value: 'GET,OPTIONS,PATCH,DELETE,POST,PUT',
-          },
-          {
-            key: 'Access-Control-Allow-Headers',
-            value: 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, x-forwarded-host, origin',
-          },
-        ],
-      },
-      {
-        source: '/(.*)',
-        headers: [
-          {
-            key: 'X-DNS-Prefetch-Control',
-            value: 'on'
-          },
-          // 🔥 CONDITIONAL: Only add HSTS in production
-          ...(process.env.NODE_ENV === 'production' ? [{
-            key: 'Strict-Transport-Security',
-            value: 'max-age=63072000; includeSubDomains; preload'
-          }] : []),
-          {
-            key: 'X-Frame-Options',
-            value: 'DENY'
-          },
         ],
       },
     ];
   },
 
-  // 🔥 MODULAR IMPORTS TO REDUCE BUNDLE SIZE
-  modularizeImports: {
-    'lucide-react': {
-      transform: 'lucide-react/dist/esm/icons/{{member}}',
-    },
-    '@heroicons/react/24/outline': {
-      transform: '@heroicons/react/24/outline/{{member}}',
-    },
-    '@heroicons/react/24/solid': {
-      transform: '@heroicons/react/24/solid/{{member}}',
-    },
-  },
-
+  // 🔥 BASIC REWRITES
   async rewrites() {
     return [
       {
@@ -189,7 +106,7 @@ const nextConfig = {
     ];
   },
 
-  // 🔥 OUTPUT OPTIMIZATION FOR VERCEL
+  // 🔥 OUTPUT SETTINGS
   output: 'standalone',
   poweredByHeader: false,
   generateEtags: false,

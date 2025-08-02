@@ -34,8 +34,10 @@ interface Transaction {
 
 interface RevenueStats {
   totalRevenue: number;
+  pendingAmount: number;
   totalTransactions: number;
   successfulTransactions: number;
+  pendingTransactionsCount: number;
   failedTransactions: number;
   averageTransactionValue: number;
   currency: string;
@@ -242,12 +244,24 @@ export default function PaymentDashboard() {
       {tabValue === 0 && (
         <>
           {/* Revenue Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-6">
             <div className="bg-white rounded-lg shadow p-6">
               <p className="text-sm font-medium text-gray-500">Total Revenue</p>
               <h3 className="text-2xl font-bold mt-1">
                 {stats ? formatCurrency(stats.totalRevenue, stats.currency) : 'N/A'}
               </h3>
+            </div>
+
+            <div className="bg-white rounded-lg shadow p-6">
+              <p className="text-sm font-medium text-gray-500">Pending Amount</p>
+              <h3 className="text-2xl font-bold mt-1">
+                {stats ? formatCurrency(stats.pendingAmount, stats.currency) : 'N/A'}
+              </h3>
+              <p className="text-xs text-gray-500 mt-1">
+                {stats && stats.pendingTransactionsCount > 0 
+                  ? `${stats.pendingTransactionsCount.toLocaleString()} pending transactions`
+                  : 'No pending transactions'}
+              </p>
             </div>
             
             <div className="bg-white rounded-lg shadow p-6">

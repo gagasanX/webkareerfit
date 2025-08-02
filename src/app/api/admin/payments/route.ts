@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
     const startDate = searchParams.get('startDate') || '';
     const endDate = searchParams.get('endDate') || '';
     const status = searchParams.get('status') || 'all';
-    const gateway = searchParams.get('gateway') || 'all';
+    const method = searchParams.get('method') || 'all';
     
     // Calculate pagination
     const skip = page * limit;
@@ -48,8 +48,8 @@ export async function GET(request: NextRequest) {
     }
     
     // Gateway filtering
-    if (gateway !== 'all') {
-      where.gateway = gateway;
+    if (method !== 'all') {
+      where.method = method;
     }
     
     // Search filtering
@@ -111,16 +111,31 @@ export async function GET(request: NextRequest) {
     const allTransactions = await prisma.payment.findMany({
       where: {
         ...where,
-        status: { in: ['successful', 'completed', 'paid'] },
+        status: 'completed',
+      },
+    });
+    
+    // Get pending transactions for pending amount
+    const pendingTransactions = await prisma.payment.findMany({
+      where: {
+        ...where,
+        status: 'pending',
       },
     });
     
     const totalRevenue = allTransactions.reduce((sum: number, transaction: any) => sum + transaction.amount, 0);
+    const pendingAmount = pendingTransactions.reduce((sum: number, transaction: any) => sum + transaction.amount, 0);
     const totalTransactions = await prisma.payment.count({ where });
     const successfulTransactions = await prisma.payment.count({
       where: {
         ...where,
-        status: { in: ['successful', 'completed', 'paid'] },
+        status: 'completed',
+      },
+    });
+    const pendingTransactionsCount = await prisma.payment.count({
+      where: {
+        ...where,
+        status: 'pending',
       },
     });
     const failedTransactions = await prisma.payment.count({
@@ -132,22 +147,24 @@ export async function GET(request: NextRequest) {
     
     const stats = {
       totalRevenue,
+      pendingAmount,
       totalTransactions,
       successfulTransactions,
+      pendingTransactionsCount,
       failedTransactions,
       averageTransactionValue: successfulTransactions > 0 ? totalRevenue / successfulTransactions : 0,
-      currency: 'USD', // Default currency, should be dynamic based on your system
+      currency: 'MYR',  // Updated to MYR since we're using RM
     };
     
     // Get payment method breakdown using raw SQL since groupBy has type issues
     const paymentMethods = await prisma.$queryRaw`
       SELECT 
-        COALESCE("gateway", 'Unknown') as gateway,
+        COALESCE("method", 'Unknown') as method,
         COUNT(*) as count,
         SUM(amount) as "totalAmount"
       FROM "Payment"
-      WHERE status IN ('successful', 'completed', 'paid')
-      GROUP BY "gateway"
+      WHERE status = 'completed'
+      GROUP BY "method"
       ORDER BY "totalAmount" DESC
     `;
     

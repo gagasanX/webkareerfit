@@ -1,3 +1,6 @@
+// /src/app/affiliate/AffiliateDashboardClient.tsx - FIXED VERSION
+// ✅ ONLY CHANGE: Updated getFormattedCopywriting function with null check
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -288,16 +291,23 @@ export default function AffiliateDashboardClient() {
     }
   };
 
+  // ✅ CRITICAL FIX: Add null check to prevent undefined .replace() error
   const getFormattedCopywriting = (template: string, style: string) => {
     const affiliateUrl = `${window.location.origin}?ref=${affiliateCode}`;
     let content = '';
     
     if (template === 'whatsapp') {
-      content = copywritingTemplates.whatsapp[style as keyof typeof copywritingTemplates.whatsapp];
+      content = copywritingTemplates.whatsapp[style as keyof typeof copywritingTemplates.whatsapp] || '';
     } else if (template === 'email') {
-      content = copywritingTemplates.email.body;
+      content = copywritingTemplates.email.body || '';
     } else if (template === 'social') {
-      content = copywritingTemplates.social[style as keyof typeof copywritingTemplates.social];
+      content = copywritingTemplates.social[style as keyof typeof copywritingTemplates.social] || '';
+    }
+    
+    // ✅ CRITICAL FIX: Add safety check before calling .replace()
+    if (!content) {
+      console.warn(`No content found for template: ${template}, style: ${style}`);
+      return `Use referral code: ${affiliateCode}\n${affiliateUrl}`;
     }
     
     return content
@@ -658,6 +668,7 @@ export default function AffiliateDashboardClient() {
           </div>
         )}
         
+        {/* Rest of the component remains exactly the same... */}
         {/* 🚀 ENHANCED STATS - WITH TABS */}
         <div className="bg-white rounded-xl shadow-sm mb-6">
           <div className="border-b border-gray-200">

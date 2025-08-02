@@ -1,96 +1,578 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/lib/auth/auth';
+import { validateAdminAuth, logAdminAction, checkAdminRateLimit } from '@/lib/middleware/adminAuth';
 import { prisma } from '@/lib/db';
+import { logger } from '@/lib/logger';
+import { getClientIP } from '@/lib/utils/ip';
+import { Prisma } from '@prisma/client';
 
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+// ===== TYPES =====
+interface AssessmentDetail {
+  id: string;
+  type: string;
+  tier: string;
+  status: string;
+  price: number;
+  createdAt: string;
+  updatedAt: string;
+  reviewedAt: string | null;
+  reviewNotes: string | null;
+  manualProcessing: boolean;
+  data: any;
+  user: {
+    id: string;
+    name: string | null;
+    email: string;
+    phone: string | null;
+    createdAt: string;
+  };
+  assignedClerk: {
+    id: string;
+    name: string | null;
+    email: string;
+    assignedAt: string;
+  } | null;
+  payment: {
+    id: string;
+    amount: number;
+    status: string;
+    method: string;
+    gatewayPaymentId: string | null;
+    createdAt: string;
+    updatedAt: string;
+  } | null;
+  referrals: Array<{
+    id: string;
+    affiliateId: string;
+    affiliateName: string | null;
+    affiliateEmail: string;
+    commission: number;
+    status: string;
+    paidOut: boolean;
+    createdAt: string;
+  }>;
+}
+
+interface UpdateAssessmentData {
+  status?: string;
+  tier?: string;
+  assignedClerkId?: string;
+  reviewNotes?: string;
+  manualProcessing?: boolean;
+  price?: number;
+}
+
+interface RouteParams {
+  params: {
+    id: string;
+  };
+}
+
+// ===== GET - FETCH ASSESSMENT DETAILS =====
+export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
-    // Check admin authorization
-    const session = await getServerSession(authOptions);
-    if (!session || !session.user.isAdmin) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    // 1. Rate limiting
+    const clientIp = getClientIP(request);
+    if (!checkAdminRateLimit(clientIp, 60, 60000)) {
+      logger.warn('Admin assessment detail rate limit exceeded', { ip: clientIp });
+      return NextResponse.json(
+        { error: 'Rate limit exceeded. Please try again later.' },
+        { status: 429 }
+      );
     }
 
+    // 2. Authentication & Authorization
+    const authResult = await validateAdminAuth(request);
+    if (!authResult.success) {
+      return authResult.error!;
+    }
+
+    // 3. Validate assessment ID
     const { id } = params;
-    
-    // Check if assessment exists
+    if (!id) {
+      return NextResponse.json(
+        { error: 'Assessment ID is required' },
+        { status: 400 }
+      );
+    }
+
+    // 4. Fetch assessment with all related data
     const assessment = await prisma.assessment.findUnique({
       where: { id },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            phone: true,
+            createdAt: true
+          }
+        },
+        assignedClerk: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        },
+        payment: {
+          select: {
+            id: true,
+            amount: true,
+            status: true,
+            method: true,
+            gatewayPaymentId: true,
+            createdAt: true,
+            updatedAt: true
+          }
+        },
+        referrals: {
+          include: {
+            affiliate: {
+              select: {
+                id: true,
+                name: true,
+                email: true
+              }
+            }
+          }
+        }
+      }
     });
-    
+
     if (!assessment) {
       return NextResponse.json(
         { error: 'Assessment not found' },
         { status: 404 }
       );
     }
-    
-    // Delete the assessment
-    await prisma.assessment.delete({
-      where: { id },
+
+    // 5. Format response
+    const formattedAssessment: AssessmentDetail = {
+      ...assessment,
+      createdAt: assessment.createdAt.toISOString(),
+      updatedAt: assessment.updatedAt.toISOString(),
+      reviewedAt: assessment.reviewedAt?.toISOString() || null,
+      user: {
+        ...assessment.user,
+        createdAt: assessment.user.createdAt.toISOString()
+      },
+      assignedClerk: assessment.assignedClerk ? {
+        ...assessment.assignedClerk,
+        assignedAt: assessment.updatedAt.toISOString() // Approximation
+      } : null,
+      payment: assessment.payment ? {
+        ...assessment.payment,
+        createdAt: assessment.payment.createdAt.toISOString(),
+        updatedAt: assessment.payment.updatedAt.toISOString()
+      } : null,
+      referrals: assessment.referrals.map(referral => ({
+        id: referral.id,
+        affiliateId: referral.affiliateId,
+        affiliateName: referral.affiliate.name,
+        affiliateEmail: referral.affiliate.email,
+        commission: referral.commission,
+        status: referral.status,
+        paidOut: referral.paidOut,
+        createdAt: referral.createdAt.toISOString()
+      }))
+    };
+
+    // 6. Get activity history
+    const activityHistory = await getAssessmentActivityHistory(id);
+
+    // 7. Log admin action
+    await logAdminAction(
+      authResult.user!.id,
+      'assessment_detail_view',
+      { 
+        assessmentId: id,
+        assessmentType: assessment.type,
+        assessmentStatus: assessment.status,
+        timestamp: new Date().toISOString()
+      },
+      request
+    );
+
+    // 8. Return success response
+    return NextResponse.json({
+      success: true,
+      assessment: formattedAssessment,
+      activityHistory,
+      metadata: {
+        viewedAt: new Date().toISOString(),
+        viewedBy: authResult.user!.id
+      }
     });
-    
-    return NextResponse.json({ success: true });
+
   } catch (error) {
-    console.error('Error deleting assessment:', error);
+    logger.error('Assessment detail API error', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      assessmentId: params.id,
+      url: request.url
+    });
+
     return NextResponse.json(
-      { error: 'Failed to delete assessment' },
+      { error: 'Failed to fetch assessment details. Please try again later.' },
       { status: 500 }
     );
   }
 }
 
-export async function PATCH(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+// ===== PATCH - UPDATE ASSESSMENT =====
+export async function PATCH(request: NextRequest, { params }: RouteParams) {
   try {
-    // Check admin authorization
-    const session = await getServerSession(authOptions);
-    if (!session || !session.user.isAdmin) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    // 1. Rate limiting
+    const clientIp = getClientIP(request);
+    if (!checkAdminRateLimit(clientIp, 30, 60000)) {
+      logger.warn('Admin assessment update rate limit exceeded', { ip: clientIp });
+      return NextResponse.json(
+        { error: 'Rate limit exceeded. Please try again later.' },
+        { status: 429 }
+      );
     }
 
+    // 2. Authentication & Authorization
+    const authResult = await validateAdminAuth(request);
+    if (!authResult.success) {
+      return authResult.error!;
+    }
+
+    // 3. Validate assessment ID
     const { id } = params;
-    const data = await request.json();
-    
-    // Validate the data
-    const allowedFields = ['title', 'status', 'tier'];
-    const updateData: Record<string, any> = {};
-    
-    for (const field of allowedFields) {
-      if (data[field] !== undefined) {
-        updateData[field] = data[field];
+    if (!id) {
+      return NextResponse.json(
+        { error: 'Assessment ID is required' },
+        { status: 400 }
+      );
+    }
+
+    // 4. Parse and validate request body
+    const body: UpdateAssessmentData = await request.json();
+    const {
+      status,
+      tier,
+      assignedClerkId,
+      reviewNotes,
+      manualProcessing,
+      price
+    } = body;
+
+    // 5. Validate enum values
+    if (status && !['pending', 'in_progress', 'completed', 'cancelled'].includes(status)) {
+      return NextResponse.json(
+        { error: 'Invalid status value' },
+        { status: 400 }
+      );
+    }
+
+    if (tier && !['basic', 'standard', 'premium'].includes(tier)) {
+      return NextResponse.json(
+        { error: 'Invalid tier value' },
+        { status: 400 }
+      );
+    }
+
+    if (price && (price < 0 || price > 10000)) {
+      return NextResponse.json(
+        { error: 'Price must be between 0 and 10000' },
+        { status: 400 }
+      );
+    }
+
+    // 6. Check if assessment exists
+    const existingAssessment = await prisma.assessment.findUnique({
+      where: { id },
+      select: { id: true, status: true, assignedClerkId: true }
+    });
+
+    if (!existingAssessment) {
+      return NextResponse.json(
+        { error: 'Assessment not found' },
+        { status: 404 }
+      );
+    }
+
+    // 7. Validate clerk assignment
+    if (assignedClerkId) {
+      if (assignedClerkId === 'unassign') {
+        // Special case to unassign clerk
+      } else {
+        const clerk = await prisma.user.findFirst({
+          where: { id: assignedClerkId, isClerk: true }
+        });
+
+        if (!clerk) {
+          return NextResponse.json(
+            { error: 'Clerk not found or inactive' },
+            { status: 404 }
+          );
+        }
       }
     }
-    
-    // Check if assessment exists
+
+    // 8. Build update data
+    const updateData: Prisma.AssessmentUpdateInput = {
+      updatedAt: new Date()
+    };
+
+    if (status !== undefined) {
+      updateData.status = status;
+      
+      // Auto-set reviewedAt when marking as completed
+      if (status === 'completed') {
+        updateData.reviewedAt = new Date();
+      }
+    }
+
+    if (tier !== undefined) {
+      updateData.tier = tier;
+    }
+
+    if (assignedClerkId !== undefined) {
+      updateData.assignedClerk = assignedClerkId === 'unassign' 
+        ? { disconnect: true }
+        : { connect: { id: assignedClerkId } };
+      
+      // Auto-set status to in_progress when assigning
+      if (assignedClerkId !== 'unassign' && existingAssessment.status === 'pending') {
+        updateData.status = 'in_progress';
+      }
+    }
+
+    if (reviewNotes !== undefined) {
+      updateData.reviewNotes = reviewNotes;
+    }
+
+    if (manualProcessing !== undefined) {
+      updateData.manualProcessing = manualProcessing;
+    }
+
+    if (price !== undefined) {
+      updateData.price = price;
+    }
+
+    // 9. Update assessment
+    const updatedAssessment = await prisma.assessment.update({
+      where: { id },
+      data: updateData,
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        },
+        assignedClerk: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        }
+      }
+    });
+
+    // 10. Log admin action
+    await logAdminAction(
+      authResult.user!.id,
+      'assessment_updated',
+      { 
+        assessmentId: id,
+        changes: body,
+        previousStatus: existingAssessment.status,
+        newStatus: updatedAssessment.status,
+        previousClerkId: existingAssessment.assignedClerkId,
+        newClerkId: updatedAssessment.assignedClerkId,
+        timestamp: new Date().toISOString()
+      },
+      request
+    );
+
+    // 11. Return success response
+    return NextResponse.json({
+      success: true,
+      assessment: {
+        ...updatedAssessment,
+        createdAt: updatedAssessment.createdAt.toISOString(),
+        updatedAt: updatedAssessment.updatedAt.toISOString(),
+        reviewedAt: updatedAssessment.reviewedAt?.toISOString() || null
+      },
+      message: 'Assessment updated successfully'
+    });
+
+  } catch (error) {
+    logger.error('Assessment update API error', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      assessmentId: params.id,
+      url: request.url
+    });
+
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === 'P2025') {
+        return NextResponse.json(
+          { error: 'Assessment not found' },
+          { status: 404 }
+        );
+      }
+    }
+
+    return NextResponse.json(
+      { error: 'Failed to update assessment. Please try again later.' },
+      { status: 500 }
+    );
+  }
+}
+
+// ===== DELETE - DELETE ASSESSMENT =====
+export async function DELETE(request: NextRequest, { params }: RouteParams) {
+  try {
+    // 1. Rate limiting
+    const clientIp = getClientIP(request);
+    if (!checkAdminRateLimit(clientIp, 10, 60000)) {
+      logger.warn('Admin assessment delete rate limit exceeded', { ip: clientIp });
+      return NextResponse.json(
+        { error: 'Rate limit exceeded. Please try again later.' },
+        { status: 429 }
+      );
+    }
+
+    // 2. Authentication & Authorization
+    const authResult = await validateAdminAuth(request);
+    if (!authResult.success) {
+      return authResult.error!;
+    }
+
+    // 3. Validate assessment ID
+    const { id } = params;
+    if (!id) {
+      return NextResponse.json(
+        { error: 'Assessment ID is required' },
+        { status: 400 }
+      );
+    }
+
+    // 4. Check if assessment exists and get related data
     const assessment = await prisma.assessment.findUnique({
       where: { id },
+      include: {
+        payment: true,
+        referrals: true
+      }
     });
-    
+
     if (!assessment) {
       return NextResponse.json(
         { error: 'Assessment not found' },
         { status: 404 }
       );
     }
-    
-    // Update the assessment
-    const updatedAssessment = await prisma.assessment.update({
-      where: { id },
-      data: updateData,
+
+    // 5. Check if safe to delete (no completed payments)
+    if (assessment.payment && assessment.payment.status === 'completed') {
+      return NextResponse.json(
+        { error: 'Cannot delete assessment with completed payment. Cancel or refund first.' },
+        { status: 409 }
+      );
+    }
+
+    // 6. Delete in transaction to ensure atomicity
+    await prisma.$transaction(async (tx) => {
+      // Delete referrals first
+      await tx.referral.deleteMany({
+        where: { assessmentId: id }
+      });
+
+      // Delete payment if exists
+      if (assessment.payment) {
+        await tx.payment.delete({
+          where: { id: assessment.payment.id }
+        });
+      }
+
+      // Finally delete assessment
+      await tx.assessment.delete({
+        where: { id }
+      });
     });
-    
-    return NextResponse.json(updatedAssessment);
+
+    // 7. Log admin action
+    await logAdminAction(
+      authResult.user!.id,
+      'assessment_deleted',
+      { 
+        assessmentId: id,
+        assessmentType: assessment.type,
+        assessmentStatus: assessment.status,
+        hadPayment: !!assessment.payment,
+        hadReferrals: assessment.referrals.length > 0,
+        timestamp: new Date().toISOString()
+      },
+      request
+    );
+
+    // 8. Return success response
+    return NextResponse.json({
+      success: true,
+      message: 'Assessment deleted successfully'
+    });
+
   } catch (error) {
-    console.error('Error updating assessment:', error);
+    logger.error('Assessment delete API error', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      assessmentId: params.id,
+      url: request.url
+    });
+
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === 'P2025') {
+        return NextResponse.json(
+          { error: 'Assessment not found' },
+          { status: 404 }
+        );
+      }
+    }
+
     return NextResponse.json(
-      { error: 'Failed to update assessment' },
+      { error: 'Failed to delete assessment. Please try again later.' },
       { status: 500 }
     );
+  }
+}
+
+// ===== HELPER FUNCTIONS =====
+async function getAssessmentActivityHistory(assessmentId: string) {
+  try {
+    // Get audit logs for this assessment
+    const auditLogs = await prisma.auditLog.findMany({
+      where: {
+        OR: [
+          { details: { path: ['assessmentId'], equals: assessmentId } },
+          { details: { path: ['newAssessmentId'], equals: assessmentId } },
+          { details: { path: ['assessmentIds'], array_contains: assessmentId } }
+        ]
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 20
+    });
+
+    return auditLogs.map(log => ({
+      id: log.id,
+      eventType: log.eventType,
+      details: log.details,
+      ipAddress: log.ipAddress,
+      userAgent: log.userAgent,
+      createdAt: log.createdAt.toISOString()
+    }));
+  } catch (error) {
+    logger.error('Failed to fetch assessment activity history', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      assessmentId
+    });
+    return [];
   }
 }

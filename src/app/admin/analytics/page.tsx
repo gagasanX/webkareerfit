@@ -4,217 +4,326 @@ import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { 
-  BarChart,
-  Bar,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell
-} from 'recharts';
-import { 
-  Download, 
-  Calendar, 
-  Filter, 
-  Users, 
-  TrendingUp, 
+  TrendingUp,
+  Users,
+  ClipboardList,
   DollarSign,
-  FileText,
-  AlertCircle,
-  Loader2
+  UserCheck,
+  Clock,
+  Download,
+  Calendar,
+  RefreshCw,
+  ArrowUp,
+  ArrowDown,
+  BarChart3,
+  PieChart,
+  Target
 } from 'lucide-react';
 
-// Define chart colors
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#A569BD', '#5DADE2', '#52BE80'];
-
+// ===== TYPES =====
 interface AnalyticsData {
-  userMetrics: {
+  overview: {
     totalUsers: number;
-    newUsersToday: number;
-    newUsersThisWeek: number;
-    newUsersThisMonth: number;
-    usersByDate: Array<{ date: string; count: number }>;
-    usersByType: Array<{ type: string; count: number }>;
-  };
-  assessmentMetrics: {
     totalAssessments: number;
-    assessmentsToday: number;
-    assessmentsThisWeek: number;
-    assessmentsThisMonth: number;
-    completionRate: number;
-    assessmentsByDate: Array<{ date: string; count: number }>;
-    assessmentsByType: Array<{ type: string; count: number }>;
-  };
-  revenueMetrics: {
     totalRevenue: number;
-    revenueToday: number;
-    revenueThisWeek: number;
-    revenueThisMonth: number;
-    averageOrderValue: number;
-    revenueByDate: Array<{ date: string; amount: number }>;
-    revenueByAssessmentType: Array<{ type: string; amount: number }>;
+    totalCommissions: number;
+    activeAffiliates: number;
+    pendingAssessments: number;
   };
-  conversionMetrics: {
-    globalConversionRate: number;
-    conversionBySource: Array<{ source: string; rate: number; count: number }>;
-    conversionFunnel: Array<{ stage: string; count: number; rate: number }>;
-    abandonmentRate: number;
-  };
+  userGrowth: Array<{
+    date: string;
+    users: number;
+    assessments: number;
+    revenue: number;
+  }>;
+  assessmentTypes: Array<{
+    type: string;
+    count: number;
+    revenue: number;
+    avgPrice: number;
+  }>;
+  assessmentStatus: Array<{
+    status: string;
+    count: number;
+    percentage: number;
+  }>;
+  revenueBreakdown: Array<{
+    tier: string;
+    count: number;
+    revenue: number;
+    percentage: number;
+  }>;
+  topAffiliates: Array<{
+    id: string;
+    name: string;
+    email: string;
+    totalReferrals: number;
+    totalEarnings: number;
+    conversionRate: number;
+  }>;
+  clerksPerformance: Array<{
+    id: string;
+    name: string;
+    email: string;
+    assignedCount: number;
+    completedCount: number;
+    avgProcessingTime: number;
+  }>;
 }
 
-export default function AnalyticsDashboard() {
+interface MetricCardProps {
+  title: string;
+  value: string | number;
+  change?: string;
+  changeType?: 'positive' | 'negative' | 'neutral';
+  icon: React.ReactNode;
+  color: string;
+}
+
+// ===== COMPONENTS =====
+const MetricCard = ({ title, value, change, changeType, icon, color }: MetricCardProps) => (
+  <div className="bg-white rounded-lg shadow p-6">
+    <div className="flex items-center justify-between">
+      <div>
+        <p className="text-sm font-medium text-gray-500">{title}</p>
+        <p className="text-2xl font-bold text-gray-900 mt-1">
+          {typeof value === 'number' ? value.toLocaleString() : value}
+        </p>
+        {change && (
+          <div className={`flex items-center mt-1 text-sm ${
+            changeType === 'positive' ? 'text-green-600' :
+            changeType === 'negative' ? 'text-red-600' : 'text-gray-500'
+          }`}>
+            {changeType === 'positive' && <ArrowUp className="h-4 w-4 mr-1" />}
+            {changeType === 'negative' && <ArrowDown className="h-4 w-4 mr-1" />}
+            {change}
+          </div>
+        )}
+      </div>
+      <div className={`${color} p-3 rounded-lg`}>
+        {icon}
+      </div>
+    </div>
+  </div>
+);
+
+const SimpleBarChart = ({ data, title }: { data: any[], title: string }) => (
+  <div className="bg-white rounded-lg shadow p-6">
+    <h3 className="text-lg font-semibold mb-4">{title}</h3>
+    <div className="space-y-3">
+      {data.slice(0, 5).map((item, index) => {
+        const maxValue = Math.max(...data.map(d => d.count || d.revenue || d.value));
+        const percentage = maxValue > 0 ? ((item.count || item.revenue || item.value) / maxValue) * 100 : 0;
+        
+        return (
+          <div key={index} className="flex items-center">
+            <div className="w-20 text-sm text-gray-600 truncate">
+              {item.type || item.status || item.tier || item.label}
+            </div>
+            <div className="flex-1 mx-3">
+              <div className="bg-gray-200 rounded-full h-2">
+                <div 
+                  className="bg-indigo-600 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${percentage}%` }}
+                ></div>
+              </div>
+            </div>
+            <div className="w-16 text-sm font-medium text-right">
+              {typeof (item.count || item.revenue || item.value) === 'number' 
+                ? (item.count || item.revenue || item.value).toLocaleString()
+                : (item.count || item.revenue || item.value)
+              }
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  </div>
+);
+
+// ===== MAIN COMPONENT =====
+export default function AnalyticsPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
-  const [loading, setLoading] = useState<boolean>(true);
+  const [data, setData] = useState<AnalyticsData | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [dateRange, setDateRange] = useState<string>('last30days');
-  const [startDate, setStartDate] = useState<string>('');
-  const [endDate, setEndDate] = useState<string>('');
-  const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
-  const [exportLoading, setExportLoading] = useState<boolean>(false);
+  const [dateRange, setDateRange] = useState('last30days');
+  const [customStartDate, setCustomStartDate] = useState('');
+  const [customEndDate, setCustomEndDate] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
 
+  // Authentication check
   useEffect(() => {
     if (status === 'unauthenticated') {
       router.push('/admin-auth/login');
-      return;
-    }
-
-    if (status === 'authenticated' && !session?.user?.isAdmin) {
+    } else if (status === 'authenticated' && !session?.user?.isAdmin) {
       router.push('/dashboard');
-      return;
     }
+  }, [status, session, router]);
 
-    if (status === 'authenticated' && session?.user?.isAdmin) {
-      fetchAnalyticsData();
-    }
-  }, [status, session, router, dateRange, startDate, endDate]);
-
-  const fetchAnalyticsData = async () => {
-    setLoading(true);
+  // Fetch analytics data
+  const fetchAnalytics = async () => {
     try {
-      // Construct the URL with query parameters for date range
+      setError(null);
+      
       let url = `/api/admin/analytics?range=${dateRange}`;
       
-      if (dateRange === 'custom' && startDate && endDate) {
-        url += `&startDate=${startDate}&endDate=${endDate}`;
+      if (dateRange === 'custom') {
+        if (customStartDate) url += `&startDate=${customStartDate}`;
+        if (customEndDate) url += `&endDate=${customEndDate}`;
       }
       
       const response = await fetch(url);
       
       if (!response.ok) {
-        throw new Error('Failed to fetch analytics data');
+        throw new Error(`Failed to fetch analytics: ${response.status}`);
       }
       
-      const data = await response.json();
-      setAnalyticsData(data);
+      const result = await response.json();
+      
+      if (!result.success) {
+        throw new Error('API returned unsuccessful response');
+      }
+      
+      setData(result.data);
+    } catch (err) {
+      console.error('Error fetching analytics:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load analytics');
+    } finally {
       setLoading(false);
-    } catch (error) {
-      setError('Error loading analytics data. Please try again.');
-      setLoading(false);
+      setRefreshing(false);
     }
   };
 
-  const handleDateRangeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newRange = e.target.value;
-    setDateRange(newRange);
-    
-    // Reset custom dates if not using custom range
-    if (newRange !== 'custom') {
-      setStartDate('');
-      setEndDate('');
+  useEffect(() => {
+    if (status === 'authenticated' && session?.user?.isAdmin) {
+      fetchAnalytics();
     }
+  }, [status, session, dateRange, customStartDate, customEndDate]);
+
+  const handleRefresh = () => {
+    setRefreshing(true);
+    fetchAnalytics();
   };
 
-  const handleExportData = async () => {
-    setExportLoading(true);
+  const handleExport = async () => {
     try {
-      // Construct the URL with query parameters for date range
-      let url = `/api/admin/analytics/export?range=${dateRange}`;
+      let url = `/api/admin/analytics/export?range=${dateRange}&type=all`;
       
-      if (dateRange === 'custom' && startDate && endDate) {
-        url += `&startDate=${startDate}&endDate=${endDate}`;
+      if (dateRange === 'custom') {
+        if (customStartDate) url += `&startDate=${customStartDate}`;
+        if (customEndDate) url += `&endDate=${customEndDate}`;
       }
       
       const response = await fetch(url);
       
       if (!response.ok) {
-        throw new Error('Failed to export analytics data');
+        throw new Error('Export failed');
       }
       
-      // Create a blob from the response
       const blob = await response.blob();
-      
-      // Create a download link and trigger click
       const downloadUrl = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = downloadUrl;
-      link.download = `analytics-report-${new Date().toISOString().split('T')[0]}.csv`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      setExportLoading(false);
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = `analytics-report-${dateRange}-${new Date().toISOString().split('T')[0]}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(downloadUrl);
+      document.body.removeChild(a);
     } catch (error) {
-      setError('Error exporting analytics data. Please try again.');
-      setExportLoading(false);
+      console.error('Export error:', error);
+      setError('Failed to export data');
     }
   };
 
-  const formatCurrency = (value: number) => {
-    return new Intl.NumberFormat('en-MY', {
-      style: 'currency',
-      currency: 'MYR',
-      minimumFractionDigits: 2
-    }).format(value);
+  const formatCurrency = (amount: number) => {
+    return `RM ${amount.toFixed(2)}`;
   };
 
-  const formatPercent = (value: number) => {
-    return `${(value * 100).toFixed(1)}%`;
-  };
-
-  if (loading && !analyticsData) {
+  if (loading) {
     return (
       <div className="flex justify-center items-center min-h-screen">
-        <div className="w-16 h-16 border-4 border-t-transparent border-indigo-600 rounded-full animate-spin"></div>
+        <div className="w-16 h-16 border-4 border-t-transparent border-gray-700 rounded-full animate-spin"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="p-6">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="flex">
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-red-800">Error loading analytics</h3>
+              <div className="mt-2 text-sm text-red-700">
+                <p>{error}</p>
+              </div>
+              <div className="mt-4">
+                <button
+                  onClick={handleRefresh}
+                  className="bg-red-100 px-3 py-2 rounded-md text-sm font-medium text-red-800 hover:bg-red-200"
+                >
+                  Try again
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="p-6">
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <p className="text-yellow-800">No analytics data available</p>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="p-6">
-      <h1 className="text-2xl font-bold mb-6">Analytics Dashboard</h1>
-
-      {error && (
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
-          <span className="flex items-center">
-            <AlertCircle className="h-5 w-5 mr-2" />
-            {error}
-          </span>
+      {/* Header */}
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h1 className="text-2xl font-bold">Analytics Dashboard</h1>
+          <p className="text-gray-600">Track your business performance and metrics</p>
         </div>
-      )}
-
-      {/* Date Range Filter */}
-      <div className="bg-white rounded-lg shadow p-4 mb-6">
-        <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center">
-            <Calendar className="h-5 w-5 mr-2 text-gray-500" />
-            <h2 className="text-lg font-medium">Date Range</h2>
-          </div>
+        
+        <div className="flex space-x-3">
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+          >
+            <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+            {refreshing ? 'Refreshing...' : 'Refresh'}
+          </button>
           
-          <div className="flex flex-col md:flex-row items-center gap-4">
+          <button
+            onClick={handleExport}
+            className="inline-flex items-center px-3 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700"
+          >
+            <Download className="h-4 w-4 mr-2" />
+            Export
+          </button>
+        </div>
+      </div>
+
+      {/* Date Range Selector */}
+      <div className="bg-white rounded-lg shadow p-4 mb-6">
+        <div className="flex flex-wrap items-center gap-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Date Range</label>
             <select
               value={dateRange}
-              onChange={handleDateRangeChange}
-              className="px-4 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+              onChange={(e) => setDateRange(e.target.value)}
+              className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
             >
               <option value="today">Today</option>
-              <option value="yesterday">Yesterday</option>
               <option value="last7days">Last 7 Days</option>
               <option value="last30days">Last 30 Days</option>
               <option value="thisMonth">This Month</option>
@@ -222,271 +331,159 @@ export default function AnalyticsDashboard() {
               <option value="thisYear">This Year</option>
               <option value="custom">Custom Range</option>
             </select>
-            
-            {dateRange === 'custom' && (
-              <div className="flex items-center gap-2">
+          </div>
+          
+          {dateRange === 'custom' && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
                 <input
                   type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                />
-                <span>to</span>
-                <input
-                  type="date"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                  value={customStartDate}
+                  onChange={(e) => setCustomStartDate(e.target.value)}
+                  className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
                 />
               </div>
-            )}
-            
-            <button
-              onClick={handleExportData}
-              disabled={exportLoading}
-              className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-indigo-400"
-            >
-              {exportLoading ? (
-                <Loader2 className="h-5 w-5 mr-2 animate-spin" />
-              ) : (
-                <Download className="h-5 w-5 mr-2" />
-              )}
-              Export Data
-            </button>
-          </div>
+              
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+                <input
+                  type="date"
+                  value={customEndDate}
+                  onChange={(e) => setCustomEndDate(e.target.value)}
+                  className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                />
+              </div>
+            </>
+          )}
         </div>
       </div>
 
-      {analyticsData && (
-        <>
-          {/* Key Metrics */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-            {/* User Metrics */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center">
-                <div className="bg-indigo-100 p-3 rounded-full">
-                  <Users className="h-6 w-6 text-indigo-600" />
-                </div>
-                <div className="ml-4">
-                  <h3 className="text-sm font-medium text-gray-500">Total Users</h3>
-                  <p className="text-2xl font-bold">{analyticsData.userMetrics.totalUsers.toLocaleString()}</p>
-                  <p className="text-sm text-gray-500">
-                    <span className="text-green-600">+{analyticsData.userMetrics.newUsersThisMonth.toLocaleString()}</span> this month
-                  </p>
-                </div>
-              </div>
-            </div>
-            
-            {/* Assessment Metrics */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center">
-                <div className="bg-green-100 p-3 rounded-full">
-                  <FileText className="h-6 w-6 text-green-600" />
-                </div>
-                <div className="ml-4">
-                  <h3 className="text-sm font-medium text-gray-500">Assessments</h3>
-                  <p className="text-2xl font-bold">{analyticsData.assessmentMetrics.totalAssessments.toLocaleString()}</p>
-                  <p className="text-sm text-gray-500">
-                    {formatPercent(analyticsData.assessmentMetrics.completionRate)} completion rate
-                  </p>
-                </div>
-              </div>
-            </div>
-            
-            {/* Revenue Metrics */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center">
-                <div className="bg-blue-100 p-3 rounded-full">
-                  <DollarSign className="h-6 w-6 text-blue-600" />
-                </div>
-                <div className="ml-4">
-                  <h3 className="text-sm font-medium text-gray-500">Total Revenue</h3>
-                  <p className="text-2xl font-bold">{formatCurrency(analyticsData.revenueMetrics.totalRevenue)}</p>
-                  <p className="text-sm text-gray-500">
-                    <span className="text-green-600">{formatCurrency(analyticsData.revenueMetrics.revenueThisMonth)}</span> this month
-                  </p>
-                </div>
-              </div>
-            </div>
-            
-            {/* Conversion Metrics */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <div className="flex items-center">
-                <div className="bg-purple-100 p-3 rounded-full">
-                  <TrendingUp className="h-6 w-6 text-purple-600" />
-                </div>
-                <div className="ml-4">
-                  <h3 className="text-sm font-medium text-gray-500">Conversion Rate</h3>
-                  <p className="text-2xl font-bold">{formatPercent(analyticsData.conversionMetrics.globalConversionRate)}</p>
-                  <p className="text-sm text-gray-500">
-                    {formatPercent(analyticsData.conversionMetrics.abandonmentRate)} abandonment
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
+      {/* Overview Metrics */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6 mb-8">
+        <MetricCard
+          title="Total Users"
+          value={data.overview.totalUsers}
+          icon={<Users className="h-6 w-6 text-white" />}
+          color="bg-blue-600"
+        />
+        
+        <MetricCard
+          title="Assessments"
+          value={data.overview.totalAssessments}
+          icon={<ClipboardList className="h-6 w-6 text-white" />}
+          color="bg-green-600"
+        />
+        
+        <MetricCard
+          title="Revenue"
+          value={formatCurrency(data.overview.totalRevenue)}
+          icon={<DollarSign className="h-6 w-6 text-white" />}
+          color="bg-purple-600"
+        />
+        
+        <MetricCard
+          title="Commissions"
+          value={formatCurrency(data.overview.totalCommissions)}
+          icon={<TrendingUp className="h-6 w-6 text-white" />}
+          color="bg-yellow-600"
+        />
+        
+        <MetricCard
+          title="Active Affiliates"
+          value={data.overview.activeAffiliates}
+          icon={<UserCheck className="h-6 w-6 text-white" />}
+          color="bg-indigo-600"
+        />
+        
+        <MetricCard
+          title="Pending Reviews"
+          value={data.overview.pendingAssessments}
+          icon={<Clock className="h-6 w-6 text-white" />}
+          color="bg-red-600"
+        />
+      </div>
 
-          {/* Charts Row 1 */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-            {/* User Growth Chart */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-lg font-medium mb-4">User Growth</h2>
-              <div className="h-80">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart
-                    data={analyticsData.userMetrics.usersByDate}
-                    margin={{ top: 5, right: 30, left: 20, bottom: 25 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="date" angle={-45} textAnchor="end" height={50} />
-                    <YAxis />
-                    <Tooltip formatter={(value) => [`${value} users`, 'Users']} />
-                    <Legend />
-                    <Line type="monotone" dataKey="count" stroke="#8884d8" activeDot={{ r: 8 }} name="Users" />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-            
-            {/* Revenue Trend Chart */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-lg font-medium mb-4">Revenue Trend</h2>
-              <div className="h-80">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart
-                    data={analyticsData.revenueMetrics.revenueByDate}
-                    margin={{ top: 5, right: 30, left: 20, bottom: 25 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="date" angle={-45} textAnchor="end" height={50} />
-                    <YAxis />
-                    <Tooltip formatter={(value) => [formatCurrency(value as number), 'Revenue']} />
-                    <Legend />
-                    <Line type="monotone" dataKey="amount" stroke="#82ca9d" activeDot={{ r: 8 }} name="Revenue" />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          </div>
+      {/* Charts and Analytics */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <SimpleBarChart 
+          data={data.assessmentTypes} 
+          title="Assessment Types"
+        />
+        
+        <SimpleBarChart 
+          data={data.assessmentStatus} 
+          title="Assessment Status"
+        />
+        
+        <SimpleBarChart 
+          data={data.revenueBreakdown} 
+          title="Revenue by Tier"
+        />
+        
+        <SimpleBarChart 
+          data={data.topAffiliates.map(a => ({ 
+            label: a.name, 
+            value: a.totalEarnings 
+          }))} 
+          title="Top Affiliates"
+        />
+      </div>
 
-          {/* Charts Row 2 */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-            {/* Assessment Type Distribution */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-lg font-medium mb-4">Assessment Type Distribution</h2>
-              <div className="h-80">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={analyticsData.assessmentMetrics.assessmentsByType}
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={100}
-                      fill="#8884d8"
-                      dataKey="count"
-                      nameKey="type"
-                      label={({ type, count }) => `${type}: ${count}`}
-                    >
-                      {analyticsData.assessmentMetrics.assessmentsByType.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <Tooltip formatter={(value, name) => [`${value} assessments`, name]} />
-                    <Legend />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-            
-            {/* Revenue by Assessment Type */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-lg font-medium mb-4">Revenue by Assessment Type</h2>
-              <div className="h-80">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={analyticsData.revenueMetrics.revenueByAssessmentType}
-                    margin={{ top: 5, right: 30, left: 20, bottom: 25 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="type" angle={-45} textAnchor="end" height={50} />
-                    <YAxis />
-                    <Tooltip formatter={(value) => [formatCurrency(value as number), 'Revenue']} />
-                    <Legend />
-                    <Bar dataKey="amount" fill="#8884d8" name="Revenue" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
+      {/* Data Tables */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Top Affiliates Table */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h3 className="text-lg font-semibold mb-4">Top Affiliates Performance</h3>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead>
+                <tr>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Referrals</th>
+                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Earnings</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {data.topAffiliates.slice(0, 5).map((affiliate, index) => (
+                  <tr key={affiliate.id}>
+                    <td className="px-4 py-2 text-sm text-gray-900 truncate">{affiliate.name}</td>
+                    <td className="px-4 py-2 text-sm text-gray-900 text-right">{affiliate.totalReferrals}</td>
+                    <td className="px-4 py-2 text-sm text-gray-900 text-right">{formatCurrency(affiliate.totalEarnings)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
+        </div>
 
-          {/* Charts Row 3 */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-            {/* Conversion Funnel */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-lg font-medium mb-4">Conversion Funnel</h2>
-              <div className="h-80">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={analyticsData.conversionMetrics.conversionFunnel}
-                    layout="vertical"
-                    margin={{ top: 5, right: 30, left: 100, bottom: 5 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis type="number" />
-                    <YAxis type="category" dataKey="stage" width={100} />
-                    <Tooltip formatter={(value) => [`${value} users`, 'Count']} />
-                    <Legend />
-                    <Bar dataKey="count" fill="#8884d8" name="Users" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="mt-4">
-                <h3 className="text-md font-medium mb-2">Conversion Rates</h3>
-                <div className="space-y-2">
-                  {analyticsData.conversionMetrics.conversionFunnel.map((item, index, arr) => {
-                    // Skip the first item since there's no previous step
-                    if (index === 0) return null;
-                    
-                    const previousStep = arr[index - 1];
-                    const conversionRate = previousStep.count > 0 
-                      ? (item.count / previousStep.count)
-                      : 0;
-                    
-                    return (
-                      <div key={index} className="flex justify-between">
-                        <span className="text-sm text-gray-600">
-                          {previousStep.stage} → {item.stage}
-                        </span>
-                        <span className="text-sm font-medium">{formatPercent(conversionRate)}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-            
-            {/* Conversion by Source */}
-            <div className="bg-white rounded-lg shadow p-6">
-              <h2 className="text-lg font-medium mb-4">Conversion by Source</h2>
-              <div className="h-80">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart
-                    data={analyticsData.conversionMetrics.conversionBySource}
-                    margin={{ top: 5, right: 30, left: 20, bottom: 25 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="source" angle={-45} textAnchor="end" height={50} />
-                    <YAxis tickFormatter={(value) => formatPercent(value)} />
-                    <Tooltip formatter={(value) => [formatPercent(value as number), 'Conversion Rate']} />
-                    <Legend />
-                    <Bar dataKey="rate" fill="#82ca9d" name="Conversion Rate" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
+        {/* Clerks Performance Table */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h3 className="text-lg font-semibold mb-4">Clerks Performance</h3>
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+              <thead>
+                <tr>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Assigned</th>
+                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Completed</th>
+                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Avg Time (h)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200">
+                {data.clerksPerformance.slice(0, 5).map((clerk, index) => (
+                  <tr key={clerk.id}>
+                    <td className="px-4 py-2 text-sm text-gray-900 truncate">{clerk.name}</td>
+                    <td className="px-4 py-2 text-sm text-gray-900 text-right">{clerk.assignedCount}</td>
+                    <td className="px-4 py-2 text-sm text-gray-900 text-right">{clerk.completedCount}</td>
+                    <td className="px-4 py-2 text-sm text-gray-900 text-right">{clerk.avgProcessingTime.toFixed(1)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </>
-      )}
+        </div>
+      </div>
     </div>
   );
 }

@@ -1,288 +1,397 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/lib/auth/auth'; // Pastikan path ini betul
-import { prisma } from '@/lib/db'; // Pastikan path ini betul
+import { validateAdminAuth, logAdminAction, checkAdminRateLimit } from '@/lib/middleware/adminAuth';
+import { prisma } from '@/lib/db';
+import { logger } from '@/lib/logger';
+import { getClientIP } from '@/lib/utils/ip';
 import bcrypt from 'bcryptjs';
 import { Prisma } from '@prisma/client';
 
-interface RouteParams {
-  params: {
-    id: string;
+// ===== TYPES =====
+interface User {
+  id: string;
+  name: string | null;
+  email: string;
+  role: string;
+  isAdmin: boolean;
+  isClerk: boolean;
+  isAffiliate: boolean;
+  createdAt: string;
+  phone: string | null;
+  affiliateCode: string | null;
+  affiliateType: string | null;
+  _count: {
+    assessments: number;
+    payments: number;
+    referrals: number;
   };
 }
 
-// GET - Fetch a single user by ID for Admin, including their assessments summary
-export async function GET(request: NextRequest, { params }: RouteParams) {
+interface CreateUserData {
+  name?: string;
+  email: string;
+  password: string;
+  isAdmin?: boolean;
+  isClerk?: boolean;
+  isAffiliate?: boolean;
+  phone?: string;
+  affiliateCode?: string;
+  affiliateType?: string;
+}
+
+// ===== GET - LIST USERS =====
+export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.isAdmin) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    // 1. Rate limiting
+    const clientIp = getClientIP(request);
+    if (!checkAdminRateLimit(clientIp, 30, 60000)) {
+      logger.warn('Admin users list rate limit exceeded', { ip: clientIp });
+      return NextResponse.json(
+        { error: 'Rate limit exceeded. Please try again later.' },
+        { status: 429 }
+      );
     }
 
-    const { id } = params;
-
-    if (!id) {
-      return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
+    // 2. Authentication & Authorization
+    const authResult = await validateAdminAuth(request);
+    if (!authResult.success) {
+      return authResult.error!;
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id },
+    // 3. Parse query parameters
+    const url = new URL(request.url);
+    const page = parseInt(url.searchParams.get('page') || '1');
+    const limit = Math.min(parseInt(url.searchParams.get('limit') || '10'), 100); // Max 100 per page
+    const search = url.searchParams.get('search') || '';
+    const role = url.searchParams.get('role') || 'all'; // all, user, admin, clerk, affiliate
+    const sortBy = url.searchParams.get('sortBy') || 'createdAt';
+    const sortOrder = url.searchParams.get('sortOrder') || 'desc';
+
+    // Validate pagination
+    const validPage = Math.max(1, page);
+    const offset = (validPage - 1) * limit;
+
+    // 4. Build where clause
+    const whereClause: Prisma.UserWhereInput = {};
+
+    // Search filter
+    if (search) {
+      whereClause.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+        { phone: { contains: search, mode: 'insensitive' } },
+        { affiliateCode: { contains: search, mode: 'insensitive' } }
+      ];
+    }
+
+    // Role filter
+    switch (role) {
+      case 'admin':
+        whereClause.isAdmin = true;
+        break;
+      case 'clerk':
+        whereClause.isClerk = true;
+        break;
+      case 'affiliate':
+        whereClause.isAffiliate = true;
+        break;
+      case 'user':
+        whereClause.AND = [
+          { isAdmin: false },
+          { isClerk: false },
+          { isAffiliate: false }
+        ];
+        break;
+      // 'all' - no additional filter
+    }
+
+    // 5. Build order by clause
+    const validSortFields = ['createdAt', 'name', 'email', 'role'];
+    const safeSortBy = validSortFields.includes(sortBy) ? sortBy : 'createdAt';
+    const safeSortOrder = sortOrder === 'asc' ? 'asc' : 'desc';
+
+    let orderBy: Prisma.UserOrderByWithRelationInput = {};
+    if (safeSortBy === 'role') {
+      // Custom sorting for role - admins first, then clerks, then affiliates, then users
+      orderBy = {
+        isAdmin: 'desc',
+        isClerk: 'desc',
+        isAffiliate: 'desc',
+        createdAt: 'desc'
+      };
+    } else {
+      orderBy = { [safeSortBy]: safeSortOrder };
+    }
+
+    // 6. Fetch users and total count
+    const [users, totalCount] = await Promise.all([
+      prisma.user.findMany({
+        where: whereClause,
+        orderBy,
+        skip: offset,
+        take: limit,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          role: true,
+          isAdmin: true,
+          isClerk: true,
+          isAffiliate: true,
+          createdAt: true,
+          phone: true,
+          affiliateCode: true,
+          affiliateType: true,
+          _count: {
+            select: {
+              assessments: true,
+              payments: true,
+              referrals: true
+            }
+          }
+        }
+      }),
+      prisma.user.count({ where: whereClause })
+    ]);
+
+    // 7. Format response
+    const formattedUsers: User[] = users.map(user => ({
+      ...user,
+      createdAt: user.createdAt.toISOString(),
+      _count: user._count
+    }));
+
+    const totalPages = Math.ceil(totalCount / limit);
+
+    // 8. Log admin action
+    await logAdminAction(
+      authResult.user!.id,
+      'users_list_view',
+      { 
+        page: validPage,
+        limit,
+        search,
+        role,
+        totalResults: totalCount,
+        timestamp: new Date().toISOString()
+      },
+      request
+    );
+
+    // 9. Return success response
+    return NextResponse.json({
+      success: true,
+      users: formattedUsers,
+      pagination: {
+        currentPage: validPage,
+        totalPages,
+        totalCount,
+        limit,
+        hasNext: validPage < totalPages,
+        hasPrev: validPage > 1
+      },
+      metadata: {
+        search,
+        role,
+        sortBy: safeSortBy,
+        sortOrder: safeSortOrder
+      }
+    });
+
+  } catch (error) {
+    logger.error('Users list API error', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      url: request.url
+    });
+
+    return NextResponse.json(
+      { error: 'Failed to fetch users. Please try again later.' },
+      { status: 500 }
+    );
+  }
+}
+
+// ===== POST - CREATE USER =====
+export async function POST(request: NextRequest) {
+  try {
+    // 1. Rate limiting
+    const clientIp = getClientIP(request);
+    if (!checkAdminRateLimit(clientIp, 10, 60000)) {
+      logger.warn('Admin user creation rate limit exceeded', { ip: clientIp });
+      return NextResponse.json(
+        { error: 'Rate limit exceeded. Please try again later.' },
+        { status: 429 }
+      );
+    }
+
+    // 2. Authentication & Authorization
+    const authResult = await validateAdminAuth(request);
+    if (!authResult.success) {
+      return authResult.error!;
+    }
+
+    // 3. Parse and validate request body
+    const body: CreateUserData = await request.json();
+    const {
+      name,
+      email,
+      password,
+      isAdmin = false,
+      isClerk = false,
+      isAffiliate = false,
+      phone,
+      affiliateCode,
+      affiliateType = 'individual'
+    } = body;
+
+    // Validation
+    if (!email || !password) {
+      return NextResponse.json(
+        { error: 'Email and password are required' },
+        { status: 400 }
+      );
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return NextResponse.json(
+        { error: 'Invalid email format' },
+        { status: 400 }
+      );
+    }
+
+    if (password.length < 6) {
+      return NextResponse.json(
+        { error: 'Password must be at least 6 characters long' },
+        { status: 400 }
+      );
+    }
+
+    // 4. Check if email already exists
+    const existingUser = await prisma.user.findUnique({
+      where: { email }
+    });
+
+    if (existingUser) {
+      return NextResponse.json(
+        { error: 'Email already exists' },
+        { status: 409 }
+      );
+    }
+
+    // 5. Check if affiliate code already exists (if provided)
+    if (affiliateCode) {
+      const existingAffiliateCode = await prisma.user.findUnique({
+        where: { affiliateCode }
+      });
+
+      if (existingAffiliateCode) {
+        return NextResponse.json(
+          { error: 'Affiliate code already exists' },
+          { status: 409 }
+        );
+      }
+    }
+
+    // 6. Hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    // 7. Determine role
+    let role = 'USER';
+    if (isAdmin) role = 'ADMIN';
+    else if (isClerk) role = 'CLERK';
+    else if (isAffiliate) role = 'AFFILIATE';
+
+    // 8. Create user
+    const newUser = await prisma.user.create({
+      data: {
+        name,
+        email,
+        password: hashedPassword,
+        role,
+        isAdmin,
+        isClerk,
+        isAffiliate,
+        phone,
+        affiliateCode: isAffiliate ? affiliateCode : null,
+        affiliateType: isAffiliate ? affiliateType : null
+      },
       select: {
         id: true,
         name: true,
         email: true,
-        image: true,
-        bio: true,
-        skills: true,
-        education: true,
-        experience: true,
+        role: true,
+        isAdmin: true,
+        isClerk: true,
+        isAffiliate: true,
         createdAt: true,
-        updatedAt: true,
-        role: true, // For display
-        isAdmin: true, // For role management on client
-        isAffiliate: true, // For role management on client
-        isClerk: true, // For role management on client
         phone: true,
         affiliateCode: true,
-        affiliateType: true,
-        referredBy: true,
-        assessments: {
-          select: {
-            id: true,
-            type: true,
-            status: true,
-            tier: true,
-            createdAt: true,
-            updatedAt: true,
-          },
-          orderBy: {
-            createdAt: 'desc',
-          },
-        },
-        payments: { // Summary of payments
-            select: {
-                id: true,
-                amount: true,
-                status: true,
-                createdAt: true,
-                assessmentId: true
-            },
-            orderBy: {
-                createdAt: 'desc'
-            }
-        },
-        affiliateStats: true, // Include affiliate stats if user is an affiliate
-        // assignedAssessments: clerk is assigned assessments, not user takes assignedAssessments
-      },
+        affiliateType: true
+      }
     });
 
-    if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
-    }
-
-    return NextResponse.json(user);
-  } catch (error) {
-    console.error(`Error fetching user ${params.id}:`, error);
-    return NextResponse.json(
-      { error: 'Failed to fetch user. Please try again later.' },
-      { status: 500 }
-    );
-  }
-}
-
-// PATCH - Update a user's details by ID for Admin (excluding roles, password can be updated)
-export async function PATCH(request: NextRequest, { params }: RouteParams) {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.isAdmin) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { id } = params;
-    const body = await request.json();
-
-    if (!id) {
-      return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
-    }
-
-    const {
-      name,
-      email,
-      password, // Admin might reset password
-      bio,
-      skills,
-      education,
-      experience,
-      phone,
-      affiliateCode,
-      affiliateType
-      // Roles (isAdmin, isClerk, isAffiliate) are managed via a separate endpoint: /api/admin/users/[id]/role
-    } = body;
-
-    const updateData: Prisma.UserUpdateInput = {};
-
-    if (name !== undefined) updateData.name = name;
-    if (bio !== undefined) updateData.bio = bio;
-    if (skills !== undefined) updateData.skills = skills;
-    if (education !== undefined) updateData.education = education;
-    if (experience !== undefined) updateData.experience = experience;
-    if (phone !== undefined) updateData.phone = phone;
-    if (affiliateType !== undefined) updateData.affiliateType = affiliateType;
-
-    if (email !== undefined) {
-      const existingUserByEmail = await prisma.user.findFirst({
-        where: { email: email, NOT: { id: id } },
-      });
-      if (existingUserByEmail) {
-        return NextResponse.json({ error: 'Email already in use by another account' }, { status: 409 });
-      }
-      updateData.email = email;
-    }
-    
-    if (affiliateCode !== undefined) {
-        if(affiliateCode === null || affiliateCode === "") {
-            updateData.affiliateCode = null; // Allow unsetting affiliate code
-        } else {
-            const existingUserByAffiliateCode = await prisma.user.findFirst({
-                where: { affiliateCode: affiliateCode, NOT: { id: id } },
-            });
-            if (existingUserByAffiliateCode) {
-                return NextResponse.json({ error: 'Affiliate code already in use by another account' }, { status: 409 });
-            }
-            updateData.affiliateCode = affiliateCode;
+    // 9. Create affiliate stats if user is affiliate
+    if (isAffiliate) {
+      await prisma.affiliateStats.create({
+        data: {
+          userId: newUser.id,
+          totalReferrals: 0,
+          totalEarnings: 0,
+          totalPaid: 0
         }
+      });
     }
 
-    if (password) {
-      if (typeof password !== 'string' || password.length < 6) {
-        return NextResponse.json({ error: 'New password must be a string and at least 6 characters long' }, { status: 400 });
-      }
-      updateData.password = await bcrypt.hash(password, 10);
-    }
-
-    if (Object.keys(updateData).length === 0) {
-      return NextResponse.json({ error: 'No valid fields to update provided' }, { status: 400 });
-    }
-
-    const updatedUser = await prisma.user.update({
-      where: { id },
-      data: updateData,
-      select: { // Return updated user data without password
-        id: true, name: true, email: true, image: true, bio: true, skills: true,
-        education: true, experience: true, createdAt: true, updatedAt: true, role: true,
-        isAdmin: true, isAffiliate: true, isClerk: true, phone: true, affiliateCode: true, affiliateType: true,
+    // 10. Log admin action
+    await logAdminAction(
+      authResult.user!.id,
+      'user_created',
+      { 
+        newUserId: newUser.id,
+        newUserEmail: newUser.email,
+        newUserRole: role,
+        timestamp: new Date().toISOString()
       },
+      request
+    );
+
+    // 11. Return success response
+    return NextResponse.json({
+      success: true,
+      user: {
+        ...newUser,
+        createdAt: newUser.createdAt.toISOString()
+      },
+      message: 'User created successfully'
+    }, { status: 201 });
+
+  } catch (error) {
+    logger.error('User creation API error', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      stack: error instanceof Error ? error.stack : undefined,
+      url: request.url
     });
 
-    return NextResponse.json(updatedUser);
-  } catch (error) {
-    console.error(`Error updating user ${params.id}:`, error);
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
-      if (error.code === 'P2025') {
-        return NextResponse.json({ error: 'User not found' }, { status: 404 });
-      }
-      if (error.code === 'P2002') { // Unique constraint failed
+      if (error.code === 'P2002') {
         const target = error.meta?.target as string[];
         if (target?.includes('email')) {
-            return NextResponse.json({ error: 'Email already in use' }, { status: 409 });
+          return NextResponse.json(
+            { error: 'Email already exists' },
+            { status: 409 }
+          );
         }
         if (target?.includes('affiliateCode')) {
-            return NextResponse.json({ error: 'Affiliate code already in use' }, { status: 409 });
+          return NextResponse.json(
+            { error: 'Affiliate code already exists' },
+            { status: 409 }
+          );
         }
       }
     }
+
     return NextResponse.json(
-      { error: 'Failed to update user. Please try again later.' },
-      { status: 500 }
-    );
-  }
-}
-
-// DELETE - Delete a user by ID for Admin
-export async function DELETE(request: NextRequest, { params }: RouteParams) {
-  try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.isAdmin) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { id } = params;
-
-    if (!id) {
-      return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
-    }
-
-    // Prevent admin from deleting their own account
-    if (id === session.user.id) {
-      return NextResponse.json({ error: "Admins cannot delete their own account." }, { status: 403 });
-    }
-
-    // Transaction to ensure atomicity
-    // IMPORTANT: Review your Prisma schema for `onDelete` cascade behaviors.
-    // If cascade is set, some manual deletions below might be redundant or cause errors.
-    // If not set, you MUST delete or unlink related records manually.
-    await prisma.$transaction(async (tx) => {
-      // 1. Unassign assessments if this user was a clerk
-      await tx.assessment.updateMany({
-        where: { assignedClerkId: id },
-        data: { assignedClerkId: null },
-      });
-
-      // 2. Delete AffiliateTransactions related to this user
-      await tx.referral.deleteMany({ where: { affiliateId: id } });
-
-      // 3. Delete Payments made by this user
-      //   Also, payments linked to assessments taken by this user will be handled when assessments are deleted if Payment.assessmentId is non-nullable and onDelete: Cascade is not set on Assessment.
-      await tx.payment.deleteMany({ where: { userId: id } });
-      
-      // 4. Delete Referrals made by this user (if they were an affiliate)
-      await tx.referral.deleteMany({ where: { affiliateId: id } });
-
-      // 5. Delete Assessments taken by this user
-      //    This will also trigger deletion of payments/referrals linked to these assessments
-      //    IF Payment.assessmentId or Referral.assessmentId are non-nullable and have onDelete: Cascade on Assessment model.
-      //    Otherwise, payments/referrals linked to these assessments need to be deleted/unlinked first.
-      //    For simplicity, assuming cascade or they are handled by deleting payments for this user.
-      //    To be safe, let's explicitly delete payments/referrals for this user's assessments.
-      const userAssessments = await tx.assessment.findMany({ 
-          where: { userId: id },
-          select: { id: true }
-      });
-      const assessmentIds = userAssessments.map(a => a.id);
-
-      if (assessmentIds.length > 0) {
-          await tx.payment.deleteMany({ where: { assessmentId: { in: assessmentIds } } });
-          await tx.referral.deleteMany({ where: { assessmentId: { in: assessmentIds } } });
-          await tx.assessment.deleteMany({ where: { userId: id } });
-      }
-      
-      // 6. Delete AffiliateApplications by this user
-      await tx.affiliateApplication.deleteMany({ where: { userId: id } });
-
-      // 7. Delete AffiliateStats for this user
-      await tx.affiliateStats.deleteMany({ where: { userId: id } }); // use deleteMany for safety
-
-      // 8. Finally, delete the user
-      await tx.user.delete({ where: { id } });
-    });
-
-    return NextResponse.json({ message: 'User and all related data deleted successfully' });
-  } catch (error) {
-    console.error(`Error deleting user ${params.id}:`, error);
-    if (error instanceof Prisma.PrismaClientKnownRequestError) {
-      if (error.code === 'P2025') {
-        return NextResponse.json({ error: 'User not found or already deleted' }, { status: 404 });
-      }
-      // P2003: Foreign key constraint failed on the field: `...`
-      // This indicates some related data was not properly handled (deleted or unlinked)
-      // and your schema does not have `onDelete: Cascade` or `onDelete: SetNull` for that relation.
-       if (error.code === 'P2003') {
-        console.error('Foreign key constraint violation during user deletion:', error.meta);
-        return NextResponse.json({ error: 'Failed to delete user due to existing related records. Please check server logs.' }, { status: 409 });
-      }
-    }
-    return NextResponse.json(
-      { error: 'Failed to delete user. An unexpected error occurred.' },
+      { error: 'Failed to create user. Please try again later.' },
       { status: 500 }
     );
   }

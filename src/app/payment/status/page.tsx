@@ -1,18 +1,29 @@
 'use client';
 
+// /src/app/payment/status/page.tsx - FINAL VERSION (Schema Compatible)
+
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 
-// Client component that uses useSearchParams
+interface PaymentDetails {
+  gateway: string;
+  reference: string;
+  assessmentId?: string;
+  assessmentType?: string;
+  redirectUrl?: string;
+}
+
 function PaymentStatusClient() {
   const router = useRouter();
   const { data: session, status } = useSession();
   const searchParams = useSearchParams();
   
   const [paymentStatus, setPaymentStatus] = useState<'success' | 'failed' | 'unknown' | 'loading'>('loading');
-  const [paymentDetails, setPaymentDetails] = useState<any>(null);
+  const [paymentDetails, setPaymentDetails] = useState<PaymentDetails | null>(null);
+  const [isNavigating, setIsNavigating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   
   useEffect(() => {
     if (status === 'unauthenticated') {
@@ -23,152 +34,157 @@ function PaymentStatusClient() {
     if (status === 'authenticated') {
       checkPaymentStatus();
     }
-  }, [status, router, searchParams]);
+  }, [status, router]);
   
   const checkPaymentStatus = async () => {
-    // Extract the relevant parameters based on the payment gateway
-    const billplzId = searchParams.get('billplz[id]');
-    const billplzPaid = searchParams.get('billplz[paid]');
-    const billplzSignature = searchParams.get('billplz[x_signature]');
-    const toyyibStatus = searchParams.get('status');
-    const toyyibBillCode = searchParams.get('billcode');
-    
-    // If we have Billplz parameters
-    if (billplzId) {
-      try {
-        // Create a set of all URL parameters to verify on server
-        const billplzParams = {
-          id: billplzId,
-          paid: billplzPaid === 'true' ? 'true' : 'false',
-          x_signature: billplzSignature || '',
+    try {
+      setError(null);
+      
+      // Extract Billplz parameters
+      const billplzId = searchParams.get('billplz[id]');
+      const billplzPaid = searchParams.get('billplz[paid]');
+      const billplzSignature = searchParams.get('billplz[x_signature]');
+      
+      console.log('🔍 Payment status check:', {
+        billplzId,
+        billplzPaid,
+        hasSignature: !!billplzSignature,
+        allParams: Object.fromEntries(searchParams.entries())
+      });
+      
+      if (billplzId) {
+        const verificationData = {
+          gateway: 'billplz',
+          params: {
+            id: billplzId,
+            paid: billplzPaid === 'true' ? 'true' : 'false',
+            x_signature: billplzSignature || '',
+          }
         };
         
-        // Call API to verify payment and update database
+        console.log('📤 Sending verification:', verificationData);
+        
         const response = await fetch('/api/payment/verify-redirect', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            gateway: 'billplz',
-            params: billplzParams
-          }),
+          body: JSON.stringify(verificationData),
         });
         
         const data = await response.json();
+        console.log('📥 Verification response:', data);
         
         if (response.ok && data.success) {
           setPaymentStatus(data.status === 'completed' ? 'success' : 'failed');
           setPaymentDetails({
             gateway: 'Billplz',
             reference: billplzId,
-            assessmentId: data.assessmentId || null,
-            assessmentType: data.assessmentType || null,
-            redirectUrl: data.redirectUrl || null,
-            isManualProcessing: data.isManualProcessing || false
+            assessmentId: data.assessmentId,
+            assessmentType: data.assessmentType,
+            redirectUrl: data.redirectUrl
           });
         } else {
-          console.error('Payment verification failed:', data.message);
-          // Still show status based on URL parameters as fallback
-          if (billplzPaid === 'true') {
-            setPaymentStatus('success');
-          } else {
-            setPaymentStatus('failed');
-          }
+          console.error('Verification failed:', data.message);
+          setError(data.message || 'Verification failed');
+          
+          // Fallback based on URL params
+          setPaymentStatus(billplzPaid === 'true' ? 'success' : 'failed');
           setPaymentDetails({
             gateway: 'Billplz',
             reference: billplzId
           });
         }
-      } catch (error) {
-        console.error('Error verifying payment:', error);
-        // Fallback to URL parameter status
-        if (billplzPaid === 'true') {
-          setPaymentStatus('success');
-        } else {
-          setPaymentStatus('failed');
-        }
-        setPaymentDetails({
-          gateway: 'Billplz',
-          reference: billplzId
-        });
-      }
-    } 
-    // If we have Toyyibpay parameters
-    else if (toyyibBillCode) {
-      // Similar logic for Toyyibpay
-      try {
-        const toyyibParams = {
-          billcode: toyyibBillCode,
-          status: toyyibStatus || '',
-        };
+      } else {
+        // Check for other payment gateways
+        const toyyibBillCode = searchParams.get('billcode');
+        const toyyibStatus = searchParams.get('status');
         
-        const response = await fetch('/api/payment/verify-redirect', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            gateway: 'toyyibpay',
-            params: toyyibParams
-          }),
-        });
-        
-        const data = await response.json();
-        
-        if (response.ok && data.success) {
-          setPaymentStatus(data.status === 'completed' ? 'success' : 'failed');
-          setPaymentDetails({
-            gateway: 'ToyyibPay',
-            reference: toyyibBillCode,
-            assessmentId: data.assessmentId || null,
-            assessmentType: data.assessmentType || null,
-            redirectUrl: data.redirectUrl || null,
-            isManualProcessing: data.isManualProcessing || false
-          });
-        } else {
-          // Fallback handling similar to Billplz
-          if (toyyibStatus === '1') {
-            setPaymentStatus('success');
-          } else {
-            setPaymentStatus('failed');
-          }
+        if (toyyibBillCode) {
+          setPaymentStatus(toyyibStatus === '1' ? 'success' : 'failed');
           setPaymentDetails({
             gateway: 'ToyyibPay',
             reference: toyyibBillCode
           });
-        }
-      } catch (error) {
-        console.error('Error verifying payment:', error);
-        // Fallback handling
-        if (toyyibStatus === '1') {
-          setPaymentStatus('success');
         } else {
-          setPaymentStatus('failed');
+          setPaymentStatus('unknown');
+          setError('No payment parameters found in URL');
         }
-        setPaymentDetails({
-          gateway: 'ToyyibPay',
-          reference: toyyibBillCode
-        });
       }
-    } else {
+    } catch (error) {
+      console.error('❌ Error checking payment status:', error);
+      setError(error instanceof Error ? error.message : 'Unknown error occurred');
       setPaymentStatus('unknown');
     }
   };
   
-  const getAssessmentUrl = () => {
-    // If we have a specific redirect URL from the server, use that
-    if (paymentDetails?.redirectUrl) {
-      return paymentDetails.redirectUrl;
-    }
+  const handleGoToAssessment = async () => {
+    if (isNavigating) return;
     
-    // If we have assessment details, build the URL for results page
-    if (paymentDetails?.assessmentId && paymentDetails?.assessmentType) {
-      return `/assessment/${paymentDetails.assessmentType}/results/${paymentDetails.assessmentId}`;
-    }
+    setIsNavigating(true);
     
-    // Default to dashboard
-    return '/dashboard';
+    try {
+      let targetUrl = '/dashboard';
+      
+      // Priority 1: Use redirect URL from API
+      if (paymentDetails?.redirectUrl) {
+        targetUrl = paymentDetails.redirectUrl;
+        console.log('✅ Using API redirect URL:', targetUrl);
+      }
+      // Priority 2: Build URL from assessment data
+      else if (paymentDetails?.assessmentId && paymentDetails?.assessmentType) {
+        targetUrl = `/assessment/${paymentDetails.assessmentType}/${paymentDetails.assessmentId}`;
+        console.log('✅ Building URL from assessment data:', targetUrl);
+      }
+      // Priority 3: Try to fetch assessment data by bill ID
+      else if (paymentDetails?.reference) {
+        console.log('🔍 Fetching assessment by bill ID...');
+        try {
+          const response = await fetch('/api/payment/get-assessment-by-bill', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ billId: paymentDetails.reference })
+          });
+          
+          if (response.ok) {
+            const data = await response.json();
+            if (data.assessment) {
+              targetUrl = `/assessment/${data.assessment.type}/${data.assessment.id}`;
+              console.log('✅ Found assessment via bill lookup:', targetUrl);
+              
+              // Update state for future reference
+              setPaymentDetails(prev => ({
+                ...prev!,
+                assessmentId: data.assessment.id,
+                assessmentType: data.assessment.type,
+                redirectUrl: targetUrl
+              }));
+            }
+          } else {
+            console.warn('⚠️ Bill lookup failed:', response.status);
+          }
+        } catch (error) {
+          console.error('❌ Bill lookup error:', error);
+        }
+      }
+      
+      console.log('🚀 Navigating to:', targetUrl);
+      
+      // Navigate using Next.js router for internal routes
+      if (targetUrl.startsWith('/')) {
+        await router.push(targetUrl);
+      } else {
+        // For external URLs, use window.location
+        window.location.href = targetUrl;
+      }
+      
+    } catch (error) {
+      console.error('❌ Navigation error:', error);
+      // Fallback: Force page refresh to dashboard
+      window.location.href = '/dashboard';
+    } finally {
+      setIsNavigating(false);
+    }
   };
   
   if (status === 'loading' || paymentStatus === 'loading') {
@@ -186,7 +202,8 @@ function PaymentStatusClient() {
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md mx-auto">
         <div className="bg-white rounded-xl shadow-md overflow-hidden">
-          {/* Header with appropriate color based on status */}
+          
+          {/* Header */}
           <div className={`p-6 text-white ${
             paymentStatus === 'success' 
               ? 'bg-gradient-to-r from-emerald-400 to-green-500' 
@@ -197,20 +214,20 @@ function PaymentStatusClient() {
             <div className="flex justify-center mb-4">
               {paymentStatus === 'success' ? (
                 <div className="bg-white rounded-full p-2">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-green-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  <svg className="h-12 w-12 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
                 </div>
               ) : paymentStatus === 'failed' ? (
                 <div className="bg-white rounded-full p-2">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-red-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                  <svg className="h-12 w-12 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </div>
               ) : (
                 <div className="bg-white rounded-full p-2">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-12 w-12 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  <svg className="h-12 w-12 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M6.938 17h10.124a1.5 1.5 0 001.313-2.25L13.313 7.5a1.5 1.5 0 00-2.626 0L5.625 14.75A1.5 1.5 0 006.938 17z" />
                   </svg>
                 </div>
               )}
@@ -225,14 +242,20 @@ function PaymentStatusClient() {
             </h1>
           </div>
           
+          {/* Content */}
           <div className="p-6">
+            
+            {/* Error Message */}
+            {error && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-sm text-red-600">⚠️ {error}</p>
+              </div>
+            )}
+            
             {paymentStatus === 'success' && (
               <div className="text-center">
                 <p className="mb-6 text-gray-600">
                   Thank you for your payment. Your assessment is now available.
-                  {paymentDetails?.isManualProcessing 
-                    ? ' Our experts will review it and provide personalized results.' 
-                    : ''}
                 </p>
                 
                 {paymentDetails && (
@@ -241,30 +264,36 @@ function PaymentStatusClient() {
                       <span className="text-gray-500">Payment Gateway:</span>
                       <span className="font-medium">{paymentDetails.gateway}</span>
                     </div>
-                    <div className="flex justify-between">
+                    <div className="flex justify-between mb-2">
                       <span className="text-gray-500">Reference:</span>
                       <span className="font-medium">{paymentDetails.reference}</span>
                     </div>
-                    {paymentDetails.isManualProcessing && (
-                      <div className="mt-4 pt-3 border-t border-gray-200">
-                        <p className="text-blue-600">
-                          Your assessment will be manually reviewed by our experts. This typically takes 1-2 business days.
-                        </p>
+                    {paymentDetails.assessmentId && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Assessment:</span>
+                        <span className="font-medium">{paymentDetails.assessmentType?.toUpperCase()}</span>
                       </div>
                     )}
                   </div>
                 )}
                 
-                <div className="flex flex-col space-y-3">
-                  <Link
-                    href={getAssessmentUrl()}
-                    className="px-6 py-3 bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] text-white rounded-lg font-medium hover:shadow-lg transition-shadow text-center"
-                  >
-                    {paymentDetails?.isManualProcessing 
-                      ? 'View Assessment Status' 
-                      : 'Go to Assessment'}
-                  </Link>
-                </div>
+                <button
+                  onClick={handleGoToAssessment}
+                  disabled={isNavigating}
+                  className="w-full px-6 py-3 bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] text-white rounded-lg font-medium hover:shadow-lg transition-shadow disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isNavigating ? (
+                    <span className="flex items-center justify-center">
+                      <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Loading...
+                    </span>
+                  ) : (
+                    'Go to Assessment'
+                  )}
+                </button>
               </div>
             )}
             
@@ -308,7 +337,7 @@ function PaymentStatusClient() {
             {paymentStatus === 'unknown' && (
               <div className="text-center">
                 <p className="mb-6 text-gray-600">
-                  We couldn't determine the status of your payment. Please check your dashboard or contact support.
+                  We couldn't determine your payment status. Please check your dashboard or contact support.
                 </p>
                 
                 <div className="flex flex-col space-y-3">
@@ -318,15 +347,35 @@ function PaymentStatusClient() {
                   >
                     Go to Dashboard
                   </Link>
+                  
+                  <button
+                    onClick={() => window.location.reload()}
+                    className="px-6 py-3 bg-gray-100 text-gray-700 rounded-lg font-medium hover:bg-gray-200 transition-colors"
+                  >
+                    Refresh Page
+                  </button>
                 </div>
               </div>
             )}
           </div>
           
-          {/* Footer with support info */}
-          <div className="bg-gray-50 p-4 text-center text-sm text-gray-500 border-t border-gray-100">
-            <p>If you need assistance, please contact our support team.</p>
-            <p className="mt-1">support@kareerfit.com</p>
+          {/* Footer */}
+          <div className="bg-gray-50 p-4 text-center text-sm text-gray-500 border-t">
+            <p>Need help? Contact support@kareerfit.com</p>
+            {/* Debug info (remove in production) */}
+            {process.env.NODE_ENV === 'development' && (
+              <details className="mt-2">
+                <summary className="cursor-pointer text-xs">Debug Info</summary>
+                <pre className="text-xs mt-2 text-left overflow-auto">
+                  {JSON.stringify({
+                    paymentStatus,
+                    paymentDetails,
+                    error,
+                    urlParams: Object.fromEntries(searchParams.entries())
+                  }, null, 2)}
+                </pre>
+              </details>
+            )}
           </div>
         </div>
       </div>
@@ -334,53 +383,17 @@ function PaymentStatusClient() {
   );
 }
 
-// Fallback component for Suspense
 function PaymentStatusFallback() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md mx-auto">
-        <div className="bg-white rounded-xl shadow-md overflow-hidden animate-pulse">
-          {/* Header placeholder */}
-          <div className="p-6 bg-gray-200 h-40">
-            <div className="flex justify-center mb-4">
-              <div className="bg-gray-300 rounded-full p-2 h-16 w-16"></div>
-            </div>
-            <div className="h-8 bg-gray-300 w-1/2 mx-auto"></div>
-          </div>
-          
-          {/* Content placeholder */}
-          <div className="p-6">
-            <div className="text-center">
-              <div className="h-4 bg-gray-200 w-3/4 mx-auto mb-6"></div>
-              
-              <div className="bg-gray-100 rounded-lg p-4 mb-6">
-                <div className="flex justify-between mb-2">
-                  <div className="h-4 bg-gray-200 w-24"></div>
-                  <div className="h-4 bg-gray-200 w-20"></div>
-                </div>
-                <div className="flex justify-between">
-                  <div className="h-4 bg-gray-200 w-24"></div>
-                  <div className="h-4 bg-gray-200 w-20"></div>
-                </div>
-              </div>
-              
-              <div className="h-12 bg-gray-200 rounded-lg mb-3"></div>
-              <div className="h-12 bg-gray-200 rounded-lg"></div>
-            </div>
-          </div>
-          
-          {/* Footer placeholder */}
-          <div className="bg-gray-100 p-4 text-center">
-            <div className="h-4 bg-gray-200 w-2/3 mx-auto mb-2"></div>
-            <div className="h-4 bg-gray-200 w-1/3 mx-auto"></div>
-          </div>
-        </div>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex items-center justify-center">
+      <div className="text-center">
+        <div className="w-16 h-16 border-4 border-t-transparent border-[#7e43f1] rounded-full animate-spin mx-auto mb-4"></div>
+        <p className="text-gray-600">Loading payment status...</p>
       </div>
     </div>
   );
 }
 
-// Main component with Suspense
 export default function PaymentStatusPage() {
   return (
     <Suspense fallback={<PaymentStatusFallback />}>
