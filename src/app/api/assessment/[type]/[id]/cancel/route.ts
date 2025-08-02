@@ -6,9 +6,12 @@ import { prisma } from '@/lib/db';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { type: string; id: string } }
+  { params }: { params: Promise<{ type: string; id: string }> }
 ) {
   try {
+    // Await the params promise in Next.js 15
+    const { type, id } = await params;
+    
     const session = await getServerSession(authOptions);
     
     if (!session || !session.user?.id) {
@@ -17,8 +20,6 @@ export async function POST(
         { status: 401 }
       );
     }
-    
-    const { type, id } = params;
     
     // Get the current assessment
     const assessment = await prisma.assessment.findUnique({
