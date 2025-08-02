@@ -12,22 +12,33 @@ def process_file(file_path):
     with open(file_path, 'r') as f:
         content = f.read()
 
-    # Pattern to match the old route handler params
-    old_pattern = r'{\s*params\s*}:\s*{\s*params:\s*Promise<[^>]+>}'
+    # Patterns to match and replace
+    patterns = [
+        # Fix Promise<params> pattern
+        (
+            r'{\s*params\s*}:\s*{\s*params:\s*Promise<([^>]+)>}',
+            lambda m: f'context: {{ params: {m.group(1)} }}'
+        ),
+        # Fix direct params destructuring
+        (
+            r'{\s*params\s*}:\s*{\s*params:\s*{\s*([^}]+)\s*}\s*}',
+            lambda m: f'context: {{ params: {{ {m.group(1)} }} }}'
+        ),
+        # Fix params access
+        (
+            r'const\s*{\s*([^}]+)\s*}\s*=\s*(?:await\s+)?params',
+            lambda m: f'const {{ {m.group(1)} }} = context.params'
+        ),
+        # Remove await from params
+        (
+            r'await\s+params',
+            'params'
+        )
+    ]
     
-    # Replace with new format
-    new_content = re.sub(
-        old_pattern,
-        lambda m: m.group(0).replace('Promise<', '').replace('>', ''),
-        content
-    )
-    
-    # Remove await from params access
-    new_content = re.sub(
-        r'await\s+params',
-        'params',
-        new_content
-    )
+    new_content = content
+    for pattern, replacement in patterns:
+        new_content = re.sub(pattern, replacement, new_content)
 
     return new_content
 
@@ -38,6 +49,11 @@ def backup_file(file_path, backup_dir):
     print(f"📑 Backed up: {file_path} -> {backup_path}")
 
 def main():
+    # Check for --dry-run flag
+    dry_run = "--dry-run" in sys.argv
+    if dry_run:
+        print("🔍 Running in dry-run mode - no files will be modified")
+
     # Find all route.ts files in dynamic routes
     app_dir = Path('src/app')
     if not app_dir.exists():
@@ -78,12 +94,28 @@ def main():
             # Process file
             new_content = process_file(file_path)
             
-            # Write changes
-            with open(file_path, 'w') as f:
-                f.write(new_content)
+            if dry_run:
+                # Show diff in dry-run mode
+                from difflib import unified_diff
+                with open(file_path, 'r') as f:
+                    old_content = f.read()
+                diff = list(unified_diff(
+                    old_content.splitlines(keepends=True),
+                    new_content.splitlines(keepends=True),
+                    fromfile=str(file_path),
+                    tofile=f"{file_path} (after migration)"
+                ))
+                if diff:
+                    print("\n" + "".join(diff))
+                else:
+                    print("No changes needed")
+            else:
+                # Write changes in normal mode
+                with open(file_path, 'w') as f:
+                    f.write(new_content)
             
             success_count += 1
-            print(f"✅ Successfully migrated: {file_path}")
+            print(f"✅ {'Analyzed' if dry_run else 'Migrated'}: {file_path}")
             
         except Exception as e:
             print(f"❌ Error processing {file_path}: {str(e)}")

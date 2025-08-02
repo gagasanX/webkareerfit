@@ -6,10 +6,10 @@ import { prisma } from '@/lib/db';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { type: string; id: string } }
+  context: { params: { type: string; id: string } }
 ) {
   try {
-    const { type, id } = params;
+    const { type, id } = context.params;
     
     const session = await getServerSession(authOptions);
     
