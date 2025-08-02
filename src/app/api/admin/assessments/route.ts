@@ -1,3 +1,4 @@
+// /src/app/api/admin/assessments/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { validateAdminAuth, logAdminAction, checkAdminRateLimit } from '@/lib/middleware/adminAuth';
 import { prisma } from '@/lib/db';
@@ -104,6 +105,18 @@ export async function GET(request: NextRequest) {
     const validPage = Math.max(1, page);
     const offset = (validPage - 1) * limit;
 
+    // DEBUG: Log query parameters
+    logger.info('Assessment query parameters', {
+      page: validPage,
+      limit,
+      search,
+      status,
+      type,
+      sortBy,
+      sortOrder,
+      offset
+    });
+
     // 4. Build where clause
     const whereClause: Prisma.AssessmentWhereInput = {};
 
@@ -127,19 +140,22 @@ export async function GET(request: NextRequest) {
       ];
     }
 
-    // Status filter
+    // Status filter - DEBUG: Log if filtering
     if (status !== 'all') {
       whereClause.status = status;
+      logger.info('Filtering by status', { status });
     }
 
     // Type filter
     if (type !== 'all') {
       whereClause.type = type;
+      logger.info('Filtering by type', { type });
     }
 
     // Tier filter
     if (tier !== 'all') {
       whereClause.tier = tier;
+      logger.info('Filtering by tier', { tier });
     }
 
     // Assigned clerk filter
@@ -149,6 +165,7 @@ export async function GET(request: NextRequest) {
       } else {
         whereClause.assignedClerkId = assignedClerk;
       }
+      logger.info('Filtering by clerk', { assignedClerk });
     }
 
     // Manual processing filter
@@ -158,16 +175,23 @@ export async function GET(request: NextRequest) {
       whereClause.manualProcessing = false;
     }
 
-    // Date range filter
+    // Date range filter - DEBUG: Check if this blocks new assessments
     if (dateFrom || dateTo) {
       whereClause.createdAt = {};
       if (dateFrom) {
-        whereClause.createdAt.gte = new Date(dateFrom);
+        const fromDate = new Date(dateFrom);
+        whereClause.createdAt.gte = fromDate;
+        logger.info('Date from filter', { dateFrom, fromDate });
       }
       if (dateTo) {
-        whereClause.createdAt.lte = new Date(dateTo + 'T23:59:59.999Z');
+        const toDate = new Date(dateTo + 'T23:59:59.999Z');
+        whereClause.createdAt.lte = toDate;
+        logger.info('Date to filter', { dateTo, toDate });
       }
     }
+
+    // DEBUG: Log final where clause
+    logger.info('Final where clause', { whereClause: JSON.stringify(whereClause, null, 2) });
 
     // 5. Build order by clause
     const validSortFields = ['createdAt', 'updatedAt', 'status', 'type', 'tier', 'price'];
@@ -178,45 +202,88 @@ export async function GET(request: NextRequest) {
       [safeSortBy]: safeSortOrder
     };
 
-    // 6. Fetch assessments and total count
-    const [assessments, totalCount] = await Promise.all([
-      prisma.assessment.findMany({
-        where: whereClause,
-        orderBy,
-        skip: offset,
-        take: limit,
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              email: true
-            }
-          },
-          assignedClerk: {
-            select: {
-              id: true,
-              name: true,
-              email: true
-            }
-          },
-          payment: {
-            select: {
-              id: true,
-              amount: true,
-              status: true,
-              method: true
-            }
-          },
-          _count: {
-            select: {
-              referrals: true
-            }
+    logger.info('Order by clause', { orderBy });
+
+    // DEBUG: First, get total count without pagination
+    const totalCount = await prisma.assessment.count({ where: whereClause });
+    logger.info('Total assessments matching filters', { totalCount });
+
+    // DEBUG: Get latest 5 assessments without any filters to verify they exist
+    const latestAssessments = await prisma.assessment.findMany({
+      take: 5,
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        type: true,
+        status: true,
+        createdAt: true,
+        user: {
+          select: {
+            email: true
           }
         }
-      }),
-      prisma.assessment.count({ where: whereClause })
-    ]);
+      }
+    });
+
+    logger.info('Latest 5 assessments in database', { 
+      assessments: latestAssessments.map(a => ({
+        id: a.id,
+        type: a.type,
+        status: a.status,
+        createdAt: a.createdAt.toISOString(),
+        userEmail: a.user.email
+      }))
+    });
+
+    // 6. Fetch assessments with pagination
+    const assessments = await prisma.assessment.findMany({
+      where: whereClause,
+      orderBy,
+      skip: offset,
+      take: limit,
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        },
+        assignedClerk: {
+          select: {
+            id: true,
+            name: true,
+            email: true
+          }
+        },
+        payment: {
+          select: {
+            id: true,
+            amount: true,
+            status: true,
+            method: true
+          }
+        },
+        _count: {
+          select: {
+            referrals: true
+          }
+        }
+      }
+    });
+
+    logger.info('Query results', { 
+      found: assessments.length,
+      totalCount,
+      page: validPage,
+      limit,
+      firstResult: assessments[0] ? {
+        id: assessments[0].id,
+        type: assessments[0].type,
+        status: assessments[0].status,
+        createdAt: assessments[0].createdAt.toISOString()
+      } : null
+    });
 
     // 7. Format response
     const formattedAssessments: Assessment[] = assessments.map(assessment => ({
@@ -505,10 +572,16 @@ async function getAssessmentStats(whereClause: Prisma.AssessmentWhereInput): Pro
       where: whereClause,
       _count: { id: true }
     }),
-    prisma.$queryRaw<Array<{ avgHours: number }>>`
-      SELECT AVG(EXTRACT(EPOCH FROM ("reviewedAt" - "createdAt")) / 3600) as "avgHours"
+    // Enhanced completion time query with better null safety
+    prisma.$queryRaw<Array<{ avgHours: number | null }>>`
+      SELECT COALESCE(
+        AVG(EXTRACT(EPOCH FROM ("reviewedAt" - "createdAt")) / 3600), 
+        0
+      ) as "avgHours"
       FROM "Assessment"
-      WHERE "reviewedAt" IS NOT NULL AND status = 'completed'
+      WHERE "reviewedAt" IS NOT NULL 
+        AND status = 'completed' 
+        AND "createdAt" IS NOT NULL
     `,
     prisma.payment.aggregate({
       where: {
@@ -519,8 +592,10 @@ async function getAssessmentStats(whereClause: Prisma.AssessmentWhereInput): Pro
     })
   ]);
 
+  // Map status counts for easy access
   const statusMap = new Map(statusCounts.map(item => [item.status, item._count.id]));
 
+  // Calculate stats with enhanced null safety
   const completedCount = statusMap.get('completed') || 0;
   const pendingCount = statusMap.get('pending') || 0;
   const inProgressCount = statusMap.get('in_progress') || 0;
@@ -530,6 +605,14 @@ async function getAssessmentStats(whereClause: Prisma.AssessmentWhereInput): Pro
     where: { ...whereClause, manualProcessing: true }
   });
 
+  // Enhanced completion time calculation with multiple fallbacks
+  const avgCompletionTime = completionTimes?.[0]?.avgHours;
+  let safeAvgCompletionTime = 0;
+  
+  if (avgCompletionTime !== null && avgCompletionTime !== undefined && !isNaN(Number(avgCompletionTime))) {
+    safeAvgCompletionTime = Math.max(0, Number(avgCompletionTime));
+  }
+
   return {
     totalAssessments,
     completedAssessments: completedCount,
@@ -537,9 +620,9 @@ async function getAssessmentStats(whereClause: Prisma.AssessmentWhereInput): Pro
     inProgressAssessments: inProgressCount,
     cancelledAssessments: cancelledCount,
     manualProcessingCount,
-    averageCompletionTime: completionTimes[0]?.avgHours || 0,
-    totalRevenue: revenue._sum.amount || 0,
-    conversionRate: totalAssessments > 0 ? (completedCount / totalAssessments) * 100 : 0
+    averageCompletionTime: safeAvgCompletionTime,
+    totalRevenue: Number(revenue._sum.amount) || 0,
+    conversionRate: totalAssessments > 0 ? Number(((completedCount / totalAssessments) * 100).toFixed(2)) : 0
   };
 }
 

@@ -1,3 +1,6 @@
+// /src/app/admin/analytics/page.tsx
+// Comprehensive analytics dashboard for admin
+// Features: Revenue tracking, user growth, assessment analytics, performance metrics
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -163,9 +166,11 @@ export default function AnalyticsPage() {
   }, [status, session, router]);
 
   // Fetch analytics data
+  // Enhanced analytics fetch with comprehensive data validation
   const fetchAnalytics = async () => {
     try {
       setError(null);
+      setLoading(true);
       
       let url = `/api/admin/analytics?range=${dateRange}`;
       
@@ -177,19 +182,76 @@ export default function AnalyticsPage() {
       const response = await fetch(url);
       
       if (!response.ok) {
-        throw new Error(`Failed to fetch analytics: ${response.status}`);
+        const errorText = await response.text();
+        throw new Error(`Failed to fetch analytics: ${response.status} - ${errorText}`);
       }
       
       const result = await response.json();
       
       if (!result.success) {
-        throw new Error('API returned unsuccessful response');
+        throw new Error(result.error || 'API returned unsuccessful response');
       }
       
-      setData(result.data);
+      // Enhanced data validation and safe fallbacks
+      if (!result.data || typeof result.data !== 'object') {
+        throw new Error('Invalid analytics data structure received');
+      }
+      
+      const safeData = {
+        overview: {
+          totalUsers: Number(result.data.overview?.totalUsers) || 0,
+          totalAssessments: Number(result.data.overview?.totalAssessments) || 0,
+          totalRevenue: Number(result.data.overview?.totalRevenue) || 0,
+          totalCommissions: Number(result.data.overview?.totalCommissions) || 0,
+          activeAffiliates: Number(result.data.overview?.activeAffiliates) || 0,
+          pendingAssessments: Number(result.data.overview?.pendingAssessments) || 0,
+        },
+        userGrowth: Array.isArray(result.data.userGrowth) ? result.data.userGrowth.map((item: any) => ({
+          date: item.date || '',
+          users: Number(item.users) || 0,
+          assessments: Number(item.assessments) || 0,
+          revenue: Number(item.revenue) || 0
+        })) : [],
+        assessmentTypes: Array.isArray(result.data.assessmentTypes) ? result.data.assessmentTypes.map((item: any) => ({
+          type: item.type || 'Unknown',
+          count: Number(item.count) || 0,
+          revenue: Number(item.revenue) || 0,
+          avgPrice: Number(item.avgPrice) || 0
+        })) : [],
+        assessmentStatus: Array.isArray(result.data.assessmentStatus) ? result.data.assessmentStatus.map((item: any) => ({
+          status: item.status || 'Unknown',
+          count: Number(item.count) || 0,
+          percentage: Number(item.percentage) || 0
+        })) : [],
+        revenueBreakdown: Array.isArray(result.data.revenueBreakdown) ? result.data.revenueBreakdown.map((item: any) => ({
+          tier: item.tier || 'Unknown',
+          count: Number(item.count) || 0,
+          revenue: Number(item.revenue) || 0,
+          percentage: Number(item.percentage) || 0
+        })) : [],
+        topAffiliates: Array.isArray(result.data.topAffiliates) ? result.data.topAffiliates.map((item: any) => ({
+          id: item.id || '',
+          name: item.name || 'Unknown',
+          email: item.email || '',
+          totalReferrals: Number(item.totalReferrals) || 0,
+          totalEarnings: Number(item.totalEarnings) || 0,
+          conversionRate: Number(item.conversionRate) || 0
+        })) : [],
+        clerksPerformance: Array.isArray(result.data.clerksPerformance) ? result.data.clerksPerformance.map((item: any) => ({
+          id: item.id || '',
+          name: item.name || 'Unknown',
+          email: item.email || '',
+          assignedCount: Number(item.assignedCount) || 0,
+          completedCount: Number(item.completedCount) || 0,
+          avgProcessingTime: Number(item.avgProcessingTime) || 0
+        })) : []
+      };
+      
+      setData(safeData);
     } catch (err) {
       console.error('Error fetching analytics:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load analytics');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load analytics';
+      setError(errorMessage);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -363,42 +425,42 @@ export default function AnalyticsPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6 mb-8">
         <MetricCard
           title="Total Users"
-          value={data.overview.totalUsers}
+          value={data.overview.totalUsers || 0}
           icon={<Users className="h-6 w-6 text-white" />}
           color="bg-blue-600"
         />
         
         <MetricCard
           title="Assessments"
-          value={data.overview.totalAssessments}
+          value={data.overview.totalAssessments || 0}
           icon={<ClipboardList className="h-6 w-6 text-white" />}
           color="bg-green-600"
         />
         
         <MetricCard
           title="Revenue"
-          value={formatCurrency(data.overview.totalRevenue)}
+          value={formatCurrency(data.overview.totalRevenue || 0)}
           icon={<DollarSign className="h-6 w-6 text-white" />}
           color="bg-purple-600"
         />
         
         <MetricCard
           title="Commissions"
-          value={formatCurrency(data.overview.totalCommissions)}
+          value={formatCurrency(data.overview.totalCommissions || 0)}
           icon={<TrendingUp className="h-6 w-6 text-white" />}
           color="bg-yellow-600"
         />
         
         <MetricCard
           title="Active Affiliates"
-          value={data.overview.activeAffiliates}
+          value={data.overview.activeAffiliates || 0}
           icon={<UserCheck className="h-6 w-6 text-white" />}
           color="bg-indigo-600"
         />
         
         <MetricCard
           title="Pending Reviews"
-          value={data.overview.pendingAssessments}
+          value={data.overview.pendingAssessments || 0}
           icon={<Clock className="h-6 w-6 text-white" />}
           color="bg-red-600"
         />
@@ -447,9 +509,9 @@ export default function AnalyticsPage() {
               <tbody className="divide-y divide-gray-200">
                 {data.topAffiliates.slice(0, 5).map((affiliate, index) => (
                   <tr key={affiliate.id}>
-                    <td className="px-4 py-2 text-sm text-gray-900 truncate">{affiliate.name}</td>
-                    <td className="px-4 py-2 text-sm text-gray-900 text-right">{affiliate.totalReferrals}</td>
-                    <td className="px-4 py-2 text-sm text-gray-900 text-right">{formatCurrency(affiliate.totalEarnings)}</td>
+                    <td className="px-4 py-2 text-sm text-gray-900 truncate">{affiliate.name || 'Unknown'}</td>
+                    <td className="px-4 py-2 text-sm text-gray-900 text-right">{affiliate.totalReferrals || 0}</td>
+                    <td className="px-4 py-2 text-sm text-gray-900 text-right">{formatCurrency(affiliate.totalEarnings || 0)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -473,10 +535,10 @@ export default function AnalyticsPage() {
               <tbody className="divide-y divide-gray-200">
                 {data.clerksPerformance.slice(0, 5).map((clerk, index) => (
                   <tr key={clerk.id}>
-                    <td className="px-4 py-2 text-sm text-gray-900 truncate">{clerk.name}</td>
-                    <td className="px-4 py-2 text-sm text-gray-900 text-right">{clerk.assignedCount}</td>
-                    <td className="px-4 py-2 text-sm text-gray-900 text-right">{clerk.completedCount}</td>
-                    <td className="px-4 py-2 text-sm text-gray-900 text-right">{clerk.avgProcessingTime.toFixed(1)}</td>
+                    <td className="px-4 py-2 text-sm text-gray-900 truncate">{clerk.name || 'Unknown'}</td>
+                    <td className="px-4 py-2 text-sm text-gray-900 text-right">{clerk.assignedCount || 0}</td>
+                    <td className="px-4 py-2 text-sm text-gray-900 text-right">{clerk.completedCount || 0}</td>
+                    <td className="px-4 py-2 text-sm text-gray-900 text-right">{(clerk.avgProcessingTime || 0).toFixed(1)}</td>
                   </tr>
                 ))}
               </tbody>

@@ -560,9 +560,9 @@ export default function DashboardClient() {
         }}
       />
       
-      {/* ✅ FIXED Sidebar - Profile moved to bottom */}
+      {/* ✅ FIXED Sidebar with BETA Badge */}
       <aside className="w-16 sm:w-20 bg-white shadow-lg flex flex-col items-center py-4 sm:py-8 fixed h-full z-40">
-        {/* Logo - Changed to KF text */}
+        {/* Logo - Clean without BETA */}
         <div className="bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] p-1 rounded-full mb-6 sm:mb-10 w-10 h-10 sm:w-12 sm:h-12 flex items-center justify-center">
           <span className="text-white font-bold text-sm sm:text-base">KF</span>
         </div>
@@ -628,6 +628,11 @@ export default function DashboardClient() {
           </div>
           
           <div className="flex items-center space-x-2 sm:space-x-3">
+            {/* BETA Badge */}
+            <div className="px-2 sm:px-3 py-1 bg-orange-500 text-white text-xs sm:text-sm rounded-full font-bold shadow-sm">
+              BETA
+            </div>
+            
             {/* Notifications */}
             <div className="relative">
               <button 

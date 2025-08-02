@@ -1,3 +1,6 @@
+// /src/app/admin/assessments/page.tsx
+// Main assessment management interface for admins
+// Features: List, filter, search, bulk operations, stats dashboard
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -205,10 +208,11 @@ export default function AssessmentsPage() {
     }
   }, [status, session, router]);
 
-  // Fetch assessments
+  // Enhanced fetch with comprehensive debugging
   const fetchAssessments = async () => {
     try {
       setError(null);
+      setLoading(true);
       
       const params = new URLSearchParams({
         page: currentPage.toString(),
@@ -217,28 +221,105 @@ export default function AssessmentsPage() {
         ...filters
       });
 
+      console.log('🔍 Frontend Debug - Fetching with params:', params.toString());
+      console.log('🔍 Frontend Debug - Current filters:', filters);
+
       const response = await fetch(`/api/admin/assessments?${params}`);
       
       if (!response.ok) {
-        throw new Error(`Failed to fetch assessments: ${response.status}`);
+        const errorText = await response.text();
+        throw new Error(`Failed to fetch assessments: ${response.status} - ${errorText}`);
       }
       
       const result = await response.json();
       
       if (!result.success) {
-        throw new Error('API returned unsuccessful response');
+        throw new Error(result.error || 'API returned unsuccessful response');
       }
       
-      setAssessments(result.assessments);
-      setStats(result.stats);
-      setTypeBreakdown(result.typeBreakdown || []);
-      setAvailableClerks(result.availableClerks || []);
-      setTotalPages(result.pagination.totalPages);
-      setTotalCount(result.pagination.totalCount);
+      // 🚨 COMPREHENSIVE DEBUGGING
+      console.log('🎯 Frontend Debug - Full API Response:', result);
+      console.log('📊 Frontend Debug - Assessment count:', result.assessments?.length);
+      console.log('📊 Frontend Debug - Total count from API:', result.pagination?.totalCount);
+      console.log('🔍 Frontend Debug - Looking for assessment:', 'cmdron9ix0004t67lj3aoo2di');
+      
+      // Check if our specific assessment is in the response
+      const targetAssessment = result.assessments?.find((a: Assessment) => a.id === 'cmdron9ix0004t67lj3aoo2di');
+      console.log('🎯 Frontend Debug - Target assessment found:', targetAssessment ? 'YES ✅' : 'NO ❌');
+      
+      if (targetAssessment) {
+        console.log('✅ Frontend Debug - Assessment details:', {
+          id: targetAssessment.id,
+          type: targetAssessment.type,
+          status: targetAssessment.status,
+          createdAt: targetAssessment.createdAt,
+          user: targetAssessment.user?.email
+        });
+      } else {
+        console.log('❌ Frontend Debug - Assessment not in response. All IDs in this page:');
+        result.assessments?.forEach((a: Assessment, index: number) => {
+          console.log(`   ${index + 1}. ${a.id} (${a.type}, ${a.status}, ${a.createdAt})`);
+        });
+        
+        console.log('🔍 Frontend Debug - Checking if in other pages...');
+        console.log('📄 Frontend Debug - Current page:', currentPage, 'of', result.pagination?.totalPages);
+        console.log('📄 Frontend Debug - Items per page:', limit);
+        console.log('📄 Frontend Debug - Total items:', result.pagination?.totalCount);
+      }
+      
+      // Safely set data with fallbacks
+      const safeAssessments = Array.isArray(result.assessments) ? result.assessments : [];
+      setAssessments(safeAssessments);
+      
+      // Enhanced stats validation and fallbacks
+      if (result.stats && typeof result.stats === 'object') {
+        const safeStats = {
+          totalAssessments: Number(result.stats.totalAssessments) || 0,
+          completedAssessments: Number(result.stats.completedAssessments) || 0,
+          pendingAssessments: Number(result.stats.pendingAssessments) || 0,
+          inProgressAssessments: Number(result.stats.inProgressAssessments) || 0,
+          cancelledAssessments: Number(result.stats.cancelledAssessments) || 0,
+          manualProcessingCount: Number(result.stats.manualProcessingCount) || 0,
+          // Enhanced completion time handling
+          averageCompletionTime: (() => {
+            const time = result.stats.averageCompletionTime;
+            if (time === null || time === undefined || isNaN(Number(time))) {
+              return 0;
+            }
+            return Number(time);
+          })(),
+          totalRevenue: Number(result.stats.totalRevenue) || 0,
+          conversionRate: Number(result.stats.conversionRate) || 0
+        };
+        setStats(safeStats);
+      } else {
+        setStats(null);
+      }
+      
+      setTypeBreakdown(Array.isArray(result.typeBreakdown) ? result.typeBreakdown : []);
+      setAvailableClerks(Array.isArray(result.availableClerks) ? result.availableClerks : []);
+      setTotalPages(Number(result.pagination?.totalPages) || 1);
+      setTotalCount(Number(result.pagination?.totalCount) || 0);
+      
+      // 🚨 FINAL STATE CHECK
+      console.log('📝 Frontend Debug - Setting assessments state with', safeAssessments.length, 'items');
+      console.log('📝 Frontend Debug - Pagination:', {
+        currentPage,
+        totalPages: Number(result.pagination?.totalPages) || 1,
+        totalCount: Number(result.pagination?.totalCount) || 0,
+        limit
+      });
       
     } catch (err) {
-      console.error('Error fetching assessments:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load assessments');
+      console.error('❌ Frontend Debug - Error fetching assessments:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load assessments';
+      setError(errorMessage);
+      
+      // Set safe fallbacks to prevent UI crashes
+      setAssessments([]);
+      setStats(null);
+      setTypeBreakdown([]);
+      setAvailableClerks([]);
     } finally {
       setLoading(false);
     }
@@ -252,11 +333,13 @@ export default function AssessmentsPage() {
 
   // Handle filter changes
   const handleFilterChange = (key: keyof Filters, value: string) => {
+    console.log('🔧 Frontend Debug - Filter changed:', key, '=', value);
     setFilters(prev => ({ ...prev, [key]: value }));
     setCurrentPage(1); // Reset to first page when filtering
   };
 
   const clearFilters = () => {
+    console.log('🧹 Frontend Debug - Clearing all filters');
     setFilters({
       search: '',
       status: 'all',
@@ -331,6 +414,15 @@ export default function AssessmentsPage() {
   const formatCurrency = (amount: number) => `RM ${amount.toFixed(2)}`;
   const formatDate = (dateString: string) => new Date(dateString).toLocaleDateString();
 
+  // 🚨 RENDER DEBUG
+  console.log('🎨 Frontend Debug - Rendering with assessments:', assessments.length);
+  console.log('🎨 Frontend Debug - First few assessments:', assessments.slice(0, 3).map(a => ({
+    id: a.id.substring(0, 8),
+    type: a.type,
+    status: a.status,
+    createdAt: a.createdAt
+  })));
+
   if (loading && assessments.length === 0) {
     return (
       <div className="flex justify-center items-center min-h-screen">
@@ -341,6 +433,18 @@ export default function AssessmentsPage() {
 
   return (
     <div className="p-6">
+      {/* DEBUG INFO PANEL - TEMPORARY */}
+      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
+        <h3 className="text-sm font-medium text-blue-800 mb-2">🔍 Debug Info (Remove when fixed)</h3>
+        <div className="text-xs text-blue-700 space-y-1">
+          <div>Total assessments in database: {totalCount}</div>
+          <div>Assessments on current page: {assessments.length}</div>
+          <div>Current page: {currentPage} of {totalPages}</div>
+          <div>Target assessment (cmdron9ix0004t67lj3aoo2di): {assessments.find(a => a.id === 'cmdron9ix0004t67lj3aoo2di') ? '✅ FOUND' : '❌ NOT FOUND'}</div>
+          <div>Active filters: {Object.entries(filters).filter(([_, value]) => value && value !== 'all').map(([key, value]) => `${key}=${value}`).join(', ') || 'None'}</div>
+        </div>
+      </div>
+
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <div>
@@ -383,47 +487,61 @@ export default function AssessmentsPage() {
         </div>
       )}
 
-      {/* Stats Cards */}
-      {stats && (
+      {/* Enhanced Stats Cards with Loading States */}
+      {loading && !stats ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-6 mb-8">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="bg-white rounded-lg shadow p-6 animate-pulse">
+              <div className="flex items-center justify-between">
+                <div className="flex-1">
+                  <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+                  <div className="h-8 bg-gray-200 rounded w-1/2"></div>
+                </div>
+                <div className="w-12 h-12 bg-gray-200 rounded-lg"></div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : stats ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-6 mb-8">
           <StatCard
             title="Total Assessments"
-            value={stats.totalAssessments}
+            value={stats.totalAssessments || 0}
             icon={<FileText className="h-6 w-6 text-white" />}
             color="bg-blue-600"
           />
           
           <StatCard
             title="Completed"
-            value={stats.completedAssessments}
-            subtitle={`${stats.conversionRate.toFixed(1)}% completion rate`}
+            value={stats.completedAssessments || 0}
+            subtitle={`${(stats.conversionRate || 0).toFixed(1)}% completion rate`}
             icon={<CheckSquare className="h-6 w-6 text-white" />}
             color="bg-green-600"
           />
           
           <StatCard
             title="Pending"
-            value={stats.pendingAssessments}
+            value={stats.pendingAssessments || 0}
             icon={<Clock className="h-6 w-6 text-white" />}
             color="bg-yellow-600"
           />
           
           <StatCard
             title="In Progress"
-            value={stats.inProgressAssessments}
+            value={stats.inProgressAssessments || 0}
             icon={<Users className="h-6 w-6 text-white" />}
             color="bg-blue-600"
           />
           
           <StatCard
             title="Total Revenue"
-            value={formatCurrency(stats.totalRevenue)}
-            subtitle={`${stats.averageCompletionTime.toFixed(1)}h avg completion`}
+            value={formatCurrency(stats.totalRevenue || 0)}
+            subtitle={`${(stats.averageCompletionTime || 0).toFixed(1)}h avg completion`}
             icon={<BarChart3 className="h-6 w-6 text-white" />}
             color="bg-purple-600"
           />
         </div>
-      )}
+      ) : null}
 
       {/* Filters Panel */}
       {showFilters && (
@@ -634,7 +752,14 @@ export default function AssessmentsPage() {
             <tbody className="bg-white divide-y divide-gray-200">
               {assessments.length > 0 ? (
                 assessments.map((assessment) => (
-                  <tr key={assessment.id} className="hover:bg-gray-50">
+                  <tr 
+                    key={assessment.id} 
+                    className={`hover:bg-gray-50 ${
+                      assessment.id === 'cmdron9ix0004t67lj3aoo2di' 
+                        ? 'bg-yellow-100 border-2 border-yellow-400' 
+                        : ''
+                    }`}
+                  >
                     <td className="px-6 py-4 whitespace-nowrap">
                       <input
                         type="checkbox"
@@ -647,6 +772,9 @@ export default function AssessmentsPage() {
                       <div>
                         <div className="text-sm font-medium text-gray-900">
                           {assessment.type.toUpperCase()}
+                          {assessment.id === 'cmdron9ix0004t67lj3aoo2di' && (
+                            <span className="ml-2 text-xs bg-yellow-200 text-yellow-800 px-1 rounded">TARGET</span>
+                          )}
                         </div>
                         <div className="flex items-center mt-1">
                           <TierBadge tier={assessment.tier} />
@@ -723,7 +851,7 @@ export default function AssessmentsPage() {
               ) : (
                 <tr>
                   <td colSpan={8} className="px-6 py-4 text-center text-sm text-gray-500">
-                    No assessments found
+                    {loading ? 'Loading assessments...' : 'No assessments found'}
                   </td>
                 </tr>
               )}

@@ -1,5 +1,5 @@
 // Central export file for all email services
-export { engineMailer } from './enginemailerService';
+export { engineMailer, sendEmail } from './enginemailerService';
 export { sendPaymentReceipt } from './sendReceipt';
 export { sendAssessmentEmail } from './sendAssessmentEmail';
 export { sendWelcomeEmail } from './sendWelcomeEmail';

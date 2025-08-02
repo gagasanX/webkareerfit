@@ -1,3 +1,6 @@
+// /src/app/api/admin/assessments/[id]/route.ts
+// Main CRUD operations for individual assessments
+// Replaces: view/route.ts and reassign/route.ts for consolidated API
 import { NextRequest, NextResponse } from 'next/server';
 import { validateAdminAuth, logAdminAction, checkAdminRateLimit } from '@/lib/middleware/adminAuth';
 import { prisma } from '@/lib/db';
@@ -62,9 +65,9 @@ interface UpdateAssessmentData {
 }
 
 interface RouteParams {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
 // ===== GET - FETCH ASSESSMENT DETAILS =====
@@ -86,8 +89,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return authResult.error!;
     }
 
-    // 3. Validate assessment ID
-    const { id } = params;
+    // 3. Validate assessment ID - FIX: Await params
+    const { id } = await params;
     if (!id) {
       return NextResponse.json(
         { error: 'Assessment ID is required' },
@@ -147,38 +150,48 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // 5. Format response
+    // 5. Format response with enhanced null checks and data validation
     const formattedAssessment: AssessmentDetail = {
       ...assessment,
       createdAt: assessment.createdAt.toISOString(),
       updatedAt: assessment.updatedAt.toISOString(),
       reviewedAt: assessment.reviewedAt?.toISOString() || null,
+      // Ensure price is always a valid number
+      price: Number(assessment.price) || 0,
+      // Safely handle user data
       user: {
         ...assessment.user,
-        createdAt: assessment.user.createdAt.toISOString()
+        createdAt: assessment.user.createdAt.toISOString(),
+        phone: assessment.user.phone || null
       },
+      // Handle clerk assignment with proper timestamp
       assignedClerk: assessment.assignedClerk ? {
         ...assessment.assignedClerk,
-        assignedAt: assessment.updatedAt.toISOString() // Approximation
+        // Use updatedAt as proxy for assignment time (could be enhanced with dedicated field)
+        assignedAt: assessment.updatedAt.toISOString()
       } : null,
+      // Safely format payment data
       payment: assessment.payment ? {
         ...assessment.payment,
+        amount: Number(assessment.payment.amount) || 0,
+        gatewayPaymentId: assessment.payment.gatewayPaymentId || null,
         createdAt: assessment.payment.createdAt.toISOString(),
         updatedAt: assessment.payment.updatedAt.toISOString()
       } : null,
-      referrals: assessment.referrals.map(referral => ({
+      // Format referrals with safe data handling
+      referrals: (assessment.referrals || []).map((referral: any) => ({
         id: referral.id,
         affiliateId: referral.affiliateId,
-        affiliateName: referral.affiliate.name,
-        affiliateEmail: referral.affiliate.email,
-        commission: referral.commission,
-        status: referral.status,
-        paidOut: referral.paidOut,
+        affiliateName: referral.affiliate?.name || null,
+        affiliateEmail: referral.affiliate?.email || 'Unknown',
+        commission: Number(referral.commission) || 0,
+        status: referral.status || 'pending',
+        paidOut: Boolean(referral.paidOut),
         createdAt: referral.createdAt.toISOString()
       }))
     };
 
-    // 6. Get activity history
+    // 6. Get activity history (safely)
     const activityHistory = await getAssessmentActivityHistory(id);
 
     // 7. Log admin action
@@ -209,7 +222,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     logger.error('Assessment detail API error', {
       error: error instanceof Error ? error.message : 'Unknown error',
       stack: error instanceof Error ? error.stack : undefined,
-      assessmentId: params.id,
+      assessmentId: (await params).id,
       url: request.url
     });
 
@@ -239,8 +252,8 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return authResult.error!;
     }
 
-    // 3. Validate assessment ID
-    const { id } = params;
+    // 3. Validate assessment ID - FIX: Await params  
+    const { id } = await params;
     if (!id) {
       return NextResponse.json(
         { error: 'Assessment ID is required' },
@@ -274,7 +287,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    if (price && (price < 0 || price > 10000)) {
+    if (price !== undefined && (price < 0 || price > 10000)) {
       return NextResponse.json(
         { error: 'Price must be between 0 and 10000' },
         { status: 400 }
@@ -295,25 +308,21 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     // 7. Validate clerk assignment
-    if (assignedClerkId) {
-      if (assignedClerkId === 'unassign') {
-        // Special case to unassign clerk
-      } else {
-        const clerk = await prisma.user.findFirst({
-          where: { id: assignedClerkId, isClerk: true }
-        });
+    if (assignedClerkId && assignedClerkId !== 'unassign') {
+      const clerk = await prisma.user.findFirst({
+        where: { id: assignedClerkId, isClerk: true }
+      });
 
-        if (!clerk) {
-          return NextResponse.json(
-            { error: 'Clerk not found or inactive' },
-            { status: 404 }
-          );
-        }
+      if (!clerk) {
+        return NextResponse.json(
+          { error: 'Clerk not found or inactive' },
+          { status: 404 }
+        );
       }
     }
 
-    // 8. Build update data
-    const updateData: Prisma.AssessmentUpdateInput = {
+    // 8. Build update data with proper null handling
+    const updateData: any = {
       updatedAt: new Date()
     };
 
@@ -331,18 +340,21 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     if (assignedClerkId !== undefined) {
-      updateData.assignedClerk = assignedClerkId === 'unassign' 
-        ? { disconnect: true }
-        : { connect: { id: assignedClerkId } };
-      
-      // Auto-set status to in_progress when assigning
-      if (assignedClerkId !== 'unassign' && existingAssessment.status === 'pending') {
-        updateData.status = 'in_progress';
+      // Handle clerk assignment with proper null handling
+      if (assignedClerkId === 'unassign' || assignedClerkId === '') {
+        updateData.assignedClerkId = null;
+      } else {
+        updateData.assignedClerkId = assignedClerkId;
+        
+        // Auto-set status to in_progress when assigning
+        if (existingAssessment.status === 'pending') {
+          updateData.status = 'in_progress';
+        }
       }
     }
 
     if (reviewNotes !== undefined) {
-      updateData.reviewNotes = reviewNotes;
+      updateData.reviewNotes = reviewNotes || null;
     }
 
     if (manualProcessing !== undefined) {
@@ -407,7 +419,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     logger.error('Assessment update API error', {
       error: error instanceof Error ? error.message : 'Unknown error',
       stack: error instanceof Error ? error.stack : undefined,
-      assessmentId: params.id,
+      assessmentId: (await params).id,
       url: request.url
     });
 
@@ -446,8 +458,8 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       return authResult.error!;
     }
 
-    // 3. Validate assessment ID
-    const { id } = params;
+    // 3. Validate assessment ID - FIX: Await params
+    const { id } = await params;
     if (!id) {
       return NextResponse.json(
         { error: 'Assessment ID is required' },
@@ -472,7 +484,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     }
 
     // 5. Check if safe to delete (no completed payments)
-    if (assessment.payment && assessment.payment.status === 'completed') {
+    if (assessment.payment && ['completed', 'successful', 'paid'].includes(assessment.payment.status)) {
       return NextResponse.json(
         { error: 'Cannot delete assessment with completed payment. Cancel or refund first.' },
         { status: 409 }
@@ -524,7 +536,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     logger.error('Assessment delete API error', {
       error: error instanceof Error ? error.message : 'Unknown error',
       stack: error instanceof Error ? error.stack : undefined,
-      assessmentId: params.id,
+      assessmentId: (await params).id,
       url: request.url
     });
 

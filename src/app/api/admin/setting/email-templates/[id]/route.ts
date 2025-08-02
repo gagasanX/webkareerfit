@@ -1,51 +1,33 @@
-// /src/app/api/admin/settings/email-templates/[id]/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
 import { validateAdminAuth, logAdminAction, checkAdminRateLimit } from '@/lib/middleware/adminAuth';
-import { emailTemplateUpdateSchema } from '@/lib/validation';
+import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { getClientIP } from '@/lib/utils/ip';
-import DOMPurify from 'isomorphic-dompurify';
+import { Prisma } from '@prisma/client';
 
-// ===== SECURITY: HTML SANITIZATION =====
-function sanitizeHtmlContent(htmlContent: string): string {
-  try {
-    const cleanHtml = DOMPurify.sanitize(htmlContent, {
-      ALLOWED_TAGS: [
-        'div', 'span', 'p', 'br', 'strong', 'b', 'em', 'i', 'u', 'a', 'img',
-        'table', 'tr', 'td', 'th', 'tbody', 'thead', 'tfoot',
-        'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-        'ul', 'ol', 'li',
-        'blockquote', 'pre', 'code'
-      ],
-      ALLOWED_ATTR: [
-        'href', 'src', 'alt', 'title', 'style', 'class', 'id',
-        'width', 'height', 'border', 'cellpadding', 'cellspacing',
-        'align', 'valign', 'bgcolor', 'color'
-      ],
-      ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i
-    });
-    
-    return cleanHtml;
-  } catch (error) {
-    logger.error('HTML sanitization failed', {
-      error: error instanceof Error ? error.message : 'Unknown error'
-    });
-    throw new Error('Invalid HTML content');
-  }
+// ===== TYPES =====
+interface RouteParams {
+  params: {
+    id: string;
+  };
 }
 
-// ===== GET: FETCH SINGLE EMAIL TEMPLATE =====
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+interface UpdateEmailTemplateData {
+  name?: string;
+  subject?: string;
+  htmlContent?: string;
+  active?: boolean;
+}
+
+// ===== GET - FETCH SINGLE EMAIL TEMPLATE =====
+export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     // 1. Rate limiting
     const clientIp = getClientIP(request);
     if (!checkAdminRateLimit(clientIp, 60, 60000)) {
+      logger.warn('Admin email template detail rate limit exceeded', { ip: clientIp });
       return NextResponse.json(
-        { error: 'Rate limit exceeded' },
+        { error: 'Rate limit exceeded. Please try again later.' },
         { status: 429 }
       );
     }
@@ -58,9 +40,9 @@ export async function GET(
 
     // 3. Validate template ID
     const { id } = params;
-    if (!id || typeof id !== 'string' || id.length < 10) {
+    if (!id) {
       return NextResponse.json(
-        { error: 'Invalid template ID' },
+        { error: 'Template ID is required' },
         { status: 400 }
       );
     }
@@ -90,49 +72,48 @@ export async function GET(
     await logAdminAction(
       authResult.user!.id,
       'email_template_view',
-      { templateId: id, templateName: template.name },
+      { 
+        templateId: template.id,
+        templateName: template.name,
+        timestamp: new Date().toISOString()
+      },
       request
     );
 
+    // 6. Return success response
     return NextResponse.json({
       success: true,
-      data: {
-        template: {
-          id: template.id,
-          name: template.name,
-          subject: template.subject,
-          htmlContent: template.htmlContent,
-          active: template.active,
-          createdAt: template.createdAt.toISOString(),
-          updatedAt: template.updatedAt.toISOString()
-        }
+      template: {
+        ...template,
+        createdAt: template.createdAt.toISOString(),
+        updatedAt: template.updatedAt.toISOString()
       }
     });
 
   } catch (error) {
-    logger.error('Email template GET error', {
+    logger.error('Email template detail API error', {
       error: error instanceof Error ? error.message : 'Unknown error',
-      templateId: params.id
+      stack: error instanceof Error ? error.stack : undefined,
+      templateId: params.id,
+      url: request.url
     });
 
     return NextResponse.json(
-      { error: 'Failed to fetch email template' },
+      { error: 'Failed to fetch email template. Please try again later.' },
       { status: 500 }
     );
   }
 }
 
-// ===== PUT: UPDATE EMAIL TEMPLATE =====
-export async function PUT(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+// ===== PUT - UPDATE EMAIL TEMPLATE =====
+export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
-    // 1. Rate limiting (stricter for write operations)
+    // 1. Rate limiting
     const clientIp = getClientIP(request);
-    if (!checkAdminRateLimit(clientIp, 10, 60000)) {
+    if (!checkAdminRateLimit(clientIp, 20, 60000)) {
+      logger.warn('Admin email template update rate limit exceeded', { ip: clientIp });
       return NextResponse.json(
-        { error: 'Rate limit exceeded' },
+        { error: 'Rate limit exceeded. Please try again later.' },
         { status: 429 }
       );
     }
@@ -145,41 +126,67 @@ export async function PUT(
 
     // 3. Validate template ID
     const { id } = params;
-    if (!id || typeof id !== 'string' || id.length < 10) {
+    if (!id) {
       return NextResponse.json(
-        { error: 'Invalid template ID' },
+        { error: 'Template ID is required' },
         { status: 400 }
       );
     }
 
     // 4. Parse and validate request body
-    let body;
-    try {
-      body = await request.json();
-    } catch (error) {
-      return NextResponse.json(
-        { error: 'Invalid JSON in request body' },
-        { status: 400 }
-      );
+    const body: UpdateEmailTemplateData = await request.json();
+    const { name, subject, htmlContent, active } = body;
+
+    // Validation
+    if (name !== undefined) {
+      if (typeof name !== 'string' || name.trim().length === 0) {
+        return NextResponse.json(
+          { error: 'Template name must be a non-empty string' },
+          { status: 400 }
+        );
+      }
+      if (name.length > 100) {
+        return NextResponse.json(
+          { error: 'Template name must be 100 characters or less' },
+          { status: 400 }
+        );
+      }
     }
 
-    const validationResult = emailTemplateUpdateSchema.safeParse(body);
-    if (!validationResult.success) {
-      return NextResponse.json(
-        { 
-          error: 'Validation failed', 
-          details: validationResult.error.issues 
-        },
-        { status: 400 }
-      );
+    if (subject !== undefined) {
+      if (typeof subject !== 'string' || subject.trim().length === 0) {
+        return NextResponse.json(
+          { error: 'Email subject must be a non-empty string' },
+          { status: 400 }
+        );
+      }
+      if (subject.length > 200) {
+        return NextResponse.json(
+          { error: 'Email subject must be 200 characters or less' },
+          { status: 400 }
+        );
+      }
     }
 
-    const updateData = validationResult.data;
+    if (htmlContent !== undefined) {
+      if (typeof htmlContent !== 'string' || htmlContent.trim().length === 0) {
+        return NextResponse.json(
+          { error: 'HTML content must be a non-empty string' },
+          { status: 400 }
+        );
+      }
+      if (htmlContent.length > 100000) {
+        return NextResponse.json(
+          { error: 'HTML content must be 100,000 characters or less' },
+          { status: 400 }
+        );
+      }
+    }
 
     // 5. Check if template exists
     const existingTemplate = await prisma.emailTemplate.findUnique({
       where: { id },
-      select: { id: true, name: true }
+      select: { id: true, name: true, active: true }
     });
 
     if (!existingTemplate) {
@@ -190,13 +197,12 @@ export async function PUT(
     }
 
     // 6. Check for name conflicts (if name is being updated)
-    if (updateData.name && updateData.name !== existingTemplate.name) {
+    if (name !== undefined && name.trim() !== existingTemplate.name) {
       const nameConflict = await prisma.emailTemplate.findFirst({
         where: { 
-          name: updateData.name,
-          id: { not: id }
-        },
-        select: { id: true }
+          name: { equals: name.trim(), mode: 'insensitive' },
+          NOT: { id }
+        }
       });
 
       if (nameConflict) {
@@ -207,9 +213,20 @@ export async function PUT(
       }
     }
 
-    // 7. Sanitize HTML content if provided
-    if (updateData.htmlContent) {
-      updateData.htmlContent = sanitizeHtmlContent(updateData.htmlContent);
+    // 7. Build update data
+    const updateData: Prisma.EmailTemplateUpdateInput = {};
+    
+    if (name !== undefined) updateData.name = name.trim();
+    if (subject !== undefined) updateData.subject = subject.trim();
+    if (htmlContent !== undefined) updateData.htmlContent = htmlContent.trim();
+    if (active !== undefined) updateData.active = Boolean(active);
+
+    // Check if there are any changes
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json(
+        { error: 'No valid fields to update provided' },
+        { status: 400 }
+      );
     }
 
     // 8. Update template
@@ -230,62 +247,69 @@ export async function PUT(
     // 9. Log admin action
     await logAdminAction(
       authResult.user!.id,
-      'email_template_update',
-      {
-        templateId: id,
+      'email_template_updated',
+      { 
+        templateId: updatedTemplate.id,
         templateName: updatedTemplate.name,
-        updatedFields: Object.keys(updateData)
+        changes: updateData,
+        timestamp: new Date().toISOString()
       },
       request
     );
 
-    logger.info('Email template updated successfully', {
-      templateId: id,
-      templateName: updatedTemplate.name,
-      updatedFields: Object.keys(updateData),
-      updatedBy: authResult.user!.id
-    });
-
+    // 10. Return success response
     return NextResponse.json({
       success: true,
-      data: {
-        template: {
-          id: updatedTemplate.id,
-          name: updatedTemplate.name,
-          subject: updatedTemplate.subject,
-          htmlContent: updatedTemplate.htmlContent,
-          active: updatedTemplate.active,
-          createdAt: updatedTemplate.createdAt.toISOString(),
-          updatedAt: updatedTemplate.updatedAt.toISOString()
-        }
+      template: {
+        ...updatedTemplate,
+        createdAt: updatedTemplate.createdAt.toISOString(),
+        updatedAt: updatedTemplate.updatedAt.toISOString()
       },
       message: 'Email template updated successfully'
     });
 
   } catch (error) {
-    logger.error('Email template update error', {
+    logger.error('Email template update API error', {
       error: error instanceof Error ? error.message : 'Unknown error',
-      templateId: params.id
+      stack: error instanceof Error ? error.stack : undefined,
+      templateId: params.id,
+      url: request.url
     });
 
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === 'P2025') {
+        return NextResponse.json(
+          { error: 'Email template not found' },
+          { status: 404 }
+        );
+      }
+      if (error.code === 'P2002') {
+        const target = error.meta?.target as string[];
+        if (target?.includes('name')) {
+          return NextResponse.json(
+            { error: 'A template with this name already exists' },
+            { status: 409 }
+          );
+        }
+      }
+    }
+
     return NextResponse.json(
-      { error: 'Failed to update email template' },
+      { error: 'Failed to update email template. Please try again later.' },
       { status: 500 }
     );
   }
 }
 
-// ===== DELETE: DELETE EMAIL TEMPLATE =====
-export async function DELETE(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-) {
+// ===== DELETE - DELETE EMAIL TEMPLATE =====
+export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     // 1. Rate limiting
     const clientIp = getClientIP(request);
     if (!checkAdminRateLimit(clientIp, 10, 60000)) {
+      logger.warn('Admin email template delete rate limit exceeded', { ip: clientIp });
       return NextResponse.json(
-        { error: 'Rate limit exceeded' },
+        { error: 'Rate limit exceeded. Please try again later.' },
         { status: 429 }
       );
     }
@@ -298,17 +322,17 @@ export async function DELETE(
 
     // 3. Validate template ID
     const { id } = params;
-    if (!id || typeof id !== 'string' || id.length < 10) {
+    if (!id) {
       return NextResponse.json(
-        { error: 'Invalid template ID' },
+        { error: 'Template ID is required' },
         { status: 400 }
       );
     }
 
-    // 4. Check if template exists and get name for logging
+    // 4. Check if template exists
     const existingTemplate = await prisma.emailTemplate.findUnique({
       where: { id },
-      select: { id: true, name: true }
+      select: { id: true, name: true, active: true }
     });
 
     if (!existingTemplate) {
@@ -318,41 +342,63 @@ export async function DELETE(
       );
     }
 
-    // 5. Delete template
+    // 5. Check if template is currently active (safety check)
+    if (existingTemplate.active) {
+      // You might want to require deactivation first, or allow force delete
+      const url = new URL(request.url);
+      const force = url.searchParams.get('force') === 'true';
+      
+      if (!force) {
+        return NextResponse.json(
+          { error: 'Cannot delete active template. Deactivate it first or use force=true parameter.' },
+          { status: 409 }
+        );
+      }
+    }
+
+    // 6. Delete template
     await prisma.emailTemplate.delete({
       where: { id }
     });
 
-    // 6. Log admin action
+    // 7. Log admin action
     await logAdminAction(
       authResult.user!.id,
-      'email_template_delete',
-      {
-        templateId: id,
-        templateName: existingTemplate.name
+      'email_template_deleted',
+      { 
+        templateId: existingTemplate.id,
+        templateName: existingTemplate.name,
+        wasActive: existingTemplate.active,
+        timestamp: new Date().toISOString()
       },
       request
     );
 
-    logger.info('Email template deleted successfully', {
-      templateId: id,
-      templateName: existingTemplate.name,
-      deletedBy: authResult.user!.id
-    });
-
+    // 8. Return success response
     return NextResponse.json({
       success: true,
       message: 'Email template deleted successfully'
     });
 
   } catch (error) {
-    logger.error('Email template deletion error', {
+    logger.error('Email template delete API error', {
       error: error instanceof Error ? error.message : 'Unknown error',
-      templateId: params.id
+      stack: error instanceof Error ? error.stack : undefined,
+      templateId: params.id,
+      url: request.url
     });
 
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === 'P2025') {
+        return NextResponse.json(
+          { error: 'Email template not found' },
+          { status: 404 }
+        );
+      }
+    }
+
     return NextResponse.json(
-      { error: 'Failed to delete email template' },
+      { error: 'Failed to delete email template. Please try again later.' },
       { status: 500 }
     );
   }

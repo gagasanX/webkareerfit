@@ -7,7 +7,7 @@ interface EngineMailerConfig {
   fromName: string;
 }
 
-interface EmailData {
+export interface EmailData {
   to: string;
   subject: string;
   htmlBody?: string;
@@ -17,6 +17,11 @@ interface EmailData {
   templateId?: string;
   templateData?: Record<string, any>;
 }
+
+// Helper function to directly send email
+export const sendEmail = async (emailData: EmailData) => {
+  return await engineMailer.sendEmail(emailData);
+};
 
 // 🚀 EXPORT INTERFACES FOR USE IN OTHER FILES
 export interface ReceiptEmailData {

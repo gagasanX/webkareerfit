@@ -1,11 +1,9 @@
-// /src/app/api/admin/settings/email-templates/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/db';
 import { validateAdminAuth, logAdminAction, checkAdminRateLimit } from '@/lib/middleware/adminAuth';
-import { emailTemplateSchema, paginationSchema } from '@/lib/validation';
+import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { getClientIP } from '@/lib/utils/ip';
-import DOMPurify from 'isomorphic-dompurify';
+import { Prisma } from '@prisma/client';
 
 // ===== TYPES =====
 interface EmailTemplate {
@@ -18,53 +16,22 @@ interface EmailTemplate {
   updatedAt: string;
 }
 
-interface EmailTemplatesResponse {
-  templates: EmailTemplate[];
-  pagination: {
-    total: number;
-    page: number;
-    limit: number;
-    totalPages: number;
-  };
+interface CreateEmailTemplateData {
+  name: string;
+  subject: string;
+  htmlContent: string;
+  active?: boolean;
 }
 
-// ===== SECURITY: HTML SANITIZATION =====
-function sanitizeHtmlContent(htmlContent: string): string {
-  try {
-    // Configure DOMPurify to allow email-safe HTML
-    const cleanHtml = DOMPurify.sanitize(htmlContent, {
-      ALLOWED_TAGS: [
-        'div', 'span', 'p', 'br', 'strong', 'b', 'em', 'i', 'u', 'a', 'img',
-        'table', 'tr', 'td', 'th', 'tbody', 'thead', 'tfoot',
-        'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
-        'ul', 'ol', 'li',
-        'blockquote', 'pre', 'code'
-      ],
-      ALLOWED_ATTR: [
-        'href', 'src', 'alt', 'title', 'style', 'class', 'id',
-        'width', 'height', 'border', 'cellpadding', 'cellspacing',
-        'align', 'valign', 'bgcolor', 'color'
-      ],
-      ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i
-    });
-    
-    return cleanHtml;
-  } catch (error) {
-    logger.error('HTML sanitization failed', {
-      error: error instanceof Error ? error.message : 'Unknown error'
-    });
-    throw new Error('Invalid HTML content');
-  }
-}
-
-// ===== GET: FETCH EMAIL TEMPLATES =====
+// ===== GET - LIST EMAIL TEMPLATES =====
 export async function GET(request: NextRequest) {
   try {
     // 1. Rate limiting
     const clientIp = getClientIP(request);
     if (!checkAdminRateLimit(clientIp, 60, 60000)) {
+      logger.warn('Admin email templates rate limit exceeded', { ip: clientIp });
       return NextResponse.json(
-        { error: 'Rate limit exceeded' },
+        { error: 'Rate limit exceeded. Please try again later.' },
         { status: 429 }
       );
     }
@@ -75,109 +42,99 @@ export async function GET(request: NextRequest) {
       return authResult.error!;
     }
 
-    // 3. Validate query parameters
+    // 3. Parse query parameters
     const url = new URL(request.url);
-    const queryParams = Object.fromEntries(url.searchParams.entries());
-    
-    const validationResult = paginationSchema.safeParse(queryParams);
-    if (!validationResult.success) {
-      return NextResponse.json(
-        { error: 'Invalid query parameters', details: validationResult.error.issues },
-        { status: 400 }
-      );
+    const includeInactive = url.searchParams.get('includeInactive') === 'true';
+    const search = url.searchParams.get('search') || '';
+
+    // 4. Build where clause
+    const whereClause: Prisma.EmailTemplateWhereInput = {};
+
+    // Active filter
+    if (!includeInactive) {
+      whereClause.active = true;
     }
 
-    const { page, limit, search, sortBy, sort } = validationResult.data;
-
-    // 4. Build query filters
-    const where: any = {};
+    // Search filter
     if (search) {
-      where.OR = [
+      whereClause.OR = [
         { name: { contains: search, mode: 'insensitive' } },
         { subject: { contains: search, mode: 'insensitive' } }
       ];
     }
 
-    // 5. Fetch templates with pagination
-    const [templates, totalCount] = await Promise.all([
-      prisma.emailTemplate.findMany({
-        where,
-        skip: page * limit,
-        take: limit,
-        orderBy: { [sortBy]: sort },
-        select: {
-          id: true,
-          name: true,
-          subject: true,
-          htmlContent: true,
-          active: true,
-          createdAt: true,
-          updatedAt: true
-        }
-      }),
-      prisma.emailTemplate.count({ where })
-    ]);
+    // 5. Fetch templates
+    const templates = await prisma.emailTemplate.findMany({
+      where: whereClause,
+      orderBy: [
+        { active: 'desc' }, // Active templates first
+        { name: 'asc' }
+      ],
+      select: {
+        id: true,
+        name: true,
+        subject: true,
+        htmlContent: true,
+        active: true,
+        createdAt: true,
+        updatedAt: true
+      }
+    });
 
     // 6. Format response
     const formattedTemplates: EmailTemplate[] = templates.map(template => ({
-      id: template.id,
-      name: template.name,
-      subject: template.subject,
-      htmlContent: template.htmlContent,
-      active: template.active,
+      ...template,
       createdAt: template.createdAt.toISOString(),
       updatedAt: template.updatedAt.toISOString()
     }));
 
-    const response: EmailTemplatesResponse = {
-      templates: formattedTemplates,
-      pagination: {
-        total: totalCount,
-        page,
-        limit,
-        totalPages: Math.ceil(totalCount / limit)
-      }
-    };
-
     // 7. Log admin action
     await logAdminAction(
       authResult.user!.id,
-      'email_templates_list',
+      'email_templates_list_view',
       { 
-        count: templates.length,
-        search: search || null,
-        page,
-        limit
+        search,
+        includeInactive,
+        resultCount: formattedTemplates.length,
+        timestamp: new Date().toISOString()
       },
       request
     );
 
+    // 8. Return success response
     return NextResponse.json({
       success: true,
-      data: response
+      templates: formattedTemplates,
+      metadata: {
+        totalCount: formattedTemplates.length,
+        search,
+        includeInactive
+      }
     });
 
   } catch (error) {
-    logger.error('Email templates GET error', {
+    logger.error('Email templates list API error', {
       error: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined
+      stack: error instanceof Error ? error.stack : undefined,
+      url: request.url
     });
 
     return NextResponse.json(
-      { error: 'Failed to fetch email templates' },
+      { error: 'Failed to fetch email templates. Please try again later.' },
       { status: 500 }
     );
   }
 }
 
-// ===== POST: CREATE EMAIL TEMPLATE =====
+// ===== POST - CREATE EMAIL TEMPLATE =====
 export async function POST(request: NextRequest) {
   try {
-    // 1. Rate limiting (stricter for write operations)
+    // 1. Rate limiting
     const clientIp = getClientIP(request);
     if (!checkAdminRateLimit(clientIp, 10, 60000)) {
+      logger.warn('Admin email template creation rate limit exceeded', { ip: clientIp });
       return NextResponse.json(
-        { error: 'Rate limit exceeded' },
+        { error: 'Rate limit exceeded. Please try again later.' },
         { status: 429 }
       );
     }
@@ -189,33 +146,56 @@ export async function POST(request: NextRequest) {
     }
 
     // 3. Parse and validate request body
-    let body;
-    try {
-      body = await request.json();
-    } catch (error) {
+    const body: CreateEmailTemplateData = await request.json();
+    const { name, subject, htmlContent, active = true } = body;
+
+    // Validation
+    if (!name || typeof name !== 'string' || name.trim().length === 0) {
       return NextResponse.json(
-        { error: 'Invalid JSON in request body' },
+        { error: 'Template name is required' },
         { status: 400 }
       );
     }
 
-    const validationResult = emailTemplateSchema.safeParse(body);
-    if (!validationResult.success) {
+    if (!subject || typeof subject !== 'string' || subject.trim().length === 0) {
       return NextResponse.json(
-        { 
-          error: 'Validation failed', 
-          details: validationResult.error.issues 
-        },
+        { error: 'Email subject is required' },
         { status: 400 }
       );
     }
 
-    const { name, subject, htmlContent, active } = validationResult.data;
+    if (!htmlContent || typeof htmlContent !== 'string' || htmlContent.trim().length === 0) {
+      return NextResponse.json(
+        { error: 'HTML content is required' },
+        { status: 400 }
+      );
+    }
 
-    // 4. Check for duplicate template name
-    const existingTemplate = await prisma.emailTemplate.findUnique({
-      where: { name },
-      select: { id: true }
+    // Length validation
+    if (name.length > 100) {
+      return NextResponse.json(
+        { error: 'Template name must be 100 characters or less' },
+        { status: 400 }
+      );
+    }
+
+    if (subject.length > 200) {
+      return NextResponse.json(
+        { error: 'Email subject must be 200 characters or less' },
+        { status: 400 }
+      );
+    }
+
+    if (htmlContent.length > 100000) {
+      return NextResponse.json(
+        { error: 'HTML content must be 100,000 characters or less' },
+        { status: 400 }
+      );
+    }
+
+    // 4. Check if template name already exists
+    const existingTemplate = await prisma.emailTemplate.findFirst({
+      where: { name: { equals: name.trim(), mode: 'insensitive' } }
     });
 
     if (existingTemplate) {
@@ -225,16 +205,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 5. Sanitize HTML content
-    const sanitizedHtmlContent = sanitizeHtmlContent(htmlContent);
-
-    // 6. Create new email template
+    // 5. Create template
     const newTemplate = await prisma.emailTemplate.create({
       data: {
-        name,
-        subject,
-        htmlContent: sanitizedHtmlContent,
-        active
+        name: name.trim(),
+        subject: subject.trim(),
+        htmlContent: htmlContent.trim(),
+        active: Boolean(active)
       },
       select: {
         id: true,
@@ -247,130 +224,51 @@ export async function POST(request: NextRequest) {
       }
     });
 
-    // 7. Log admin action
+    // 6. Log admin action
     await logAdminAction(
       authResult.user!.id,
-      'email_template_create',
-      {
+      'email_template_created',
+      { 
         templateId: newTemplate.id,
-        templateName: name,
-        active
+        templateName: newTemplate.name,
+        active: newTemplate.active,
+        timestamp: new Date().toISOString()
       },
       request
     );
 
-    logger.info('Email template created successfully', {
-      templateId: newTemplate.id,
-      templateName: name,
-      createdBy: authResult.user!.id
-    });
-
+    // 7. Return success response
     return NextResponse.json({
       success: true,
-      data: {
-        template: {
-          id: newTemplate.id,
-          name: newTemplate.name,
-          subject: newTemplate.subject,
-          htmlContent: newTemplate.htmlContent,
-          active: newTemplate.active,
-          createdAt: newTemplate.createdAt.toISOString(),
-          updatedAt: newTemplate.updatedAt.toISOString()
-        }
+      template: {
+        ...newTemplate,
+        createdAt: newTemplate.createdAt.toISOString(),
+        updatedAt: newTemplate.updatedAt.toISOString()
       },
       message: 'Email template created successfully'
-    });
+    }, { status: 201 });
 
   } catch (error) {
-    logger.error('Email template creation error', {
+    logger.error('Email template creation API error', {
       error: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined
+      stack: error instanceof Error ? error.stack : undefined,
+      url: request.url
     });
 
-    return NextResponse.json(
-      { error: 'Failed to create email template' },
-      { status: 500 }
-    );
-  }
-}
-
-// ===== DELETE: BULK DELETE TEMPLATES =====
-export async function DELETE(request: NextRequest) {
-  try {
-    // 1. Authentication & Authorization
-    const authResult = await validateAdminAuth(request);
-    if (!authResult.success) {
-      return authResult.error!;
-    }
-
-    // 2. Parse request body for template IDs
-    let body;
-    try {
-      body = await request.json();
-    } catch (error) {
-      return NextResponse.json(
-        { error: 'Invalid JSON in request body' },
-        { status: 400 }
-      );
-    }
-
-    const { templateIds } = body;
-    
-    if (!Array.isArray(templateIds) || templateIds.length === 0) {
-      return NextResponse.json(
-        { error: 'Template IDs array is required' },
-        { status: 400 }
-      );
-    }
-
-    // 3. Validate template IDs
-    if (templateIds.some(id => typeof id !== 'string' || id.length < 10)) {
-      return NextResponse.json(
-        { error: 'Invalid template ID format' },
-        { status: 400 }
-      );
-    }
-
-    // 4. Delete templates
-    const deleteResult = await prisma.emailTemplate.deleteMany({
-      where: {
-        id: { in: templateIds }
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      if (error.code === 'P2002') {
+        const target = error.meta?.target as string[];
+        if (target?.includes('name')) {
+          return NextResponse.json(
+            { error: 'A template with this name already exists' },
+            { status: 409 }
+          );
+        }
       }
-    });
-
-    // 5. Log admin action
-    await logAdminAction(
-      authResult.user!.id,
-      'email_templates_delete',
-      {
-        templateIds,
-        deletedCount: deleteResult.count
-      },
-      request
-    );
-
-    logger.info('Email templates deleted', {
-      deletedCount: deleteResult.count,
-      templateIds,
-      deletedBy: authResult.user!.id
-    });
-
-    return NextResponse.json({
-      success: true,
-      data: {
-        deletedCount: deleteResult.count
-      },
-      message: `${deleteResult.count} email template(s) deleted successfully`
-    });
-
-  } catch (error) {
-    logger.error('Email templates deletion error', {
-      error: error instanceof Error ? error.message : 'Unknown error',
-      stack: error instanceof Error ? error.stack : undefined
-    });
+    }
 
     return NextResponse.json(
-      { error: 'Failed to delete email templates' },
+      { error: 'Failed to create email template. Please try again later.' },
       { status: 500 }
     );
   }

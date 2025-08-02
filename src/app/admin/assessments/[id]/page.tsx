@@ -1,9 +1,13 @@
+// /src/app/admin/assessments/[id]/page.tsx
+// Individual assessment detail view and editor
+// Features: View details, edit assessment, assign clerks, delete
 'use client';
 
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
+import AssessmentFormViewer from '@/components/admin/AssessmentFormViewer';
 import { 
   ArrowLeft,
   Edit,
@@ -167,10 +171,11 @@ export default function AssessmentDetailPage() {
     }
   }, [status, session, router]);
 
-  // Fetch assessment details
+  // Enhanced fetch with comprehensive error handling
   const fetchAssessment = async () => {
     try {
       setError(null);
+      setLoading(true);
       
       const response = await fetch(`/api/admin/assessments/${assessmentId}`);
       
@@ -178,31 +183,41 @@ export default function AssessmentDetailPage() {
         if (response.status === 404) {
           throw new Error('Assessment not found');
         }
-        throw new Error(`Failed to fetch assessment: ${response.status}`);
+        if (response.status === 403) {
+          throw new Error('Access denied - Admin privileges required');
+        }
+        const errorText = await response.text();
+        throw new Error(`Failed to fetch assessment: ${response.status} - ${errorText}`);
       }
       
       const result = await response.json();
       
       if (!result.success) {
-        throw new Error('API returned unsuccessful response');
+        throw new Error(result.error || 'API returned unsuccessful response');
+      }
+      
+      // Validate and safely set assessment data
+      if (!result.assessment || typeof result.assessment !== 'object') {
+        throw new Error('Invalid assessment data received');
       }
       
       setAssessment(result.assessment);
-      setActivityHistory(result.activityHistory || []);
+      setActivityHistory(Array.isArray(result.activityHistory) ? result.activityHistory : []);
       
-      // Initialize edit form
+      // Initialize edit form with safe defaults
       setEditForm({
-        status: result.assessment.status,
-        tier: result.assessment.tier,
+        status: result.assessment.status || 'pending',
+        tier: result.assessment.tier || 'basic',
         assignedClerkId: result.assessment.assignedClerk?.id || '',
         reviewNotes: result.assessment.reviewNotes || '',
-        manualProcessing: result.assessment.manualProcessing,
-        price: result.assessment.price
+        manualProcessing: Boolean(result.assessment.manualProcessing),
+        price: Number(result.assessment.price) || 0
       });
       
     } catch (err) {
       console.error('Error fetching assessment:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load assessment');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to load assessment';
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -573,7 +588,7 @@ export default function AssessmentDetailPage() {
             )}
           </div>
 
-          {/* Assessment Data */}
+          {/* Assessment Form Responses - NEW SECTION */}
           {assessment.data && (
             <div className="bg-white rounded-lg shadow p-6">
               <h2 className="text-lg font-semibold mb-4">Assessment Data</h2>
