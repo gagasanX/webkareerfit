@@ -3,16 +3,14 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth/auth';
 import { prisma } from '@/lib/db';
 
-interface Params {
-  params: {
-    id: string;
-  };
-}
-
 // PATCH - Update user role
-export async function PATCH(request: NextRequest, { params }: Params) {
+export async function PATCH(
+  request: NextRequest, 
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const { id } = params;
+    // Await the params promise in Next.js 15
+    const { id } = await params;
     
     // Check user authentication and admin permissions
     const session = await getServerSession(authOptions);
