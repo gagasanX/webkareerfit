@@ -6,12 +6,6 @@ import { getClientIP } from '@/lib/utils/ip';
 import { Prisma } from '@prisma/client';
 
 // ===== TYPES =====
-interface RouteParams {
-  params: {
-    id: string;
-  };
-}
-
 interface UpdateEmailTemplateData {
   name?: string;
   subject?: string;
@@ -20,8 +14,14 @@ interface UpdateEmailTemplateData {
 }
 
 // ===== GET - FETCH SINGLE EMAIL TEMPLATE =====
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export async function GET(
+  request: NextRequest, 
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
+    // Await the params promise in Next.js 15
+    const { id } = await params;
+    
     // 1. Rate limiting
     const clientIp = getClientIP(request);
     if (!checkAdminRateLimit(clientIp, 60, 60000)) {
@@ -39,7 +39,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     // 3. Validate template ID
-    const { id } = params;
     if (!id) {
       return NextResponse.json(
         { error: 'Template ID is required' },
@@ -94,7 +93,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     logger.error('Email template detail API error', {
       error: error instanceof Error ? error.message : 'Unknown error',
       stack: error instanceof Error ? error.stack : undefined,
-      templateId: params.id,
+      templateId: (await params).id,
       url: request.url
     });
 
@@ -106,8 +105,14 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 }
 
 // ===== PUT - UPDATE EMAIL TEMPLATE =====
-export async function PUT(request: NextRequest, { params }: RouteParams) {
+export async function PUT(
+  request: NextRequest, 
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
+    // Await the params promise in Next.js 15
+    const { id } = await params;
+    
     // 1. Rate limiting
     const clientIp = getClientIP(request);
     if (!checkAdminRateLimit(clientIp, 20, 60000)) {
@@ -125,7 +130,6 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     }
 
     // 3. Validate template ID
-    const { id } = params;
     if (!id) {
       return NextResponse.json(
         { error: 'Template ID is required' },
@@ -272,7 +276,7 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     logger.error('Email template update API error', {
       error: error instanceof Error ? error.message : 'Unknown error',
       stack: error instanceof Error ? error.stack : undefined,
-      templateId: params.id,
+      templateId: (await params).id,
       url: request.url
     });
 
@@ -302,8 +306,14 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 }
 
 // ===== DELETE - DELETE EMAIL TEMPLATE =====
-export async function DELETE(request: NextRequest, { params }: RouteParams) {
+export async function DELETE(
+  request: NextRequest, 
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
+    // Await the params promise in Next.js 15
+    const { id } = await params;
+    
     // 1. Rate limiting
     const clientIp = getClientIP(request);
     if (!checkAdminRateLimit(clientIp, 10, 60000)) {
@@ -321,7 +331,6 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     }
 
     // 3. Validate template ID
-    const { id } = params;
     if (!id) {
       return NextResponse.json(
         { error: 'Template ID is required' },
@@ -384,7 +393,7 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
     logger.error('Email template delete API error', {
       error: error instanceof Error ? error.message : 'Unknown error',
       stack: error instanceof Error ? error.stack : undefined,
-      templateId: params.id,
+      templateId: (await params).id,
       url: request.url
     });
 
