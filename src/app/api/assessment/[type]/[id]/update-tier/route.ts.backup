@@ -9,7 +9,7 @@ type TierType = 'basic' | 'standard' | 'premium';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ type: string; id: string }> }
+  { params }: { params: { type: string; id: string } }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -18,7 +18,7 @@ export async function POST(
       return NextResponse.json({ message: 'Unauthorized' }, { status: 401 });
     }
 
-    const { type, id } = await params;
+    const { type, id } = params;
     
     if (!type || !id) {
       return NextResponse.json(

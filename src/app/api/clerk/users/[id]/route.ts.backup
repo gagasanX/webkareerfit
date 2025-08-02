@@ -4,10 +4,15 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth/auth';
 import { prisma } from '@/lib/db';
 
+interface Params {
+  params: {
+    id: string;
+  };
+}
 
-export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: NextRequest, { params }: Params) {
   try {
-    const { id } = await params;
+    const { id } = params;
     
     // Check user authentication and clerk permissions
     const session = await getServerSession(authOptions);
@@ -73,9 +78,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   }
 }
 
-export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function PUT(request: NextRequest, { params }: Params) {
   try {
-    const { id } = await params;
+    const { id } = params;
     
     // Check user authentication and clerk permissions
     const session = await getServerSession(authOptions);

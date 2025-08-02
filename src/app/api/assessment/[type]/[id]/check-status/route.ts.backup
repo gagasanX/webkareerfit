@@ -10,12 +10,12 @@ export async function GET(
 ) {
   try {
     // Check if params exist
-    if (!params || typeof (await params).id !== 'string' || typeof (await params).type !== 'string') {
+    if (!params || typeof params.id !== 'string' || typeof params.type !== 'string') {
       console.error('Invalid parameters:', params);
       return NextResponse.json({ error: 'Invalid parameters' }, { status: 400 });
     }
     
-    const assessmentId = (await params).id.trim();
+    const assessmentId = params.id.trim();
     
     // Authenticate user
     const session = await getServerSession(authOptions);
@@ -50,8 +50,8 @@ export async function GET(
         manualProcessing: true,
         progress: assessment.status === 'completed' ? 100 : 50,
         redirectUrl: assessment.tier === 'premium' || assessment.price >= 250
-          ? `/assessment/${(await params).type}/premium-results/${assessmentId}`
-          : `/assessment/${(await params).type}/standard-results/${assessmentId}`
+          ? `/assessment/${params.type}/premium-results/${assessmentId}`
+          : `/assessment/${params.type}/standard-results/${assessmentId}`
       });
     }
     
@@ -120,7 +120,7 @@ export async function GET(
           console.log(`Assessment ${assessmentId} processing timeout - force trigger combine-results`);
           
           // Force combine results to complete assessment
-          fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'https://my.kareerfit.com'}/api/assessment/${(await params).type}/${assessmentId}/combine-results`, {
+          fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'https://my.kareerfit.com'}/api/assessment/${params.type}/${assessmentId}/combine-results`, {
             method: 'POST',
           }).catch(err => console.error('Error triggering combine-results:', err));
           
@@ -149,7 +149,7 @@ export async function GET(
           },
           body: JSON.stringify({
             assessmentId,
-            type: (await params).type,
+            type: params.type,
             responses: data.responses || {}
           }),
         })

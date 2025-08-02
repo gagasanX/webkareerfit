@@ -5,8 +5,13 @@ import { authOptions } from '@/lib/auth/auth';
 import { prisma } from '@/lib/db';
 
 // ✅ FIXED: NextJS 15 - Params must be Promise
+interface Params {
+  params: Promise<{
+    id: string;
+  }>;
+}
 
-export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: NextRequest, { params }: Params) {
   try {
     // ✅ FIXED: NextJS 15 - Await params before using
     const { id } = await params;

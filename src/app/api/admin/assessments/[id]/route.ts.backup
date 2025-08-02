@@ -64,9 +64,14 @@ interface UpdateAssessmentData {
   price?: number;
 }
 
+interface RouteParams {
+  params: Promise<{
+    id: string;
+  }>;
+}
 
 // ===== GET - FETCH ASSESSMENT DETAILS =====
-export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     // 1. Rate limiting
     const clientIp = getClientIP(request);
@@ -229,7 +234,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 }
 
 // ===== PATCH - UPDATE ASSESSMENT =====
-export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function PATCH(request: NextRequest, { params }: RouteParams) {
   try {
     // 1. Rate limiting
     const clientIp = getClientIP(request);
@@ -435,7 +440,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 }
 
 // ===== DELETE - DELETE ASSESSMENT =====
-export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     // 1. Rate limiting
     const clientIp = getClientIP(request);
