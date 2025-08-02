@@ -6,11 +6,10 @@ import { prisma } from '@/lib/db';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: Promise<{ type: string; id: string }> }
+  { params }: { params: { type: string; id: string } }
 ) {
   try {
-    // Await the params promise in Next.js 15
-    const { type, id } = await params;
+    const { type, id } = params;
     
     const session = await getServerSession(authOptions);
     
