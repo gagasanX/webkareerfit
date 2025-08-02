@@ -6,10 +6,11 @@ import { prisma } from '@/lib/db';
 // GET - Retrieve a specific coupon by ID
 export async function GET(
   request: NextRequest, 
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    // Await the params promise in Next.js 15
+    const { id } = await params;
     
     // Check user authentication and admin permissions
     const session = await getServerSession(authOptions);
@@ -68,10 +69,11 @@ export async function GET(
 // PATCH - Update a coupon
 export async function PATCH(
   request: NextRequest, 
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    // Await the params promise in Next.js 15
+    const { id } = await params;
     
     // Check user authentication and admin permissions
     const session = await getServerSession(authOptions);
@@ -171,10 +173,11 @@ export async function PATCH(
 // DELETE - Delete a coupon
 export async function DELETE(
   request: NextRequest, 
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const { id } = params;
+    // Await the params promise in Next.js 15
+    const { id } = await params;
     
     // Check user authentication and admin permissions
     const session = await getServerSession(authOptions);
