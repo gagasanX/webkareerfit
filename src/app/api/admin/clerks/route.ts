@@ -1,8 +1,8 @@
+// src/app/api/admin/clerks/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth/auth';
 import { prisma } from '@/lib/db';
-// REMOVED: UserRole import (doesn't exist)
 
 export async function GET() {
   try {

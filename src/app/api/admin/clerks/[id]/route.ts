@@ -4,15 +4,17 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth/auth';
 import { prisma } from '@/lib/db';
 
+// ✅ FIXED: NextJS 15 - Params must be Promise
 interface Params {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
 export async function DELETE(request: NextRequest, { params }: Params) {
   try {
-    const { id } = params;
+    // ✅ FIXED: NextJS 15 - Await params before using
+    const { id } = await params;
     
     // Check user authentication and admin permissions
     const session = await getServerSession(authOptions);
