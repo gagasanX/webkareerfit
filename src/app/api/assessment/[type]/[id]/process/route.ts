@@ -13,7 +13,7 @@ import { sendAssessmentEmail } from '@/lib/email/sendAssessmentEmail';
 // ROUTE HANDLERS
 export async function GET(
   request: NextRequest,
-  { params }: { params: { type: string, id: string } }
+  { params }: { params: Promise<{ type: string, id: string }> }
 ) {
   try {
     const { assessment, error } = await validateRequest(params);
@@ -42,7 +42,7 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { type: string, id: string } }
+  { params }: { params: Promise<{ type: string, id: string }> }
 ) {
   const startTime = Date.now();
   
