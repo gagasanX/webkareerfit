@@ -1,17 +1,9 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
-
-// Define interface for page params
-interface PageParams {
-  params: {
-    type: string;
-    id: string;
-  };
-}
 
 // Define interface for assessment and questions
 interface Assessment {
@@ -45,8 +37,11 @@ interface Payment {
   status: string;
 }
 
-export default function AssessmentPage({ params }: PageParams) {
-  const { type, id } = params;
+export default function AssessmentPage() {
+  const params = useParams();
+  const type = params?.type as string;
+  const id = params?.id as string;
+  
   const router = useRouter();
   const { data: session, status } = useSession();
   const [loading, setLoading] = useState(true);
@@ -72,12 +67,14 @@ export default function AssessmentPage({ params }: PageParams) {
       return;
     }
 
-    if (status === 'authenticated') {
+    if (status === 'authenticated' && type && id) {
       fetchAssessment();
     }
   }, [status, type, id, router]);
 
   const fetchAssessment = async () => {
+    if (!type || !id) return;
+    
     setLoading(true);
     try {
       const response = await fetch(`/api/assessment/${type}/${id}`);
@@ -123,6 +120,8 @@ export default function AssessmentPage({ params }: PageParams) {
   };
 
   const handleNext = async () => {
+    if (!type || !id) return;
+    
     // Save current progress
     try {
       const response = await fetch(`/api/assessment/${type}/${id}/progress`, {
@@ -153,6 +152,8 @@ export default function AssessmentPage({ params }: PageParams) {
   };
 
   const submitAssessment = async () => {
+    if (!type || !id) return;
+    
     try {
       const response = await fetch(`/api/assessment/${type}/${id}/submit`, {
         method: 'POST',
@@ -181,6 +182,18 @@ export default function AssessmentPage({ params }: PageParams) {
   ) || [];
   
   const totalSteps = assessment?.totalSteps || 5;
+
+  // Early return if params are not available yet
+  if (!type || !id) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-blue-400 border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
