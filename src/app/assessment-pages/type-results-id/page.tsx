@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useParams } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import Link from 'next/link';
 
@@ -60,16 +60,11 @@ const RadarChart = ({ data, labels }: RadarChartProps) => {
   );
 };
 
-// Define interface for page params
-interface PageParams {
-  params: {
-    type: string;
-    id: string;
-  };
-}
-
-export default function AssessmentResultsPage({ params }: PageParams) {
-  const { type, id } = params;
+export default function AssessmentResultsPage() {
+  const params = useParams();
+  const type = params?.type as string;
+  const id = params?.id as string;
+  
   const router = useRouter();
   const { data: session, status } = useSession();
   const [loading, setLoading] = useState(true);
@@ -93,12 +88,14 @@ export default function AssessmentResultsPage({ params }: PageParams) {
       return;
     }
 
-    if (status === 'authenticated') {
+    if (status === 'authenticated' && type && id) {
       fetchResults();
     }
   }, [status, type, id, router]);
 
   const fetchResults = async () => {
+    if (!type || !id) return;
+    
     setLoading(true);
     try {
       const response = await fetch(`/api/assessment/${type}/results/${id}`);
@@ -113,6 +110,18 @@ export default function AssessmentResultsPage({ params }: PageParams) {
       setLoading(false);
     }
   };
+
+  // Early return if params are not available yet
+  if (!type || !id) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-blue-400 border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
