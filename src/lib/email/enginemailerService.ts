@@ -10,7 +10,8 @@ interface EngineMailerConfig {
 export interface EmailData {
   to: string;
   subject: string;
-  htmlBody?: string;
+  html: string;
+  text?: string;
   textBody?: string;
   fromEmail?: string;
   fromName?: string;
@@ -80,7 +81,7 @@ class EngineMailerService {
       const missingFields = [];
       if (!emailData.to) missingFields.push('to');
       if (!emailData.subject) missingFields.push('subject');
-      if (!emailData.htmlBody && !emailData.textBody) missingFields.push('htmlBody or textBody');
+      if (!emailData.html && !emailData.text && !emailData.textBody) missingFields.push('html, text, or textBody');
       
       if (missingFields.length > 0) {
         throw new Error(`Missing required fields: ${missingFields.join(', ')}`);
@@ -97,7 +98,7 @@ class EngineMailerService {
         UserKey: this.config.userKey,
         ToEmail: emailData.to,                                    // ✅ Correct: ToEmail (not To)
         Subject: emailData.subject,
-        SubmittedContent: emailData.htmlBody || emailData.textBody || '', // ✅ Correct: SubmittedContent (not HTMLPart)
+        SubmittedContent: emailData.html || emailData.text || emailData.textBody || '', // ✅ Correct: SubmittedContent (not HTMLPart)
         SenderEmail: emailData.fromEmail || this.config.fromEmail, // ✅ Correct: SenderEmail (not FromEmail)
         SenderName: emailData.fromName || this.config.fromName,   // ✅ Correct: SenderName (not FromName)
         
@@ -285,7 +286,7 @@ class EngineMailerService {
       const result = await this.sendEmail({
         to: data.email,
         subject: `Your ${data.assessmentName} Results Are Ready!`,
-        htmlBody,
+        html: htmlBody,
         textBody
       });
 
@@ -348,7 +349,7 @@ class EngineMailerService {
       const result = await this.sendEmail({
         to: data.email,
         subject: 'Your KareerFit Payment Receipt',
-        htmlBody,
+        html: htmlBody,
         textBody
       });
 
@@ -434,7 +435,7 @@ class EngineMailerService {
       const result = await this.sendEmail({
         to: data.email,
         subject: 'Welcome to KareerFit - Start Your Career Journey!',
-        htmlBody,
+        html: htmlBody,
         textBody
       });
 
@@ -457,7 +458,7 @@ class EngineMailerService {
       const result = await this.sendEmail({
         to: 'test@kareerfit.com',
         subject: 'Enginemailer Connection Test',
-        htmlBody: '<h1>Test Email</h1><p>This is a test email to verify Enginemailer connection with correct parameters.</p>',
+        html: '<h1>Test Email</h1><p>This is a test email to verify Enginemailer connection with correct parameters.</p>',
         textBody: 'Test Email - This is a test email to verify Enginemailer connection with correct parameters.'
       });
       

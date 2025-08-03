@@ -6,8 +6,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 
-export default function ProcessingPage() {
-  const params = useParams();
+export default function ProcessingPage({ params }: { params: Promise<{type: string, id: string }> }) {
   const [status, setStatus] = useState('processing');
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);

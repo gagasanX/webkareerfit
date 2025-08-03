@@ -195,15 +195,14 @@ function AssessmentTypeDetails({
     }
 
     try {
-      const response = await fetch('/api/payment/coupon', {
+      const response = await fetch('/api/coupon', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           code: couponCode,
-          assessmentType: assessmentType.id,
-          tierId: selectedTier
+          assessmentType: selectedTier
         }),
       });
 
@@ -216,7 +215,7 @@ function AssessmentTypeDetails({
 
       setCouponApplied(true);
       setCouponError('');
-      setDiscountedPrice(data.discountedPrice);
+      setDiscountedPrice(data.finalPrice);
     } catch (error) {
       setCouponError('Error applying coupon. Please try again.');
     }

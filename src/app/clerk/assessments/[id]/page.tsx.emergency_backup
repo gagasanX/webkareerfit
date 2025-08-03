@@ -51,9 +51,7 @@ interface AssessmentData {
   } | null;
 }
 
-export default function AssessmentDetailPage() {
-  const params = useParams();
-  const id = params?.id as string;
+export default function AssessmentDetailPage({ params }: { params: Promise<{id: string }> }) {
   const router = useRouter();
   const [assessment, setAssessment] = useState<AssessmentData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -66,12 +64,12 @@ export default function AssessmentDetailPage() {
 
   useEffect(() => {
     fetchAssessment();
-  }, [id]);
+  }, [params?.id]);
 
   const fetchAssessment = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/clerk/assessments/${id}`);
+      const response = await fetch(`/api/clerk/assessments/${params?.id}`);
       
       if (!response.ok) {
         throw new Error('Failed to load assessment');
@@ -101,7 +99,7 @@ export default function AssessmentDetailPage() {
       setSubmitting(true);
       setUpdateSuccess(false);
       
-      const response = await fetch(`/api/clerk/assessments/${id}`, {
+      const response = await fetch(`/api/clerk/assessments/${params?.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

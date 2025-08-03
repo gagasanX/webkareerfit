@@ -6,19 +6,16 @@ import { prisma } from '@/lib/db';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ type: string; id: string }> }
+  { params }: { params: Promise<{ type: string, id: string }> }
 ) {
   try {
-    // Await params once and destructure
-    const { type, id } = await params;
-    
     // Check if params exist
-    if (!id || !type || typeof id !== 'string' || typeof type !== 'string') {
-      console.error('Invalid parameters:', { type, id });
+    if (!params || typeof (await params).id !== 'string' || typeof (await params).type !== 'string') {
+      console.error('Invalid parameters:', params);
       return NextResponse.json({ error: 'Invalid parameters' }, { status: 400 });
     }
     
-    const assessmentId = id.trim();
+    const assessmentId = (await params).id.trim();
     
     // Authenticate user
     const session = await getServerSession(authOptions);
@@ -53,8 +50,8 @@ export async function GET(
         manualProcessing: true,
         progress: assessment.status === 'completed' ? 100 : 50,
         redirectUrl: assessment.tier === 'premium' || assessment.price >= 250
-          ? `/assessment/${type}/premium-results/${assessmentId}`
-          : `/assessment/${type}/standard-results/${assessmentId}`
+          ? `/assessment/${(await params).type}/premium-results/${assessmentId}`
+          : `/assessment/${(await params).type}/standard-results/${assessmentId}`
       });
     }
     
@@ -123,7 +120,7 @@ export async function GET(
           console.log(`Assessment ${assessmentId} processing timeout - force trigger combine-results`);
           
           // Force combine results to complete assessment
-          fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'https://my.kareerfit.com'}/api/assessment/${type}/${assessmentId}/combine-results`, {
+          fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'https://my.kareerfit.com'}/api/assessment/${(await params).type}/${assessmentId}/combine-results`, {
             method: 'POST',
           }).catch(err => console.error('Error triggering combine-results:', err));
           
@@ -152,7 +149,7 @@ export async function GET(
           },
           body: JSON.stringify({
             assessmentId,
-            type: type,
+            type: (await params).type,
             responses: data.responses || {}
           }),
         })

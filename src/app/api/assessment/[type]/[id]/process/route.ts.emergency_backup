@@ -16,7 +16,7 @@ export async function GET(
   { params }: { params: Promise<{ type: string, id: string }> }
 ) {
   try {
-    const { assessment, error } = await validateRequest(await params);
+    const { assessment, error } = await validateRequest(params);
     if (error) return error;
 
     // Return current processing status
@@ -48,7 +48,7 @@ export async function POST(
   
   try {
     // Validate request
-    const { assessment, error } = await validateRequest(await params);
+    const { assessment, error } = await validateRequest(params);
     if (error) return error;
     
     // Get required data for OpenAI

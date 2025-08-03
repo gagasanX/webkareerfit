@@ -1,6 +1,6 @@
 'use client';
 
-import React, { ReactNode, useState, useEffect } from 'react';
+import React, { ReactNode, useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { signIn, useSession } from 'next-auth/react';
@@ -167,9 +167,10 @@ const LoginForm = ({ referralCode }: { referralCode?: string }) => {
   );
 };
 
-export default function HomePage() {
+// Component that uses useSearchParams - MUST be wrapped in Suspense
+function HomePageWithSearchParams() {
   const router = useRouter();
-  const searchParams = useSearchParams();
+  const searchParams = useSearchParams(); // ✅ Now properly wrapped in Suspense
   const { data: session, status } = useSession();
   
   const [referralCode, setReferralCode] = useState<string>('');
@@ -180,7 +181,8 @@ export default function HomePage() {
 
   // 🚀 REFERRAL DETECTION
   useEffect(() => {
-    const refCode = searchParams.get('ref');
+    // Safely get search params with null checks
+    const refCode = searchParams?.get('ref');
     if (refCode) {
       setReferralCode(refCode);
       validateReferralCode(refCode);
@@ -354,5 +356,91 @@ export default function HomePage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// Loading fallback component for Suspense
+function HomePageFallback() {
+  return (
+    <div className="min-h-screen">
+      {/* Beta Banner skeleton */}
+      <div className="bg-gradient-to-r from-orange-400 to-pink-500 text-white text-center py-2 px-4">
+        <div className="font-bold text-sm">Beta Version</div>
+        <div className="text-xs opacity-80">Experimental 2.0</div>
+      </div>
+      
+      <div className="flex flex-col lg:flex-row min-h-[calc(100vh-52px)]">
+        {/* Left side skeleton */}
+        <div className="flex-1 bg-gradient-to-br from-[#38b6ff] to-[#7e43f1] p-8 relative overflow-hidden">
+          <div className="relative z-10 h-full flex flex-col justify-between">
+            {/* Logo skeleton */}
+            <div className="mb-10">
+              <div className="w-20 h-12 bg-white/20 rounded-lg mb-2 animate-pulse"></div>
+            </div>
+
+            {/* Content skeleton */}
+            <div className="max-w-md">
+              <div className="mb-8">
+                <div className="h-6 w-32 bg-white/20 rounded animate-pulse mb-2"></div>
+                <div className="h-12 bg-white/20 rounded animate-pulse mb-4"></div>
+                <div className="h-20 bg-white/20 rounded animate-pulse"></div>
+              </div>
+              
+              <div className="bg-white/10 backdrop-blur-sm p-6 rounded-xl mb-8">
+                <div className="h-6 w-24 bg-white/20 rounded animate-pulse mb-4"></div>
+                <div className="space-y-4">
+                  {[1, 2, 3].map((i) => (
+                    <div key={i} className="flex items-start">
+                      <div className="w-9 h-9 bg-white/20 rounded-full mr-4 animate-pulse"></div>
+                      <div className="h-4 bg-white/20 rounded animate-pulse flex-1"></div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Footer skeleton */}
+            <div className="h-4 w-64 bg-white/20 rounded animate-pulse"></div>
+          </div>
+        </div>
+
+        {/* Right side skeleton */}
+        <div className="w-full lg:w-[450px] bg-white p-8 flex items-center justify-center">
+          <div className="w-full max-w-md">
+            <div className="text-center mb-6">
+              <div className="w-20 h-8 bg-gray-200 rounded animate-pulse mx-auto mb-4"></div>
+              <div className="h-8 w-32 bg-gray-200 rounded animate-pulse mx-auto mb-2"></div>
+              <div className="h-10 w-40 bg-gray-200 rounded animate-pulse mx-auto mb-2"></div>
+              <div className="h-4 w-48 bg-gray-200 rounded animate-pulse mx-auto"></div>
+            </div>
+
+            <div className="bg-white rounded-xl shadow-lg p-6 mb-6 border border-gray-200">
+              <div className="space-y-4">
+                <div>
+                  <div className="h-4 w-24 bg-gray-200 rounded animate-pulse mb-1"></div>
+                  <div className="h-10 bg-gray-200 rounded animate-pulse"></div>
+                </div>
+                <div>
+                  <div className="h-4 w-20 bg-gray-200 rounded animate-pulse mb-1"></div>
+                  <div className="h-10 bg-gray-200 rounded animate-pulse"></div>
+                </div>
+                <div className="h-10 bg-gray-200 rounded animate-pulse"></div>
+              </div>
+            </div>
+
+            <div className="h-8 bg-gray-200 rounded animate-pulse"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Main component with Suspense boundary ✅
+export default function HomePage() {
+  return (
+    <Suspense fallback={<HomePageFallback />}>
+      <HomePageWithSearchParams />
+    </Suspense>
   );
 }

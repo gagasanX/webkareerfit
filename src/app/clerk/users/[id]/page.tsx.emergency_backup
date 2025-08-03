@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { ArrowLeftIcon, CheckCircleIcon, UserIcon, MailIcon, PhoneIcon, GraduationCapIcon, BriefcaseIcon } from 'lucide-react';
+import { useParams } from 'next/navigation';
 
 interface UserData {
   id: string;
@@ -31,11 +32,8 @@ interface UserData {
   }>;
 }
 
-export default function UserDetailPage() {
+export default function UserDetailPage({ params }: { params: Promise<{id: string }> }) {
   const router = useRouter();
-  const params = useParams(); // Fixed: Added this line to get params
-  const id = params?.id as string; // Extract id with proper typing
-  
   const [user, setUser] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -54,11 +52,9 @@ export default function UserDetailPage() {
 
   useEffect(() => {
     const fetchUser = async () => {
-      if (!id) return; // Early return if id not available
-      
       try {
         setLoading(true);
-        const response = await fetch(`/api/clerk/users/${id}`); // Use id directly
+        const response = await fetch(`/api/clerk/users/${params?.id}`);
         
         if (!response.ok) {
           throw new Error('Failed to load user');
@@ -84,7 +80,7 @@ export default function UserDetailPage() {
     };
 
     fetchUser();
-  }, [id]); // Changed dependency from params?.id to id
+  }, [params?.id]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -97,13 +93,11 @@ export default function UserDetailPage() {
   const updateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!id) return; // Early return if id not available
-    
     try {
       setUpdating(true);
       setUpdateSuccess(false);
       
-      const response = await fetch(`/api/clerk/users/${id}`, { // Use id directly
+      const response = await fetch(`/api/clerk/users/${params?.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -186,15 +180,6 @@ export default function UserDetailPage() {
       currency: 'MYR',
     }).format(price);
   };
-
-  // Loading state if id is not available yet
-  if (!id) {
-    return (
-      <div className="flex justify-center p-12">
-        <div className="w-12 h-12 border-4 border-t-transparent border-indigo-600 rounded-full animate-spin"></div>
-      </div>
-    );
-  }
 
   return (
     <div>

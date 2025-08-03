@@ -35,8 +35,8 @@ export default function AssessmentPage() {
   const [showNav, setShowNav] = useState(true);
   
   // Extract type and id from params - ensure they are strings
-  const type = params?.type ? String(params.type) : '';
-  const id = params?.id ? String(params.id) : '';
+  const type = params?.type ? String(params?.type) : '';
+  const id = params?.id ? String(params?.id) : '';
   
   console.log('Assessment page loaded with:', { type, id });
 

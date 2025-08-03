@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
-export default function RegisterPage() {
+// Separate component untuk logic yang pakai useSearchParams - MUST be wrapped in Suspense
+function RegisterFormWithSearchParams() {
   const router = useRouter();
   const searchParams = useSearchParams();
   
@@ -27,7 +28,8 @@ export default function RegisterPage() {
 
   // 🚀 AUTO-DETECT REFERRAL CODE FROM URL
   useEffect(() => {
-    const refCode = searchParams.get('ref');
+    // Safely get search params with null checks
+    const refCode = searchParams?.get('ref');
     if (refCode) {
       setFormData(prev => ({ ...prev, referralCode: refCode }));
       
@@ -297,5 +299,59 @@ export default function RegisterPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// Enhanced loading fallback component
+function RegisterPageFallback() {
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex items-center justify-center p-6">
+      <div className="bg-white rounded-2xl shadow-xl overflow-hidden max-w-md w-full">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] p-8 text-white text-center">
+          <div className="w-16 h-16 bg-white/20 rounded-full mx-auto mb-4 flex items-center justify-center">
+            <span className="text-2xl font-bold">KF</span>
+          </div>
+          <h1 className="text-2xl font-bold mb-2">Create Your Account</h1>
+          <p className="text-white/90">Join KareerFit and discover your career path</p>
+        </div>
+        
+        {/* Loading content */}
+        <div className="p-8">
+          <div className="space-y-4">
+            {/* Form field skeletons */}
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div key={i}>
+                <div className="h-4 w-24 bg-gray-200 rounded animate-pulse mb-1"></div>
+                <div className="h-10 bg-gray-200 rounded animate-pulse"></div>
+              </div>
+            ))}
+            
+            {/* Submit button skeleton */}
+            <div className="mt-6">
+              <div className="h-12 bg-gray-200 rounded animate-pulse"></div>
+            </div>
+            
+            {/* Links skeleton */}
+            <div className="mt-6 flex justify-center">
+              <div className="h-4 w-48 bg-gray-200 rounded animate-pulse"></div>
+            </div>
+            
+            <div className="mt-4 flex justify-center">
+              <div className="h-3 w-56 bg-gray-200 rounded animate-pulse"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Main component dengan Suspense wrapper
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={<RegisterPageFallback />}>
+      <RegisterFormWithSearchParams />
+    </Suspense>
   );
 }

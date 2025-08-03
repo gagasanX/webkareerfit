@@ -7,7 +7,7 @@ import { ASSESSMENT_TITLES } from '@/lib/assessmentQuestions';
 
 export default function AssessmentPage() {
   const params = useParams();
-  const type = params.type as 'fjrl' | 'ijrl' | 'cdrl' | 'ccrl' | 'ctrl' | 'rrl' | 'irl';
+  const type = params?.type as 'fjrl' | 'ijrl' | 'cdrl' | 'ccrl' | 'ctrl' | 'rrl' | 'irl';
   
   if (!type || !ASSESSMENT_TITLES[type]) {
     return (

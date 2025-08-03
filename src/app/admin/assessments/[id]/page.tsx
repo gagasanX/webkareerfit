@@ -141,7 +141,7 @@ export default function AssessmentDetailPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
   const params = useParams();
-  const assessmentId = params.id as string;
+  const assessmentId = params?.id as string;
 
   const [assessment, setAssessment] = useState<AssessmentDetail | null>(null);
   const [activityHistory, setActivityHistory] = useState<ActivityLog[]>([]);

@@ -33,7 +33,7 @@ export async function POST(
   context: { params: Promise<{ gateway: string }> }
 ) {
   const params = await context.params;
-  const gateway = (await params).gateway;
+  const gateway = params.gateway;
   
   console.log(`🔔 Payment webhook received for gateway: ${gateway}`);
   
@@ -266,7 +266,7 @@ export async function GET(
   context: { params: Promise<{ gateway: string }> }
 ) {
   const params = await context.params;
-  const gateway = (await params).gateway;
+  const gateway = params.gateway;
   
   return NextResponse.json({
     message: `${gateway} webhook endpoint active`,

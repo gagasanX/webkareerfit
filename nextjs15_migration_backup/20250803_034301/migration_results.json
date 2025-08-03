@@ -1,0 +1,57 @@
+{
+  "timestamp": "2025-08-03T03:43:01.102398",
+  "backup_dir": "nextjs15_migration_backup/20250803_034301",
+  "modified_files": [
+    {
+      "path": "src/app/api/payment/webhook/[gateway]/route.ts",
+      "backup": "nextjs15_migration_backup/20250803_034301/route.ts_20250803_034301.bak",
+      "type": "route"
+    },
+    {
+      "path": "src/app/assessment/[type]/page.tsx",
+      "backup": "nextjs15_migration_backup/20250803_034301/page.tsx_20250803_034301.bak",
+      "type": "page"
+    },
+    {
+      "path": "src/app/admin/assessments/[id]/page.tsx",
+      "backup": "nextjs15_migration_backup/20250803_034301/page.tsx_20250803_034301.bak",
+      "type": "page"
+    },
+    {
+      "path": "src/app/clerk/assessments/[id]/page.tsx",
+      "backup": "nextjs15_migration_backup/20250803_034301/page.tsx_20250803_034301.bak",
+      "type": "page"
+    },
+    {
+      "path": "src/app/clerk/users/[id]/page.tsx",
+      "backup": "nextjs15_migration_backup/20250803_034301/page.tsx_20250803_034301.bak",
+      "type": "page"
+    },
+    {
+      "path": "src/app/assessment/choose-package/[assessmentId]/page.tsx",
+      "backup": "nextjs15_migration_backup/20250803_034301/page.tsx_20250803_034301.bak",
+      "type": "page"
+    },
+    {
+      "path": "src/app/assessment/[type]/[id]/page.tsx",
+      "backup": "nextjs15_migration_backup/20250803_034301/page.tsx_20250803_034301.bak",
+      "type": "page"
+    },
+    {
+      "path": "src/app/assessment/[type]/processing/[id]/page.tsx",
+      "backup": "nextjs15_migration_backup/20250803_034301/page.tsx_20250803_034301.bak",
+      "type": "page"
+    },
+    {
+      "path": "src/app/assessment/[type]/premium-results/[id]/page.tsx",
+      "backup": "nextjs15_migration_backup/20250803_034301/page.tsx_20250803_034301.bak",
+      "type": "page"
+    },
+    {
+      "path": "src/app/assessment/[type]/standard-results/[id]/page.tsx",
+      "backup": "nextjs15_migration_backup/20250803_034301/page.tsx_20250803_034301.bak",
+      "type": "page"
+    }
+  ],
+  "errors": []
+}

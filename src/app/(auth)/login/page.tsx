@@ -8,10 +8,12 @@ import { Button } from '@/components/ui/Button';
 import Header from '@/components/ui/Header';
 import Footer from '@/components/ui/Footer';
 
-// Separate component that uses useSearchParams
-function LoginForm() {
+// Separate component that uses useSearchParams - MUST be wrapped in Suspense
+function LoginFormWithSearchParams() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  
+  // Safely get search params with null checks
   const callbackUrl = searchParams?.get('callbackUrl') || '/dashboard';
   const error = searchParams?.get('error');
   const successMessage = searchParams?.get('success');
@@ -155,7 +157,6 @@ function LoginForm() {
 function LoginFormFallback() {
   return (
     <div className="space-y-5">
-      <div className="h-10 bg-gray-200 rounded animate-pulse mb-6"></div>
       <div>
         <div className="h-5 w-24 bg-gray-200 rounded animate-pulse mb-1"></div>
         <div className="h-10 bg-gray-200 rounded animate-pulse"></div>
@@ -298,10 +299,10 @@ export default function LoginPage() {
               <p className="text-white/80 mt-1">Sign in to your KareerFit account</p>
             </div>
             
-            {/* Form section */}
+            {/* Form section with Suspense boundary */}
             <div className="p-6">
               <Suspense fallback={<LoginFormFallback />}>
-                <LoginForm />
+                <LoginFormWithSearchParams />
               </Suspense>
               
               <div className="mt-6 text-center">
