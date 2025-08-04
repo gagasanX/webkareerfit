@@ -42,6 +42,7 @@ const AssessmentProcessingScreen: React.FC<AssessmentProcessingScreenProps> = ({
   const [resumeDetected, setResumeDetected] = useState<boolean>(false);
   const pollingCountRef = useRef<number>(0);
   const animationRef = useRef<number | null>(null);
+  const cleanupRef = useRef<boolean>(false);
   
   // Define assessment specific information
   const assessmentInfo: AssessmentInfoMap = {
@@ -109,9 +110,13 @@ const AssessmentProcessingScreen: React.FC<AssessmentProcessingScreenProps> = ({
   useEffect(() => {
     if (!assessmentId) return;
     
+    cleanupRef.current = false;
+    
     // Start with simulated progress first to give immediate feedback
     let progress = 0;
     const initialAnimation = () => {
+      if (cleanupRef.current) return;
+      
       progress += 0.5;
       if (progress <= 20) {
         setProgress(progress);
@@ -128,29 +133,52 @@ const AssessmentProcessingScreen: React.FC<AssessmentProcessingScreenProps> = ({
     animationRef.current = requestAnimationFrame(initialAnimation);
 
     return () => {
+      cleanupRef.current = true;
       if (animationRef.current !== null) {
         cancelAnimationFrame(animationRef.current);
       }
     };
   }, [assessmentId]);
   
-  // Polling mechanism for actual progress
+  // ✅ FIXED: Enhanced polling mechanism with proper error handling and limits
   useEffect(() => {
     if (!isPolling || !assessmentId) return;
 
+    let pollCount = 0;
+    const maxPollAttempts = 30; // Maximum 30 attempts (about 2-3 minutes)
+    let timeoutId: NodeJS.Timeout;
+
     const pollStatus = async () => {
+      // ✅ STOP: Check if component was unmounted or max attempts reached
+      if (cleanupRef.current) return;
+      
       try {
+        pollCount++;
+        
+        // ✅ STOP: Maximum attempts reached to prevent endless polling
+        if (pollCount > maxPollAttempts) {
+          console.log('Max polling attempts reached, completing assessment...');
+          setProgress(95);
+          setTimeout(() => {
+            if (!cleanupRef.current && onComplete) {
+              onComplete();
+            }
+          }, 2000);
+          return;
+        }
+
         const response = await fetch(`/api/assessment/${assessmentType}/${assessmentId}/progress`);
+        
         if (response.ok) {
           const data = await response.json();
           
           // Handle real progress if available
           if (data.progress && typeof data.progress === 'number') {
-            setProgress(Math.max(20, data.progress)); // Never go below our initial animation
+            setProgress(Math.max(20, data.progress));
           } else {
             // Simulate gradual progress if real progress not available
             setProgress(prev => {
-              const increment = (95 - prev) * 0.1; // Slow down as we get closer to 100%
+              const increment = (95 - prev) * 0.1;
               return Math.min(95, prev + increment);
             });
           }
@@ -160,45 +188,122 @@ const AssessmentProcessingScreen: React.FC<AssessmentProcessingScreenProps> = ({
             setResumeDetected(true);
           }
           
-          // Check if processing is completed
-          if (data.completed) {
+          // ✅ PROPER: Multiple completion checks
+          if (data.completed || data.aiProcessed === true || data.status === 'completed') {
             setProgress(100);
-            setTimeout(() => onComplete && onComplete(), 1000);
+            setTimeout(() => {
+              if (!cleanupRef.current && onComplete) {
+                onComplete();
+              }
+            }, 1000);
             return;
           }
           
-          // Increase polling interval over time to reduce server load
-          pollingCountRef.current += 1;
-          const nextPollDelay = Math.min(5000, 1000 + (pollingCountRef.current * 500));
+          // ✅ HANDLE: AI processing errors
+          if (data.aiError) {
+            console.log('AI processing error detected:', data.aiError);
+            setTimeout(() => {
+              if (!cleanupRef.current && onComplete) {
+                onComplete();
+              }
+            }, 2000);
+            return;
+          }
           
-          setTimeout(pollStatus, nextPollDelay);
-        } else {
-          // Fallback to simulated progress if API fails
+          // Continue polling with increasing delay
+          const nextPollDelay = Math.min(8000, 2000 + (pollCount * 200));
+          
+          if (!cleanupRef.current) {
+            timeoutId = setTimeout(pollStatus, nextPollDelay);
+          }
+          
+        } else if (response.status === 404) {
+          // ✅ HANDLE: Missing progress endpoint gracefully
+          console.log('Progress endpoint not found, using fallback simulation...');
           simulateProgressAdvance();
-          setTimeout(pollStatus, 3000);
+          
+          // If we've tried enough times, just complete
+          if (pollCount > 10) {
+            console.log('Progress endpoint unavailable, completing assessment...');
+            setTimeout(() => {
+              if (!cleanupRef.current && onComplete) {
+                onComplete();
+              }
+            }, 3000);
+            return;
+          }
+          
+          if (!cleanupRef.current) {
+            timeoutId = setTimeout(pollStatus, 4000);
+          }
+        } else {
+          // Other HTTP errors - fallback to simulation
+          console.log(`Progress API returned ${response.status}, using simulation...`);
+          simulateProgressAdvance();
+          
+          if (!cleanupRef.current) {
+            timeoutId = setTimeout(pollStatus, 3000);
+          }
         }
       } catch (error) {
         console.error("Error polling assessment status:", error);
+        
+        // ✅ GRACEFUL: Error handling with completion after too many errors
+        if (pollCount > 15) {
+          console.log('Too many polling errors, completing assessment...');
+          setTimeout(() => {
+            if (!cleanupRef.current && onComplete) {
+              onComplete();
+            }
+          }, 2000);
+          return;
+        }
+        
         simulateProgressAdvance();
-        setTimeout(pollStatus, 3000);
+        
+        if (!cleanupRef.current) {
+          timeoutId = setTimeout(pollStatus, 4000);
+        }
       }
     };
     
     const simulateProgressAdvance = () => {
       setProgress(prev => {
         if (prev >= 95) return 95;
-        return prev + (95 - prev) * 0.1;
+        return prev + (95 - prev) * 0.15; // Slightly faster simulation
       });
     };
     
     // Start polling
     pollStatus();
     
-    // Cleanup
+    // ✅ CLEANUP: Proper cleanup function
     return () => {
-      pollingCountRef.current = 0;
+      cleanupRef.current = true;
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+      pollCount = maxPollAttempts + 1; // Stop polling immediately
     };
   }, [isPolling, assessmentId, assessmentType, onComplete, resumeDetected]);
+
+  // ✅ FALLBACK: Force completion timeout to prevent infinite processing screen
+  useEffect(() => {
+    // Fallback timeout - force completion after 3 minutes
+    const fallbackTimeout = setTimeout(() => {
+      if (!cleanupRef.current) {
+        console.log('Fallback timeout reached, forcing completion...');
+        setProgress(100);
+        if (onComplete) {
+          onComplete();
+        }
+      }
+    }, 180000); // 3 minutes
+
+    return () => {
+      clearTimeout(fallbackTimeout);
+    };
+  }, [onComplete]);
   
   // Update step text based on progress
   useEffect(() => {

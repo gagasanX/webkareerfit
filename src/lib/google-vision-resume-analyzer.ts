@@ -1,10 +1,22 @@
-// src/lib/google-vision-resume-analyzer.ts - FIXED VERSION
+// /src/lib/google-vision-resume-analyzer.ts - NO FAKE RESULTS VERSION
+// ✅ HONEST: Return errors instead of fake analysis
+
 import { openai } from '@/lib/openai';
 
-// ✅ SIMPLIFIED: Using Google Vision REST API with API Key only
+// Google Vision REST API configuration
 const GOOGLE_VISION_API_KEY = process.env.GOOGLE_VISION_API_KEY;
 const GOOGLE_VISION_API_BASE = 'https://vision.googleapis.com/v1';
 
+// ✅ TEXT EXTRACTION RESULT (no fake results)
+export interface TextExtractionResult {
+  success: boolean;
+  extractedText?: string;
+  processingMethod?: 'google_vision_pdf' | 'google_vision_image' | 'fallback';
+  error?: string;
+  processingTime?: number;
+}
+
+// ✅ ANALYSIS RESULT (real results only)
 export interface ResumeAnalysisResult {
   success: boolean;
   extractedText?: string;
@@ -46,7 +58,6 @@ export interface ResumeAnalysisResult {
   processingTime?: number;
 }
 
-// ✅ FIXED: Add proper typing for AssessmentContext
 export interface AssessmentContext {
   assessmentType: string;
   targetRole: string;
@@ -60,16 +71,14 @@ export interface AssessmentContext {
 }
 
 /**
- * 🚀 MAIN FUNCTION: Analyze resume using Google Vision + OpenAI
+ * ✅ TEXT EXTRACTION ONLY (5-8 seconds max)
+ * This function ONLY extracts text, NO fake results
  */
-export async function analyzeResumeWithGoogleVision(
-  file: File,
-  context: AssessmentContext
-): Promise<ResumeAnalysisResult> {
+export async function extractTextWithGoogleVision(file: File): Promise<TextExtractionResult> {
   const startTime = Date.now();
   
   try {
-    console.log(`[Vision] 📄 Starting resume analysis: ${file.name} (${file.size} bytes)`);
+    console.log(`[Vision] 📄 Text extraction ONLY: ${file.name} (${file.size} bytes)`);
     
     // Step 1: Validate file
     const validation = validateResumeFile(file);
@@ -94,22 +103,152 @@ export async function analyzeResumeWithGoogleVision(
       };
     }
     
-    // Step 3: Analyze with OpenAI
-    console.log(`[Vision] 🤖 Analyzing extracted text (${extractionResult.text.length} chars)`);
-    const analysis = await analyzeExtractedText(extractionResult.text, context);
-    
-    console.log(`[Vision] ✅ Analysis completed in ${Date.now() - startTime}ms`);
+    console.log(`[Vision] ✅ Text extraction completed in ${Date.now() - startTime}ms`);
     
     return {
       success: true,
       extractedText: extractionResult.text,
-      analysis,
       processingMethod: extractionResult.method,
       processingTime: Date.now() - startTime
     };
     
   } catch (error) {
-    console.error('[Vision] ❌ Analysis failed:', error);
+    console.error('[Vision] ❌ Text extraction failed:', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error during text extraction',
+      processingTime: Date.now() - startTime
+    };
+  }
+}
+
+/**
+ * ✅ SEPARATE OpenAI ANALYSIS FUNCTION - NO FAKE RESULTS
+ * Call this SEPARATELY after text extraction, will throw error if fails
+ */
+export async function analyzeExtractedTextSeparately(
+  extractedText: string, 
+  context: AssessmentContext
+): Promise<any> {
+  try {
+    console.log('[Vision] 🤖 Starting OpenAI analysis - NO FALLBACK MODE');
+    
+    const prompt = generateResumeAnalysisPrompt(extractedText, context);
+    
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        {
+          role: 'system',
+          content: `You are a BRUTALLY HONEST resume analysis expert. Provide realistic, evidence-based assessment of resumes for career readiness evaluations. Be thorough, specific, and honest about strengths and weaknesses.
+
+CRITICAL INSTRUCTIONS:
+- Focus ONLY on the resume content analysis and career insights
+- Do NOT mention any AI services, processing tools, or extraction methods
+- Provide direct professional analysis without technical processing references
+- Your response should read like a human career expert's assessment`
+        },
+        {
+          role: 'user',
+          content: prompt
+        }
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0.3,
+      max_tokens: 4000,
+    });
+    
+    const responseContent = completion.choices[0]?.message?.content;
+    if (!responseContent) {
+      throw new Error('Empty response from OpenAI - analysis could not be completed');
+    }
+    
+    let analysis;
+    try {
+      analysis = JSON.parse(responseContent);
+    } catch (parseError) {
+      throw new Error('Invalid response format from AI analysis service');
+    }
+    
+    // ✅ VALIDATE: Ensure we got real, complete results
+    if (!analysis || !analysis.scores || typeof analysis.scores.overallResumeScore !== 'number') {
+      throw new Error('AI analysis returned incomplete results');
+    }
+    
+    // ✅ VALIDATE: Ensure all required fields exist
+    const requiredFields = ['scores', 'resumeAnalysis', 'careerFit'];
+    for (const field of requiredFields) {
+      if (!analysis[field]) {
+        throw new Error(`AI analysis missing required field: ${field}`);
+      }
+    }
+    
+    console.log('[Vision] ✅ OpenAI analysis completed successfully with complete results');
+    
+    // Validate and enhance the analysis (but no fake data)
+    return validateAnalysisResults(analysis, context);
+    
+  } catch (error) {
+    console.error('[Vision] ❌ OpenAI analysis failed:', error);
+    
+    // ✅ NO FAKE RESULTS - Throw error instead
+    throw new Error(`AI analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+/**
+ * ✅ LEGACY: Full analysis - kept for backward compatibility but NO FAKE RESULTS
+ */
+export async function analyzeResumeWithGoogleVision(
+  file: File,
+  context: AssessmentContext
+): Promise<ResumeAnalysisResult> {
+  const startTime = Date.now();
+  
+  try {
+    console.log(`[Vision] 🚀 LEGACY: Full analysis for ${file.name} - NO FAKE RESULTS`);
+    
+    // Step 1: Extract text (5-8 seconds)
+    const textResult = await extractTextWithGoogleVision(file);
+    
+    if (!textResult.success || !textResult.extractedText) {
+      return {
+        success: false,
+        error: textResult.error,
+        processingMethod: textResult.processingMethod,
+        processingTime: Date.now() - startTime
+      };
+    }
+    
+    // Step 2: Analyze with OpenAI (NO FALLBACK)
+    console.log(`[Vision] 🤖 Analyzing extracted text (${textResult.extractedText.length} chars) - NO FALLBACK`);
+    
+    try {
+      const analysis = await analyzeExtractedTextSeparately(textResult.extractedText, context);
+      
+      console.log(`[Vision] ✅ Full analysis completed in ${Date.now() - startTime}ms`);
+      
+      return {
+        success: true,
+        extractedText: textResult.extractedText,
+        analysis,
+        processingMethod: textResult.processingMethod,
+        processingTime: Date.now() - startTime
+      };
+      
+    } catch (analysisError) {
+      // ✅ NO FAKE RESULTS - Return error instead
+      return {
+        success: false,
+        extractedText: textResult.extractedText,
+        error: analysisError instanceof Error ? analysisError.message : 'AI analysis failed',
+        processingMethod: textResult.processingMethod,
+        processingTime: Date.now() - startTime
+      };
+    }
+    
+  } catch (error) {
+    console.error('[Vision] ❌ Full analysis failed:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error during analysis',
@@ -132,7 +271,7 @@ async function extractTextFromFile(file: File): Promise<{
     const fileBuffer = await file.arrayBuffer();
     const content = Buffer.from(fileBuffer);
     
-    // 🔥 METHOD 1: Try PDF processing first (if PDF)
+    // Method 1: Try PDF processing first (if PDF)
     if (file.type === 'application/pdf') {
       console.log('[Vision] 📄 Attempting PDF processing...');
       
@@ -151,7 +290,7 @@ async function extractTextFromFile(file: File): Promise<{
       }
     }
     
-    // 🔥 METHOD 2: Image processing (for images or PDF fallback)
+    // Method 2: Image processing (for images or PDF fallback)
     if (file.type.startsWith('image/') || file.type === 'application/pdf') {
       console.log('[Vision] 🖼️ Attempting image processing...');
       
@@ -170,10 +309,10 @@ async function extractTextFromFile(file: File): Promise<{
       }
     }
     
-    // 🔥 METHOD 3: Fallback - return minimal info
+    // ✅ NO FAKE TEXT - Return error instead
     return {
       success: false,
-      error: 'Could not extract text from file using Vision API',
+      error: 'Could not extract readable text from file. Please ensure the file contains clear, readable text.',
       method: 'fallback'
     };
     
@@ -187,7 +326,7 @@ async function extractTextFromFile(file: File): Promise<{
 }
 
 /**
- * 📄 Extract text from PDF using Google Vision REST API with API Key
+ * 📄 Extract text from PDF using Google Vision REST API
  */
 async function extractTextFromPDF(content: Buffer): Promise<{
   success: boolean;
@@ -195,7 +334,6 @@ async function extractTextFromPDF(content: Buffer): Promise<{
   error?: string;
 }> {
   try {
-    // ✅ SIMPLIFIED: Direct REST API call with API key
     const requestBody = {
       requests: [
         {
@@ -208,8 +346,7 @@ async function extractTextFromPDF(content: Buffer): Promise<{
               type: 'DOCUMENT_TEXT_DETECTION',
             },
           ],
-          // Process first page only for faster processing
-          pages: [1],
+          pages: [1], // Process first page only for faster processing
         },
       ],
     };
@@ -245,7 +382,7 @@ async function extractTextFromPDF(content: Buffer): Promise<{
     const extractedText = pageResponse.fullTextAnnotation?.text || '';
     
     if (!extractedText || extractedText.length < 10) {
-      throw new Error('Insufficient text extracted from PDF');
+      throw new Error('Insufficient text extracted from PDF - document may be image-based or corrupted');
     }
     
     console.log(`[Vision] ✅ PDF text extracted: ${extractedText.length} characters`);
@@ -314,14 +451,14 @@ async function extractTextFromImage(content: Buffer): Promise<{
     const textAnnotations = imageResponse.textAnnotations;
     
     if (!textAnnotations || textAnnotations.length === 0) {
-      throw new Error('No text detected in image');
+      throw new Error('No text detected in image - document may be unreadable or corrupted');
     }
     
     // First annotation contains the full text
     const fullText = textAnnotations[0].description || '';
     
     if (!fullText || fullText.length < 10) {
-      throw new Error('Insufficient text detected in image');
+      throw new Error('Insufficient text detected in image - document may be low quality or unreadable');
     }
     
     console.log(`[Vision] ✅ Image text extracted: ${fullText.length} characters`);
@@ -352,60 +489,11 @@ function cleanExtractedText(text: string): string {
 }
 
 /**
- * 🤖 Analyze extracted text with OpenAI
- */
-async function analyzeExtractedText(extractedText: string, context: AssessmentContext) {
-  try {
-    const prompt = generateResumeAnalysisPrompt(extractedText, context);
-    
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-4o',
-      messages: [
-        {
-          role: 'system',
-          content: `You are a BRUTALLY HONEST resume analysis expert. Provide realistic, evidence-based assessment of resumes for career readiness evaluations. Be thorough, specific, and honest about strengths and weaknesses.
-
-CRITICAL INSTRUCTIONS:
-- Focus ONLY on the resume content analysis and career insights
-- Do NOT mention any AI services, processing tools, or extraction methods
-- Do NOT say 'Google' names
-- Provide direct professional analysis without technical processing references
-- Your response should read like a human career expert's assessment`
-        },
-        {
-          role: 'user',
-          content: prompt
-        }
-      ],
-      response_format: { type: 'json_object' },
-      temperature: 0.3,
-      max_tokens: 4000,
-    });
-    
-    const responseContent = completion.choices[0]?.message?.content;
-    if (!responseContent) {
-      throw new Error('Empty response from OpenAI');
-    }
-    
-    const analysis = JSON.parse(responseContent);
-    
-    // Validate and enhance the analysis
-    return validateAndEnhanceAnalysis(analysis, context);
-    
-  } catch (error) {
-    console.error('[Vision] ❌ OpenAI analysis failed:', error);
-    
-    // Return fallback analysis
-    return createFallbackAnalysis(extractedText, context);
-  }
-}
-
-/**
  * 📝 Generate comprehensive resume analysis prompt
  */
 function generateResumeAnalysisPrompt(extractedText: string, context: AssessmentContext): string {
   return `
-COMPREHENSIVE RESUME ANALYSIS WITH VISION EXTRACTED TEXT
+COMPREHENSIVE RESUME ANALYSIS
 
 **ASSESSMENT CONTEXT:**
 - Assessment Type: ${context.assessmentType.toUpperCase()}
@@ -416,7 +504,7 @@ COMPREHENSIVE RESUME ANALYSIS WITH VISION EXTRACTED TEXT
 **ASSESSMENT RESPONSES:**
 ${JSON.stringify(context.responses, null, 2)}
 
-**EXTRACTED RESUME TEXT (via Ultra Vision):**
+**EXTRACTED RESUME TEXT:**
 ${extractedText}
 
 **ANALYSIS REQUIREMENTS:**
@@ -491,26 +579,22 @@ ${extractedText}
 }
 
 /**
- * ✅ Validate and enhance analysis results
+ * ✅ Validate analysis results (ensure completeness, no fake data)
  */
-function validateAndEnhanceAnalysis(analysis: any, context: AssessmentContext) {
-  // Ensure all required fields exist with defaults
+function validateAnalysisResults(analysis: any, context: AssessmentContext) {
+  // Ensure all required fields exist with proper validation
   const validatedAnalysis = {
     scores: {
-      resumeQuality: validateScore(analysis.scores?.resumeQuality, 65),
-      experienceRelevance: validateScore(analysis.scores?.experienceRelevance, 60),
-      skillsMatch: validateScore(analysis.scores?.skillsMatch, 70),
-      professionalPresentation: validateScore(analysis.scores?.professionalPresentation, 65),
+      resumeQuality: validateScore(analysis.scores?.resumeQuality),
+      experienceRelevance: validateScore(analysis.scores?.experienceRelevance),
+      skillsMatch: validateScore(analysis.scores?.skillsMatch),
+      professionalPresentation: validateScore(analysis.scores?.professionalPresentation),
       overallResumeScore: 0, // Will be calculated
       evidenceLevel: validateEvidenceLevel(analysis.scores?.evidenceLevel)
     },
     resumeAnalysis: {
-      analysis: analysis.resumeAnalysis?.analysis || 'Resume analysis completed using Vision OCR extraction.',
-      keyFindings: Array.isArray(analysis.resumeAnalysis?.keyFindings) ? analysis.resumeAnalysis.keyFindings : [
-        'Resume processed via Vision API',
-        'Text extraction successful',
-        'Content available for analysis'
-      ],
+      analysis: analysis.resumeAnalysis?.analysis || 'Resume analysis completed successfully.',
+      keyFindings: Array.isArray(analysis.resumeAnalysis?.keyFindings) ? analysis.resumeAnalysis.keyFindings : [],
       experienceLevel: validateExperienceLevel(analysis.resumeAnalysis?.experienceLevel),
       skillsValidation: {
         claimed: Array.isArray(analysis.resumeAnalysis?.skillsValidation?.claimed) ? analysis.resumeAnalysis.skillsValidation.claimed : [],
@@ -518,13 +602,13 @@ function validateAndEnhanceAnalysis(analysis: any, context: AssessmentContext) {
         missing: Array.isArray(analysis.resumeAnalysis?.skillsValidation?.missing) ? analysis.resumeAnalysis.skillsValidation.missing : []
       },
       gapAnalysis: Array.isArray(analysis.resumeAnalysis?.gapAnalysis) ? analysis.resumeAnalysis.gapAnalysis : [],
-      credibilityScore: validateScore(analysis.resumeAnalysis?.credibilityScore, 70),
+      credibilityScore: validateScore(analysis.resumeAnalysis?.credibilityScore),
       recommendations: Array.isArray(analysis.resumeAnalysis?.recommendations) ? analysis.resumeAnalysis.recommendations : []
     },
     careerFit: {
       fitLevel: validateFitLevel(analysis.careerFit?.fitLevel),
-      fitPercentage: validateScore(analysis.careerFit?.fitPercentage, 65),
-      honestAssessment: analysis.careerFit?.honestAssessment || 'Career fit assessment based on resume analysis.',
+      fitPercentage: validateScore(analysis.careerFit?.fitPercentage),
+      honestAssessment: analysis.careerFit?.honestAssessment || 'Career fit assessment completed.',
       realityCheck: analysis.careerFit?.realityCheck || 'Continue developing relevant skills and experience.',
       marketCompetitiveness: analysis.careerFit?.marketCompetitiveness || 'Building competitive position in target market.',
       timeToReadiness: validateTimeToReadiness(analysis.careerFit?.timeToReadiness),
@@ -543,31 +627,46 @@ function validateAndEnhanceAnalysis(analysis: any, context: AssessmentContext) {
 }
 
 /**
- * 🔧 Helper validation functions
+ * 🔧 Helper validation functions - NO DEFAULTS, throw errors if invalid
  */
-function validateScore(score: any, defaultValue: number): number {
+function validateScore(score: any): number {
   const num = Number(score);
-  return isNaN(num) || num < 0 || num > 100 ? defaultValue : Math.round(num);
+  if (isNaN(num) || num < 0 || num > 100) {
+    throw new Error(`Invalid score value: ${score}. Must be a number between 0-100.`);
+  }
+  return Math.round(num);
 }
 
 function validateEvidenceLevel(level: any): 'STRONG' | 'MODERATE' | 'WEAK' | 'INSUFFICIENT' {
   const validLevels = ['STRONG', 'MODERATE', 'WEAK', 'INSUFFICIENT'];
-  return validLevels.includes(level) ? level : 'MODERATE';
+  if (!validLevels.includes(level)) {
+    throw new Error(`Invalid evidence level: ${level}. Must be one of: ${validLevels.join(', ')}`);
+  }
+  return level;
 }
 
 function validateExperienceLevel(level: any): 'ENTRY' | 'JUNIOR' | 'MID' | 'SENIOR' | 'EXECUTIVE' {
   const validLevels = ['ENTRY', 'JUNIOR', 'MID', 'SENIOR', 'EXECUTIVE'];
-  return validLevels.includes(level) ? level : 'MID';
+  if (!validLevels.includes(level)) {
+    throw new Error(`Invalid experience level: ${level}. Must be one of: ${validLevels.join(', ')}`);
+  }
+  return level;
 }
 
 function validateFitLevel(level: any): 'EXCELLENT_FIT' | 'GOOD_FIT' | 'PARTIAL_FIT' | 'POOR_FIT' | 'WRONG_CAREER_PATH' {
   const validLevels = ['EXCELLENT_FIT', 'GOOD_FIT', 'PARTIAL_FIT', 'POOR_FIT', 'WRONG_CAREER_PATH'];
-  return validLevels.includes(level) ? level : 'PARTIAL_FIT';
+  if (!validLevels.includes(level)) {
+    throw new Error(`Invalid fit level: ${level}. Must be one of: ${validLevels.join(', ')}`);
+  }
+  return level;
 }
 
 function validateTimeToReadiness(time: any): string {
-  const validTimes = ['6-12 weeks', '3-6 months', '6-12 months', '1-2 years', '3+ years'];
-  return validTimes.includes(time) ? time : '6-12 months';
+  const validTimes = ['6-12 weeks', '3-6 months', '6-12 months', '1-2 years', '2+ years'];
+  if (!validTimes.includes(time)) {
+    throw new Error(`Invalid time to readiness: ${time}. Must be one of: ${validTimes.join(', ')}`);
+  }
+  return time;
 }
 
 /**
@@ -579,7 +678,7 @@ function validateResumeFile(file: File): { valid: boolean; error?: string } {
     'application/pdf',
     'image/png',
     'image/jpeg',
-    'image/jpg',
+    'image/jpg', 
     'image/webp',
     'image/gif'
   ];
@@ -599,69 +698,6 @@ function validateResumeFile(file: File): { valid: boolean; error?: string } {
   }
   
   return { valid: true };
-}
-
-/**
- * 🔄 Create fallback analysis if OpenAI fails
- */
-function createFallbackAnalysis(extractedText: string, context: AssessmentContext) {
-  const textLength = extractedText.length;
-  const hasContactInfo = /email|phone|tel|@/.test(extractedText.toLowerCase());
-  const hasExperience = /experience|work|job|position|role|company/.test(extractedText.toLowerCase());
-  const hasEducation = /education|degree|university|college|school/.test(extractedText.toLowerCase());
-  
-  // Basic scoring based on text analysis
-  const resumeQuality = hasContactInfo && hasExperience && hasEducation ? 70 : 55;
-  const experienceRelevance = hasExperience ? 65 : 45;
-  const skillsMatch = textLength > 500 ? 65 : 50;
-  const professionalPresentation = textLength > 300 && hasContactInfo ? 70 : 55;
-  
-  return {
-    scores: {
-      resumeQuality,
-      experienceRelevance,
-      skillsMatch,
-      professionalPresentation,
-      overallResumeScore: Math.round((resumeQuality + experienceRelevance + skillsMatch + professionalPresentation) / 4),
-      evidenceLevel: 'MODERATE' as const
-    },
-    resumeAnalysis: {
-      analysis: `Resume successfully processed using Vision API. Text extraction completed with ${textLength} characters of content available for analysis.`,
-      keyFindings: [
-        'Resume processed via Vision OCR',
-        `${textLength} characters of text extracted`,
-        hasContactInfo ? 'Contact information detected' : 'Limited contact information',
-        hasExperience ? 'Professional experience section found' : 'Experience section needs enhancement'
-      ],
-      experienceLevel: 'MID' as const,
-      skillsValidation: {
-        claimed: [],
-        evidenced: [],
-        missing: ['Detailed skills validation requires manual review']
-      },
-      gapAnalysis: [
-        'Complete analysis requires detailed review of extracted content',
-        'Skills alignment assessment needed',
-        'Experience relevance evaluation pending'
-      ],
-      credibilityScore: 70,
-      recommendations: [
-        'Review extracted text for accuracy and completeness',
-        'Enhance resume formatting for better OCR processing',
-        'Add specific achievements with quantifiable results'
-      ]
-    },
-    careerFit: {
-      fitLevel: 'PARTIAL_FIT' as const,
-      fitPercentage: 65,
-      honestAssessment: 'Resume analysis completed using Vision API. Further review recommended for comprehensive assessment.',
-      realityCheck: 'Text extraction successful, continue building relevant experience and skills.',
-      marketCompetitiveness: 'Competitive position assessment requires detailed content review.',
-      timeToReadiness: '3-6 months',
-      criticalGaps: ['Detailed skills assessment needed', 'Experience relevance evaluation required'],
-      competitiveAdvantages: ['Resume successfully digitized', 'Content available for analysis']
-    }
-  };
 }
 
 /**
