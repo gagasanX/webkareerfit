@@ -4,6 +4,190 @@ import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 
+// Country codes data - Malaysia first as default
+const countryCodes = [
+  { code: '+60', country: 'Malaysia', flag: '🇲🇾' }, // DEFAULT - Malaysia first
+  { code: '+65', country: 'Singapore', flag: '🇸🇬' },
+  { code: '+62', country: 'Indonesia', flag: '🇮🇩' },
+  { code: '+66', country: 'Thailand', flag: '🇹🇭' },
+  { code: '+84', country: 'Vietnam', flag: '🇻🇳' },
+  { code: '+63', country: 'Philippines', flag: '🇵🇭' },
+  { code: '+1', country: 'United States', flag: '🇺🇸' },
+  { code: '+44', country: 'United Kingdom', flag: '🇬🇧' },
+  { code: '+86', country: 'China', flag: '🇨🇳' },
+  { code: '+91', country: 'India', flag: '🇮🇳' },
+];
+
+// Types
+interface PhoneInputProps {
+  value: string;
+  onChange: (value: string) => void;
+  error: string;
+}
+
+interface ReferralInfo {
+  code: string;
+  affiliateName: string;
+}
+
+// Phone Input Component
+function PhoneInput({ value, onChange, error }: PhoneInputProps) {
+  const [countryCode, setCountryCode] = useState('+60'); // Default Malaysia
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+
+  // Parse existing value when component mounts
+  useEffect(() => {
+    if (value) {
+      const country = countryCodes.find(c => value.startsWith(c.code));
+      if (country) {
+        setCountryCode(country.code);
+        setPhoneNumber(value.replace(country.code, ''));
+      } else {
+        setPhoneNumber(value);
+      }
+    }
+  }, []);
+
+  // Update parent component when values change
+  useEffect(() => {
+    const fullNumber = phoneNumber ? `${countryCode}${phoneNumber}` : '';
+    onChange(fullNumber);
+  }, [countryCode, phoneNumber, onChange]);
+
+  const formatPhoneNumber = (input: string, countryCode: string): string => {
+    // Remove all non-digits
+    const cleaned = input.replace(/\D/g, '');
+    
+    if (countryCode === '+60') {
+      // Malaysia formatting - support both short (9-10 digits) and long (11-12 digits)
+      if (cleaned.length <= 2) return cleaned;
+      if (cleaned.length <= 5) return `${cleaned.slice(0, 2)}-${cleaned.slice(2)}`;
+      if (cleaned.length <= 8) return `${cleaned.slice(0, 2)}-${cleaned.slice(2, 5)}-${cleaned.slice(5)}`;
+      if (cleaned.length <= 11) return `${cleaned.slice(0, 2)}-${cleaned.slice(2, 5)}-${cleaned.slice(5, 8)}-${cleaned.slice(8)}`;
+      return `${cleaned.slice(0, 2)}-${cleaned.slice(2, 5)}-${cleaned.slice(5, 8)}-${cleaned.slice(8, 12)}`;
+    }
+    
+    // Default formatting for other countries
+    if (cleaned.length <= 3) return cleaned;
+    if (cleaned.length <= 6) return `${cleaned.slice(0, 3)}-${cleaned.slice(3)}`;
+    return `${cleaned.slice(0, 3)}-${cleaned.slice(3, 6)}-${cleaned.slice(6, 10)}`;
+  };
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const input = e.target.value;
+    const formatted = formatPhoneNumber(input, countryCode);
+    setPhoneNumber(formatted);
+  };
+
+  const validatePhoneNumber = (phone: string, code: string): boolean => {
+    const cleaned = phone.replace(/\D/g, '');
+    
+    if (code === '+60') {
+      // Malaysia: support both formats
+      // Short format: 9-10 digits (mobile: 12-345-6789, 11-234-5678)
+      // Long format: 11-12 digits (mobile with extra digits: 11-5633-3012, 11-2345-6789)
+      return cleaned.length >= 9 && cleaned.length <= 12;
+    }
+    
+    // Basic validation for other countries
+    return cleaned.length >= 7 && cleaned.length <= 15;
+  };
+
+  const isValid = phoneNumber ? validatePhoneNumber(phoneNumber, countryCode) : true;
+
+  return (
+    <div>
+      <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
+        Phone Number <span className="text-gray-500">(Optional)</span>
+      </label>
+      
+      <div className="relative">
+        <div className="flex">
+          {/* Country Code Dropdown */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setDropdownOpen(!dropdownOpen)}
+              className={`px-3 py-2 border border-gray-300 rounded-l-lg bg-gray-50 hover:bg-gray-100 focus:ring-2 focus:ring-[#7e43f1] focus:border-transparent transition-colors flex items-center gap-2 ${
+                error && !isValid ? 'border-red-300' : ''
+              }`}
+            >
+              <span className="text-lg">
+                {countryCodes.find(c => c.code === countryCode)?.flag || '🌍'}
+              </span>
+              <span className="text-sm font-medium">{countryCode}</span>
+              <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {/* Dropdown Menu */}
+            {dropdownOpen && (
+              <div className="absolute top-full left-0 mt-1 w-64 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto">
+                {countryCodes.map((country) => (
+                  <button
+                    key={country.code}
+                    type="button"
+                    onClick={() => {
+                      setCountryCode(country.code);
+                      setDropdownOpen(false);
+                    }}
+                    className="w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center gap-3 transition-colors"
+                  >
+                    <span className="text-lg">{country.flag}</span>
+                    <div className="flex-1">
+                      <div className="font-medium text-sm">{country.country}</div>
+                      <div className="text-xs text-gray-500">{country.code}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Phone Number Input */}
+          <input
+            type="tel"
+            id="phone"
+            name="phone"
+            value={phoneNumber}
+            onChange={handlePhoneChange}
+            className={`flex-1 px-3 py-2 border border-l-0 border-gray-300 rounded-r-lg focus:ring-2 focus:ring-[#7e43f1] focus:border-transparent ${
+              error && !isValid ? 'border-red-300 bg-red-50' : ''
+            }`}
+            placeholder={countryCode === '+60' ? '12-345-6789 or 11-5633-3012' : '123-456-7890'}
+          />
+        </div>
+
+        {/* Validation Message */}
+        {phoneNumber && !isValid && (
+          <p className="text-xs text-red-600 mt-1">
+            {countryCode === '+60' 
+              ? 'Please enter a valid Malaysian phone number (9-12 digits). Examples: 123456789, 1156333012'
+              : 'Please enter a valid phone number'
+            }
+          </p>
+        )}
+        
+        {phoneNumber && isValid && (
+          <p className="text-xs text-green-600 mt-1">
+            ✓ Phone number format is valid
+          </p>
+        )}
+      </div>
+
+      {/* Click outside to close dropdown */}
+      {dropdownOpen && (
+        <div 
+          className="fixed inset-0 z-40" 
+          onClick={() => setDropdownOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
 // Separate component untuk logic yang pakai useSearchParams - MUST be wrapped in Suspense
 function RegisterFormWithSearchParams() {
   const router = useRouter();
@@ -21,10 +205,7 @@ function RegisterFormWithSearchParams() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [referralInfo, setReferralInfo] = useState<{
-    code: string;
-    affiliateName: string;
-  } | null>(null);
+  const [referralInfo, setReferralInfo] = useState<ReferralInfo | null>(null);
 
   // 🚀 AUTO-DETECT REFERRAL CODE FROM URL
   useEffect(() => {
@@ -53,6 +234,28 @@ function RegisterFormWithSearchParams() {
     }
   };
 
+  const validatePhone = (phone: string): boolean => {
+    if (!phone) return true; // Optional field
+    
+    // Check if it starts with a country code
+    const hasCountryCode = countryCodes.some(c => phone.startsWith(c.code));
+    if (!hasCountryCode) return false;
+    
+    // Get the country code and number part
+    const country = countryCodes.find(c => phone.startsWith(c.code));
+    if (!country) return false;
+    
+    const numberPart = phone.replace(country.code, '').replace(/\D/g, '');
+    
+    if (country.code === '+60') {
+      // Malaysia: 9-12 digits (support both short and long formats)
+      return numberPart.length >= 9 && numberPart.length <= 12;
+    }
+    
+    // Other countries: 7-15 digits
+    return numberPart.length >= 7 && numberPart.length <= 15;
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
@@ -74,6 +277,13 @@ function RegisterFormWithSearchParams() {
 
     if (formData.password.length < 6) {
       setError('Password must be at least 6 characters');
+      setIsLoading(false);
+      return;
+    }
+
+    // Phone validation
+    if (formData.phone && !validatePhone(formData.phone)) {
+      setError('Please enter a valid phone number with country code');
       setIsLoading(false);
       return;
     }
@@ -106,8 +316,9 @@ function RegisterFormWithSearchParams() {
         router.push('/login?success=Account+created+successfully');
       }, 2000);
 
-    } catch (error: any) {
-      setError(error.message || 'Registration failed. Please try again.');
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Registration failed. Please try again.';
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
@@ -124,6 +335,13 @@ function RegisterFormWithSearchParams() {
     if (name === 'referralCode' && value.length >= 3) {
       validateReferralCode(value);
     }
+  };
+
+  const handlePhoneChange = (phoneValue: string) => {
+    setFormData(prev => ({
+      ...prev,
+      phone: phoneValue
+    }));
   };
 
   return (
@@ -200,20 +418,12 @@ function RegisterFormWithSearchParams() {
               />
             </div>
 
-            <div>
-              <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
-                Phone Number <span className="text-gray-500">(Optional)</span>
-              </label>
-              <input
-                type="tel"
-                id="phone"
-                name="phone"
-                value={formData.phone}
-                onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-[#7e43f1] focus:border-transparent"
-                placeholder="+60123456789"
-              />
-            </div>
+            {/* 🚀 NEW PHONE INPUT WITH COUNTRY CODE */}
+            <PhoneInput 
+              value={formData.phone} 
+              onChange={handlePhoneChange}
+              error={error}
+            />
 
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
