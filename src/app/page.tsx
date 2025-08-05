@@ -5,6 +5,56 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { signIn, useSession } from 'next-auth/react';
 
+// ===== BEAUTIFUL TEXT LOGO COMPONENT =====
+const KareerFitLogo = ({ 
+  variant = 'dark', 
+  size = 'medium',
+  className = '' 
+}: { 
+  variant?: 'dark' | 'light' | 'white';
+  size?: 'small' | 'medium' | 'large';
+  className?: string;
+}) => {
+  const sizeClasses = {
+    small: 'text-lg',
+    medium: 'text-2xl',
+    large: 'text-3xl md:text-4xl'
+  };
+
+  const variantClasses = {
+    dark: 'text-gray-800',
+    light: 'text-white',
+    white: 'text-white'
+  };
+
+  return (
+    <div className={`font-bold ${sizeClasses[size]} ${variantClasses[variant]} ${className}`}>
+      <span className="relative">
+        KAREER
+        <span className="bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] bg-clip-text text-transparent">
+          fit
+        </span>
+        {/* Decorative dot */}
+        <span className="inline-block w-2 h-2 bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] rounded-full ml-1 animate-pulse"></span>
+      </span>
+    </div>
+  );
+};
+
+// Enhanced Logo with Container for Left Side
+const LogoWithContainer = () => (
+  <div className="inline-block bg-white/10 backdrop-blur-sm px-4 py-3 rounded-lg shadow-lg mb-2 border border-white/20">
+    <KareerFitLogo variant="white" size="medium" />
+  </div>
+);
+
+// Simple Logo for Right Side
+const SimpleLogo = () => (
+  <div className="inline-flex items-center justify-center mb-4">
+    <KareerFitLogo variant="dark" size="large" />
+  </div>
+);
+
 // Define types for FloatingElement props
 interface FloatingElementProps {
   children: ReactNode;
@@ -249,15 +299,9 @@ function HomePageWithSearchParams() {
           </FloatingElement>
           
           <div className="relative z-10 h-full flex flex-col justify-between">
-            {/* Logo and name */}
+            {/* ✨ BEAUTIFUL TEXT LOGO - Left Side */}
             <div className="mb-10">
-              <div className="inline-block bg-white p-2 rounded-lg shadow-lg mb-2">
-                <img 
-                  src="https://kareerfit.com/wp-content/uploads/2025/04/kareerfit-1-e1745277544629.png" 
-                  alt="KareerFit Logo" 
-                  className="h-8"
-                />
-              </div>
+              <LogoWithContainer />
               <h2 className="text-white text-lg font-medium"></h2>
             </div>
 
@@ -314,7 +358,7 @@ function HomePageWithSearchParams() {
 
             {/* Footer */}
             <div className="mt-8 text-white/60 text-sm">
-              V1.1.02 © {new Date().getFullYear()} CAREERXPERT SOLUTIONS (003704811-M)
+              V2.0.01 © {new Date().getFullYear()} CAREERXPERT SOLUTIONS (003704811-M)
             </div>
           </div>
         </div>
@@ -323,15 +367,9 @@ function HomePageWithSearchParams() {
         <div className="w-full lg:w-[450px] bg-white p-8 flex items-center justify-center">
           <div className="w-full max-w-md">
             <div className="text-center mb-6">
-              <div className="inline-flex items-center justify-center mb-4">
-                <img 
-                  src="https://kareerfit.com/wp-content/uploads/2025/04/kareerfit-1-e1745277544629.png" 
-                  alt="KareerFit Logo" 
-                  className="h-8"
-                />
-              </div>
+              {/* ✨ BEAUTIFUL TEXT LOGO - Right Side */}
+              <SimpleLogo />
               <h2 className="text-2xl font-bold text-gray-800">Welcome to</h2>
-              <h1 className="text-3xl font-bold text-[#7e43f1] mb-2">KAREERfit</h1>
               <p className="text-gray-600">Sign in to discover your career path</p>
             </div>
 
@@ -355,6 +393,17 @@ function HomePageWithSearchParams() {
           </div>
         </div>
       </div>
+
+      {/* CSS for float animation */}
+      <style jsx>{`
+        @keyframes float {
+          0%, 100% { transform: translateY(0px); }
+          50% { transform: translateY(-20px); }
+        }
+        .animate-float {
+          animation: float 6s ease-in-out infinite;
+        }
+      `}</style>
     </div>
   );
 }
@@ -375,7 +424,7 @@ function HomePageFallback() {
           <div className="relative z-10 h-full flex flex-col justify-between">
             {/* Logo skeleton */}
             <div className="mb-10">
-              <div className="w-20 h-12 bg-white/20 rounded-lg mb-2 animate-pulse"></div>
+              <div className="w-32 h-12 bg-white/20 rounded-lg mb-2 animate-pulse"></div>
             </div>
 
             {/* Content skeleton */}
@@ -408,7 +457,7 @@ function HomePageFallback() {
         <div className="w-full lg:w-[450px] bg-white p-8 flex items-center justify-center">
           <div className="w-full max-w-md">
             <div className="text-center mb-6">
-              <div className="w-20 h-8 bg-gray-200 rounded animate-pulse mx-auto mb-4"></div>
+              <div className="w-40 h-12 bg-gray-200 rounded animate-pulse mx-auto mb-4"></div>
               <div className="h-8 w-32 bg-gray-200 rounded animate-pulse mx-auto mb-2"></div>
               <div className="h-10 w-40 bg-gray-200 rounded animate-pulse mx-auto mb-2"></div>
               <div className="h-4 w-48 bg-gray-200 rounded animate-pulse mx-auto"></div>

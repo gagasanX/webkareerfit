@@ -8,6 +8,42 @@ import { Button } from '@/components/ui/Button';
 import Header from '@/components/ui/Header';
 import Footer from '@/components/ui/Footer';
 
+// ===== BEAUTIFUL TEXT LOGO COMPONENT =====
+const KareerFitLogo = ({ 
+  variant = 'dark', 
+  size = 'medium',
+  className = '' 
+}: { 
+  variant?: 'dark' | 'light' | 'white';
+  size?: 'small' | 'medium' | 'large';
+  className?: string;
+}) => {
+  const sizeClasses = {
+    small: 'text-lg',
+    medium: 'text-2xl',
+    large: 'text-3xl md:text-4xl'
+  };
+
+  const variantClasses = {
+    dark: 'text-gray-800',
+    light: 'text-white',
+    white: 'text-white'
+  };
+
+  return (
+    <div className={`font-bold ${sizeClasses[size]} ${variantClasses[variant]} ${className}`}>
+      <span className="relative">
+        KAREER
+        <span className="bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] bg-clip-text text-transparent">
+          fit
+        </span>
+        {/* Decorative dot */}
+        <span className="inline-block w-2 h-2 bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] rounded-full ml-1 animate-pulse"></span>
+      </span>
+    </div>
+  );
+};
+
 // Separate component that uses useSearchParams - MUST be wrapped in Suspense
 function LoginFormWithSearchParams() {
   const router = useRouter();
@@ -288,12 +324,8 @@ export default function LoginPage() {
           <div className="bg-white rounded-xl shadow-xl overflow-hidden">
             {/* Header section */}
             <div className="bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] p-6 text-white text-center">
-              <div className="inline-block bg-white p-2 rounded-lg shadow-lg mb-4">
-                <img 
-                  src="https://kareerfit.com/wp-content/uploads/2025/04/kareerfit-1-e1745277544629.png" 
-                  alt="KareerFit Logo" 
-                  className="h-8"
-                />
+              <div className="inline-block bg-white/10 backdrop-blur-sm px-4 py-3 rounded-lg shadow-lg mb-4 border border-white/20">
+                <KareerFitLogo variant="white" size="medium" />
               </div>
               <h2 className="text-2xl font-bold">Welcome Back</h2>
               <p className="text-white/80 mt-1">Sign in to your KareerFit account</p>
@@ -318,9 +350,9 @@ export default function LoginPage() {
             <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 text-center">
               <p className="text-gray-500 text-sm">
                 By signing in, you agree to our{" "}
-                <a href="#" className="text-[#7e43f1] hover:text-[#38b6ff]">Terms of Service</a>{" "}
+                <Link href="/terms-of-service" className="text-[#7e43f1] hover:text-[#38b6ff]">Terms of Service</Link>{" "}
                 and{" "}
-                <a href="#" className="text-[#7e43f1] hover:text-[#38b6ff]">Privacy Policy</a>
+                <Link href="/privacy-policy" className="text-[#7e43f1] hover:text-[#38b6ff]">Privacy Policy</Link>
               </p>
             </div>
           </div>

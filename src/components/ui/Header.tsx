@@ -4,6 +4,42 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { useSession, signOut } from 'next-auth/react';
 
+// ===== BEAUTIFUL TEXT LOGO COMPONENT =====
+const KareerFitLogo = ({ 
+  variant = 'dark', 
+  size = 'medium',
+  className = '' 
+}: { 
+  variant?: 'dark' | 'light' | 'white';
+  size?: 'small' | 'medium' | 'large';
+  className?: string;
+}) => {
+  const sizeClasses = {
+    small: 'text-lg',
+    medium: 'text-2xl',
+    large: 'text-3xl md:text-4xl'
+  };
+
+  const variantClasses = {
+    dark: 'text-gray-800',
+    light: 'text-white',
+    white: 'text-white'
+  };
+
+  return (
+    <div className={`font-bold ${sizeClasses[size]} ${variantClasses[variant]} ${className}`}>
+      <span className="relative">
+        KAREER
+        <span className="bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] bg-clip-text text-transparent">
+          fit
+        </span>
+        {/* Decorative dot */}
+        <span className="inline-block w-2 h-2 bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] rounded-full ml-1 animate-pulse"></span>
+      </span>
+    </div>
+  );
+};
+
 // Define extended session user type
 type ExtendedUser = {
   name?: string | null;
@@ -26,12 +62,8 @@ export default function Header() {
         <div className="flex justify-between h-16">
           <div className="flex items-center">
             <Link href="/" className="flex-shrink-0 flex items-center">
-              {/* --- LOGO DIUBAH DI SINI --- */}
-              <div className="bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] p-1 rounded-full w-8 h-8 flex items-center justify-center">
-                <span className="text-white font-bold text-sm">KF</span>
-              </div>
-              {/* --- AKHIR PERUBAHAN LOGO --- */}
-              <span className="ml-2 text-xl font-semibold text-gray-800">KareerFit</span>
+              {/* ===== BEAUTIFUL KAREERFIT TEXT LOGO ===== */}
+              <KareerFitLogo variant="dark" size="small" />
             </Link>
             
             <div className="hidden sm:ml-10 sm:flex sm:space-x-8">

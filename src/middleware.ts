@@ -23,7 +23,9 @@ export async function middleware(request: NextRequest) {
     '/admin-auth/login',
     '/admin-auth/register',
     '/clerk-auth/login',
-    '/clerk-auth/register'
+    '/clerk-auth/register',
+    '/terms-of-service',
+    '/privacy-policy'
   ];
 
   const isPublicPath = publicPaths.includes(path) || 
