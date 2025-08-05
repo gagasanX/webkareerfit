@@ -385,9 +385,9 @@ function HomePageWithSearchParams() {
             <div className="pt-4 border-t border-gray-200">
               <p className="text-center text-gray-500 text-sm">
                 By signing in, you agree to our{" "}
-                <Link href="/terms" className="text-[#7e43f1] hover:underline">Terms of Service</Link>{" "}
+                <Link href="/terms-of-service" className="text-[#7e43f1] hover:underline">Terms of Service</Link>{" "}
                 and{" "}
-                <Link href="/privacy" className="text-[#7e43f1] hover:underline">Privacy Policy</Link>
+                <Link href="/privacy-policy" className="text-[#7e43f1] hover:underline">Privacy Policy</Link>
               </p>
             </div>
           </div>
