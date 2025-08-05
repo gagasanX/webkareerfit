@@ -78,12 +78,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     },
     { 
       name: 'Reports', 
-      href: '/admin/reports', 
+      href: '/admin/analytics', 
       icon: <BarChart4 size={20} /> 
     },
     { 
       name: 'Settings', 
-      href: '/admin/settings', 
+      href: '/admin/settings/email-templates', 
       icon: <Settings size={20} /> 
     },
   ];
