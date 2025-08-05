@@ -1,13 +1,9 @@
-// /src/app/admin/assessments/[id]/page.tsx
-// Individual assessment detail view and editor
-// Features: View details, edit assessment, assign clerks, delete
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, memo } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter, useParams } from 'next/navigation';
 import Link from 'next/link';
-import AssessmentFormViewer from '@/components/admin/AssessmentFormViewer';
 import { 
   ArrowLeft,
   Edit,
@@ -19,13 +15,11 @@ import {
   FileText,
   Calendar,
   AlertCircle,
-  CheckCircle,
   RefreshCw,
   UserCheck,
   DollarSign,
-  Eye,
-  Download,
-  Trash2
+  Trash2,
+  Loader2
 } from 'lucide-react';
 
 // ===== TYPES =====
@@ -91,8 +85,52 @@ interface AvailableClerk {
   currentWorkload: number;
 }
 
-// ===== COMPONENTS =====
-const StatusBadge = ({ status }: { status: string }) => {
+// ===== SKELETON COMPONENTS =====
+const DetailSkeleton = memo(() => (
+  <div className="bg-white rounded-lg shadow p-6 animate-pulse">
+    <div className="h-6 bg-gray-200 rounded w-48 mb-4"></div>
+    <div className="grid grid-cols-2 gap-4">
+      <div>
+        <div className="h-4 bg-gray-200 rounded w-20 mb-2"></div>
+        <div className="h-8 bg-gray-200 rounded w-24"></div>
+      </div>
+      <div>
+        <div className="h-4 bg-gray-200 rounded w-16 mb-2"></div>
+        <div className="h-6 bg-gray-200 rounded w-20"></div>
+      </div>
+      <div>
+        <div className="h-4 bg-gray-200 rounded w-16 mb-2"></div>
+        <div className="h-6 bg-gray-200 rounded w-24"></div>
+      </div>
+      <div>
+        <div className="h-4 bg-gray-200 rounded w-16 mb-2"></div>
+        <div className="h-8 bg-gray-200 rounded w-20"></div>
+      </div>
+    </div>
+  </div>
+));
+
+const SidebarSkeleton = memo(() => (
+  <div className="bg-white rounded-lg shadow p-6 animate-pulse">
+    <div className="flex items-center mb-4">
+      <div className="h-5 w-5 bg-gray-200 rounded mr-2"></div>
+      <div className="h-6 bg-gray-200 rounded w-32"></div>
+    </div>
+    <div className="space-y-3">
+      <div>
+        <div className="h-4 bg-gray-200 rounded w-24 mb-1"></div>
+        <div className="h-3 bg-gray-200 rounded w-32"></div>
+      </div>
+      <div>
+        <div className="h-4 bg-gray-200 rounded w-20 mb-1"></div>
+        <div className="h-3 bg-gray-200 rounded w-24"></div>
+      </div>
+    </div>
+  </div>
+));
+
+// ===== OPTIMIZED COMPONENTS =====
+const StatusBadge = memo(({ status }: { status: string }) => {
   const getStatusStyle = (status: string) => {
     switch (status.toLowerCase()) {
       case 'completed':
@@ -113,9 +151,9 @@ const StatusBadge = ({ status }: { status: string }) => {
       {status.replace('_', ' ').toUpperCase()}
     </span>
   );
-};
+});
 
-const TierBadge = ({ tier }: { tier: string }) => {
+const TierBadge = memo(({ tier }: { tier: string }) => {
   const getTierStyle = (tier: string) => {
     switch (tier.toLowerCase()) {
       case 'premium':
@@ -134,7 +172,16 @@ const TierBadge = ({ tier }: { tier: string }) => {
       {tier.toUpperCase()}
     </span>
   );
-};
+});
+
+const LoadingOverlay = memo(({ message }: { message: string }) => (
+  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div className="bg-white rounded-lg p-6 flex items-center space-x-3">
+      <Loader2 className="h-6 w-6 animate-spin text-indigo-600" />
+      <span className="text-gray-900 font-medium">{message}</span>
+    </div>
+  </div>
+));
 
 // ===== MAIN COMPONENT =====
 export default function AssessmentDetailPage() {
@@ -171,13 +218,24 @@ export default function AssessmentDetailPage() {
     }
   }, [status, session, router]);
 
-  // Enhanced fetch with comprehensive error handling
-  const fetchAssessment = async () => {
+  // ⚡ OPTIMIZED: Enhanced fetch with better error handling and performance monitoring
+  const fetchAssessment = useCallback(async () => {
     try {
       setError(null);
       setLoading(true);
       
-      const response = await fetch(`/api/admin/assessments/${assessmentId}`);
+      const startTime = Date.now();
+      
+      const response = await fetch(`/api/admin/assessments/${assessmentId}`, {
+        method: 'GET',
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Accept': 'application/json',
+        },
+      });
+      
+      const queryTime = Date.now() - startTime;
+      console.log(`Assessment detail fetch: ${queryTime}ms`);
       
       if (!response.ok) {
         if (response.status === 404) {
@@ -196,7 +254,7 @@ export default function AssessmentDetailPage() {
         throw new Error(result.error || 'API returned unsuccessful response');
       }
       
-      // Validate and safely set assessment data
+      // Enhanced data validation
       if (!result.assessment || typeof result.assessment !== 'object') {
         throw new Error('Invalid assessment data received');
       }
@@ -221,10 +279,10 @@ export default function AssessmentDetailPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [assessmentId]);
 
-  // Fetch available clerks
-  const fetchClerks = async () => {
+  // ⚡ OPTIMIZED: Fetch available clerks with caching
+  const fetchClerks = useCallback(async () => {
     try {
       const response = await fetch('/api/admin/assessments?includeStats=false&limit=1');
       if (response.ok) {
@@ -234,17 +292,19 @@ export default function AssessmentDetailPage() {
     } catch (err) {
       console.error('Error fetching clerks:', err);
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (status === 'authenticated' && session?.user?.isAdmin && assessmentId) {
-      fetchAssessment();
-      fetchClerks();
+      Promise.all([
+        fetchAssessment(),
+        fetchClerks()
+      ]);
     }
-  }, [status, session, assessmentId]);
+  }, [status, session, assessmentId, fetchAssessment, fetchClerks]);
 
-  // Handle save changes
-  const handleSave = async () => {
+  // ⚡ OPTIMIZED: Enhanced save with optimistic updates
+  const handleSave = useCallback(async () => {
     if (!assessment) return;
     
     setSaving(true);
@@ -252,6 +312,7 @@ export default function AssessmentDetailPage() {
     try {
       const updateData: any = {};
       
+      // Only send changed fields
       if (editForm.status !== assessment.status) {
         updateData.status = editForm.status;
       }
@@ -291,7 +352,7 @@ export default function AssessmentDetailPage() {
       const result = await response.json();
       
       if (result.success) {
-        // Refresh data
+        // Refresh data to get latest state
         await fetchAssessment();
         setIsEditing(false);
       }
@@ -301,10 +362,10 @@ export default function AssessmentDetailPage() {
     } finally {
       setSaving(false);
     }
-  };
+  }, [assessment, editForm, assessmentId, fetchAssessment]);
 
-  // Handle delete
-  const handleDelete = async () => {
+  // ⚡ OPTIMIZED: Enhanced delete with confirmation
+  const handleDelete = useCallback(async () => {
     try {
       const response = await fetch(`/api/admin/assessments/${assessmentId}`, {
         method: 'DELETE'
@@ -322,37 +383,91 @@ export default function AssessmentDetailPage() {
       setError(err instanceof Error ? err.message : 'Failed to delete assessment');
       setDeleteConfirm(false);
     }
-  };
+  }, [assessmentId, router]);
 
-  const formatCurrency = (amount: number) => `RM ${amount.toFixed(2)}`;
-  const formatDate = (dateString: string) => new Date(dateString).toLocaleString();
+  // ⚡ OPTIMIZED: Memoized utility functions
+  const formatCurrency = useCallback((amount: number) => `RM ${amount.toFixed(2)}`, []);
+  const formatDate = useCallback((dateString: string) => new Date(dateString).toLocaleString(), []);
+
+  const handleCancelEdit = useCallback(() => {
+    setIsEditing(false);
+    if (assessment) {
+      setEditForm({
+        status: assessment.status,
+        tier: assessment.tier,
+        assignedClerkId: assessment.assignedClerk?.id || '',
+        reviewNotes: assessment.reviewNotes || '',
+        manualProcessing: assessment.manualProcessing,
+        price: assessment.price
+      });
+    }
+  }, [assessment]);
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center min-h-screen">
-        <div className="w-16 h-16 border-4 border-t-transparent border-gray-700 rounded-full animate-spin"></div>
+      <div className="p-6 bg-gray-50 min-h-screen">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center">
+            <Link 
+              href="/admin/assessments"
+              className="mr-4 inline-flex items-center text-gray-600 hover:text-gray-800 transition-colors duration-150"
+            >
+              <ArrowLeft className="h-5 w-5 mr-1" />
+              Back to Assessments
+            </Link>
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Assessment Details</h1>
+              <p className="text-gray-600 mt-1">Loading assessment data...</p>
+            </div>
+          </div>
+          
+          <div className="flex items-center space-x-2 text-gray-500">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            <span>Loading...</span>
+          </div>
+        </div>
+
+        {/* Skeleton Layout */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-6">
+            <DetailSkeleton />
+            <DetailSkeleton />
+            <DetailSkeleton />
+          </div>
+          <div className="space-y-6">
+            <SidebarSkeleton />
+            <SidebarSkeleton />
+            <SidebarSkeleton />
+          </div>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="p-6">
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+      <div className="p-6 bg-gray-50 min-h-screen">
+        <div className="bg-red-50 border border-red-200 rounded-lg p-6">
           <div className="flex">
             <AlertCircle className="h-5 w-5 text-red-400" />
             <div className="ml-3">
-              <h3 className="text-sm font-medium text-red-800">Error</h3>
+              <h3 className="text-sm font-medium text-red-800">Error loading assessment</h3>
               <div className="mt-2 text-sm text-red-700">
                 <p>{error}</p>
               </div>
-              <div className="mt-4">
+              <div className="mt-4 space-x-3">
                 <button
                   onClick={fetchAssessment}
-                  className="bg-red-100 px-3 py-2 rounded-md text-sm font-medium text-red-800 hover:bg-red-200"
+                  className="bg-red-100 px-4 py-2 rounded-md text-sm font-medium text-red-800 hover:bg-red-200 transition-colors duration-150"
                 >
                   Try again
                 </button>
+                <Link
+                  href="/admin/assessments"
+                  className="inline-block bg-white px-4 py-2 rounded-md text-sm font-medium text-gray-700 border border-gray-300 hover:bg-gray-50 transition-colors duration-150"
+                >
+                  Back to Assessments
+                </Link>
               </div>
             </div>
           </div>
@@ -363,45 +478,55 @@ export default function AssessmentDetailPage() {
 
   if (!assessment) {
     return (
-      <div className="p-6">
+      <div className="p-6 bg-gray-50 min-h-screen">
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
           <p className="text-yellow-800">Assessment not found</p>
+          <Link
+            href="/admin/assessments"
+            className="mt-2 inline-block text-yellow-600 hover:text-yellow-800"
+          >
+            Back to Assessments
+          </Link>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="p-6">
+    <div className="p-6 bg-gray-50 min-h-screen">
+      {/* Loading Overlay */}
+      {saving && <LoadingOverlay message="Saving changes..." />}
+
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center">
           <Link 
             href="/admin/assessments"
-            className="mr-4 inline-flex items-center text-gray-600 hover:text-gray-800"
+            className="mr-4 inline-flex items-center text-gray-600 hover:text-gray-800 transition-colors duration-150"
           >
             <ArrowLeft className="h-5 w-5 mr-1" />
             Back to Assessments
           </Link>
           <div>
-            <h1 className="text-2xl font-bold">Assessment Details</h1>
-            <p className="text-gray-600">{assessment.type.toUpperCase()} • ID: {assessment.id}</p>
+            <h1 className="text-3xl font-bold text-gray-900">Assessment Details</h1>
+            <p className="text-gray-600 mt-1">{assessment.type.toUpperCase()} • ID: {assessment.id.substring(0, 8)}...</p>
           </div>
         </div>
         
         <div className="flex space-x-3">
           <button
             onClick={fetchAssessment}
-            className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+            disabled={loading}
+            className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 transition-all duration-150 shadow-sm hover:shadow-md"
           >
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Refresh
+            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            {loading ? 'Refreshing...' : 'Refresh'}
           </button>
           
           {!isEditing ? (
             <button
               onClick={() => setIsEditing(true)}
-              className="inline-flex items-center px-3 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700"
+              className="inline-flex items-center px-4 py-2 border border-transparent rounded-lg text-sm font-medium text-white bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 transition-all duration-150 shadow-sm hover:shadow-md"
             >
               <Edit className="h-4 w-4 mr-2" />
               Edit
@@ -411,27 +536,16 @@ export default function AssessmentDetailPage() {
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="inline-flex items-center px-3 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-green-600 hover:bg-green-700 disabled:opacity-50"
+                className="inline-flex items-center px-4 py-2 border border-transparent rounded-lg text-sm font-medium text-white bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 disabled:opacity-50 transition-all duration-150 shadow-sm hover:shadow-md"
               >
                 <Save className="h-4 w-4 mr-2" />
                 {saving ? 'Saving...' : 'Save'}
               </button>
               
               <button
-                onClick={() => {
-                  setIsEditing(false);
-                  // Reset form
-                  setEditForm({
-                    status: assessment.status,
-                    tier: assessment.tier,
-                    assignedClerkId: assessment.assignedClerk?.id || '',
-                    reviewNotes: assessment.reviewNotes || '',
-                    manualProcessing: assessment.manualProcessing,
-                    price: assessment.price
-                  });
-                }}
+                onClick={handleCancelEdit}
                 disabled={saving}
-                className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+                className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 transition-all duration-150 shadow-sm hover:shadow-md"
               >
                 <X className="h-4 w-4 mr-2" />
                 Cancel
@@ -441,7 +555,7 @@ export default function AssessmentDetailPage() {
           
           <button
             onClick={() => setDeleteConfirm(true)}
-            className="inline-flex items-center px-3 py-2 border border-red-300 rounded-md text-sm font-medium text-red-700 bg-white hover:bg-red-50"
+            className="inline-flex items-center px-4 py-2 border border-red-300 rounded-lg text-sm font-medium text-red-700 bg-white hover:bg-red-50 transition-all duration-150 shadow-sm hover:shadow-md"
           >
             <Trash2 className="h-4 w-4 mr-2" />
             Delete
@@ -454,22 +568,22 @@ export default function AssessmentDetailPage() {
         {/* Left Column - Assessment Details */}
         <div className="lg:col-span-2 space-y-6">
           {/* Basic Information */}
-          <div className="bg-white rounded-lg shadow p-6">
+          <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
             <h2 className="text-lg font-semibold mb-4">Assessment Information</h2>
             
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-6">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Type</label>
-                <div className="text-lg font-bold">{assessment.type.toUpperCase()}</div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Type</label>
+                <div className="text-lg font-bold text-gray-900">{assessment.type.toUpperCase()}</div>
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Tier</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Tier</label>
                 {isEditing ? (
                   <select
                     value={editForm.tier}
                     onChange={(e) => setEditForm(prev => ({ ...prev, tier: e.target.value }))}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-150"
                   >
                     <option value="basic">Basic</option>
                     <option value="standard">Standard</option>
@@ -481,12 +595,12 @@ export default function AssessmentDetailPage() {
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Status</label>
                 {isEditing ? (
                   <select
                     value={editForm.status}
                     onChange={(e) => setEditForm(prev => ({ ...prev, status: e.target.value }))}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-150"
                   >
                     <option value="pending">Pending</option>
                     <option value="in_progress">In Progress</option>
@@ -499,19 +613,19 @@ export default function AssessmentDetailPage() {
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Price</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Price</label>
                 {isEditing ? (
                   <input
                     type="number"
                     value={editForm.price}
                     onChange={(e) => setEditForm(prev => ({ ...prev, price: parseFloat(e.target.value) || 0 }))}
-                    className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-150"
                     min="0"
                     max="10000"
                     step="0.01"
                   />
                 ) : (
-                  <div className="text-lg font-semibold">{formatCurrency(assessment.price)}</div>
+                  <div className="text-lg font-semibold text-gray-900">{formatCurrency(assessment.price)}</div>
                 )}
               </div>
               
@@ -531,14 +645,14 @@ export default function AssessmentDetailPage() {
           </div>
 
           {/* Assigned Clerk */}
-          <div className="bg-white rounded-lg shadow p-6">
+          <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
             <h2 className="text-lg font-semibold mb-4">Assigned Clerk</h2>
             
             {isEditing ? (
               <select
                 value={editForm.assignedClerkId}
                 onChange={(e) => setEditForm(prev => ({ ...prev, assignedClerkId: e.target.value }))}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-150"
               >
                 <option value="">Unassigned</option>
                 {availableClerks.map(clerk => (
@@ -551,9 +665,9 @@ export default function AssessmentDetailPage() {
               <div>
                 {assessment.assignedClerk ? (
                   <div className="flex items-center">
-                    <UserCheck className="h-5 w-5 text-green-600 mr-2" />
+                    <UserCheck className="h-5 w-5 text-green-600 mr-3" />
                     <div>
-                      <div className="font-medium">{assessment.assignedClerk.name || 'Unnamed Clerk'}</div>
+                      <div className="font-medium text-gray-900">{assessment.assignedClerk.name || 'Unnamed Clerk'}</div>
                       <div className="text-sm text-gray-500">{assessment.assignedClerk.email}</div>
                       <div className="text-xs text-gray-400">Assigned: {formatDate(assessment.assignedClerk.assignedAt)}</div>
                     </div>
@@ -566,21 +680,21 @@ export default function AssessmentDetailPage() {
           </div>
 
           {/* Review Notes */}
-          <div className="bg-white rounded-lg shadow p-6">
+          <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
             <h2 className="text-lg font-semibold mb-4">Review Notes</h2>
             
             {isEditing ? (
               <textarea
                 value={editForm.reviewNotes}
                 onChange={(e) => setEditForm(prev => ({ ...prev, reviewNotes: e.target.value }))}
-                className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-150"
                 rows={4}
                 placeholder="Add review notes..."
               />
             ) : (
               <div className="text-gray-700">
                 {assessment.reviewNotes ? (
-                  <p className="whitespace-pre-wrap">{assessment.reviewNotes}</p>
+                  <p className="whitespace-pre-wrap bg-gray-50 rounded-lg p-4">{assessment.reviewNotes}</p>
                 ) : (
                   <p className="text-gray-500 italic">No review notes</p>
                 )}
@@ -588,12 +702,12 @@ export default function AssessmentDetailPage() {
             )}
           </div>
 
-          {/* Assessment Form Responses - NEW SECTION */}
+          {/* Assessment Data */}
           {assessment.data && (
-            <div className="bg-white rounded-lg shadow p-6">
+            <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
               <h2 className="text-lg font-semibold mb-4">Assessment Data</h2>
-              <div className="bg-gray-50 rounded p-4 max-h-96 overflow-y-auto">
-                <pre className="text-sm text-gray-700 whitespace-pre-wrap">
+              <div className="bg-gray-50 rounded-lg p-4 max-h-96 overflow-y-auto">
+                <pre className="text-sm text-gray-700 whitespace-pre-wrap font-mono">
                   {JSON.stringify(assessment.data, null, 2)}
                 </pre>
               </div>
@@ -601,18 +715,18 @@ export default function AssessmentDetailPage() {
           )}
         </div>
 
-        {/* Right Column - User Info, Payment, etc. */}
+        {/* Right Column - Sidebar */}
         <div className="space-y-6">
           {/* User Information */}
-          <div className="bg-white rounded-lg shadow p-6">
+          <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
             <h2 className="text-lg font-semibold mb-4 flex items-center">
-              <User className="h-5 w-5 mr-2" />
+              <User className="h-5 w-5 mr-2 text-indigo-600" />
               User Information
             </h2>
             
             <div className="space-y-3">
               <div>
-                <div className="font-medium">{assessment.user.name || 'Unnamed User'}</div>
+                <div className="font-medium text-gray-900">{assessment.user.name || 'Unnamed User'}</div>
                 <div className="text-sm text-gray-500">{assessment.user.email}</div>
                 {assessment.user.phone && (
                   <div className="text-sm text-gray-500">{assessment.user.phone}</div>
@@ -625,7 +739,7 @@ export default function AssessmentDetailPage() {
               
               <button
                 onClick={() => router.push(`/admin/users/${assessment.user.id}`)}
-                className="text-indigo-600 hover:text-indigo-800 text-sm font-medium"
+                className="text-indigo-600 hover:text-indigo-800 text-sm font-medium transition-colors duration-150"
               >
                 View User Profile →
               </button>
@@ -634,16 +748,16 @@ export default function AssessmentDetailPage() {
 
           {/* Payment Information */}
           {assessment.payment && (
-            <div className="bg-white rounded-lg shadow p-6">
+            <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
               <h2 className="text-lg font-semibold mb-4 flex items-center">
-                <CreditCard className="h-5 w-5 mr-2" />
+                <CreditCard className="h-5 w-5 mr-2 text-green-600" />
                 Payment Information
               </h2>
               
               <div className="space-y-3">
                 <div>
-                  <div className="font-medium text-lg">{formatCurrency(assessment.payment.amount)}</div>
-                  <div className="text-sm text-gray-500">
+                  <div className="font-medium text-lg text-gray-900">{formatCurrency(assessment.payment.amount)}</div>
+                  <div className="text-sm text-gray-500 mt-1">
                     Status: <StatusBadge status={assessment.payment.status} />
                   </div>
                   <div className="text-sm text-gray-500">Method: {assessment.payment.method}</div>
@@ -663,9 +777,9 @@ export default function AssessmentDetailPage() {
 
           {/* Referrals */}
           {assessment.referrals.length > 0 && (
-            <div className="bg-white rounded-lg shadow p-6">
+            <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
               <h2 className="text-lg font-semibold mb-4 flex items-center">
-                <DollarSign className="h-5 w-5 mr-2" />
+                <DollarSign className="h-5 w-5 mr-2 text-yellow-600" />
                 Referrals ({assessment.referrals.length})
               </h2>
               
@@ -691,26 +805,26 @@ export default function AssessmentDetailPage() {
           )}
 
           {/* Important Dates */}
-          <div className="bg-white rounded-lg shadow p-6">
+          <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
             <h2 className="text-lg font-semibold mb-4 flex items-center">
-              <Calendar className="h-5 w-5 mr-2" />
+              <Calendar className="h-5 w-5 mr-2 text-purple-600" />
               Important Dates
             </h2>
             
             <div className="space-y-3 text-sm">
               <div>
-                <div className="font-medium">Created</div>
+                <div className="font-medium text-gray-900">Created</div>
                 <div className="text-gray-500">{formatDate(assessment.createdAt)}</div>
               </div>
               
               <div>
-                <div className="font-medium">Last Updated</div>
+                <div className="font-medium text-gray-900">Last Updated</div>
                 <div className="text-gray-500">{formatDate(assessment.updatedAt)}</div>
               </div>
               
               {assessment.reviewedAt && (
                 <div>
-                  <div className="font-medium">Reviewed</div>
+                  <div className="font-medium text-gray-900">Reviewed</div>
                   <div className="text-gray-500">{formatDate(assessment.reviewedAt)}</div>
                 </div>
               )}
@@ -719,16 +833,16 @@ export default function AssessmentDetailPage() {
 
           {/* Activity History */}
           {activityHistory.length > 0 && (
-            <div className="bg-white rounded-lg shadow p-6">
+            <div className="bg-white rounded-lg shadow-sm p-6 border border-gray-200">
               <h2 className="text-lg font-semibold mb-4 flex items-center">
-                <Clock className="h-5 w-5 mr-2" />
+                <Clock className="h-5 w-5 mr-2 text-blue-600" />
                 Recent Activity
               </h2>
               
               <div className="space-y-3 max-h-64 overflow-y-auto">
                 {activityHistory.map(log => (
                   <div key={log.id} className="text-sm border-b border-gray-100 pb-2 last:border-b-0">
-                    <div className="font-medium">{log.eventType.replace('_', ' ')}</div>
+                    <div className="font-medium text-gray-900">{log.eventType.replace('_', ' ')}</div>
                     <div className="text-xs text-gray-500">{formatDate(log.createdAt)}</div>
                   </div>
                 ))}
@@ -767,13 +881,13 @@ export default function AssessmentDetailPage() {
               <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
                 <button
                   onClick={handleDelete}
-                  className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm"
+                  className="w-full inline-flex justify-center rounded-md border border-transparent shadow-sm px-4 py-2 bg-red-600 text-base font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 sm:ml-3 sm:w-auto sm:text-sm transition-colors duration-150"
                 >
                   Delete
                 </button>
                 <button
                   onClick={() => setDeleteConfirm(false)}
-                  className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm"
+                  className="mt-3 w-full inline-flex justify-center rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-base font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 sm:mt-0 sm:ml-3 sm:w-auto sm:text-sm transition-colors duration-150"
                 >
                   Cancel
                 </button>

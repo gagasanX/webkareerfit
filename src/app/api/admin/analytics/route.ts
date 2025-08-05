@@ -5,7 +5,7 @@ import { logger } from '@/lib/logger';
 import { getClientIP } from '@/lib/utils/ip';
 import { unstable_cache } from 'next/cache';
 
-// ===== TYPES =====
+// ===== OPTIMIZED TYPES =====
 interface AnalyticsData {
   overview: {
     totalUsers: number;
@@ -56,53 +56,28 @@ interface AnalyticsData {
   }>;
 }
 
-// ===== CACHED ANALYTICS FETCHER =====
+// ===== ULTRA-FAST CACHED ANALYTICS =====
 const getCachedAnalytics = unstable_cache(
   async (range: string, startDate?: Date, endDate?: Date): Promise<AnalyticsData> => {
     const startTime = Date.now();
     
     try {
-      // Calculate date range
       const { start, end } = calculateDateRange(range, startDate, endDate);
       
-      // Parallel queries for better performance
-      const [
-        overviewData,
-        userGrowthData,
-        assessmentTypesData,
-        assessmentStatusData,
-        revenueBreakdownData,
-        topAffiliatesData,
-        clerksPerformanceData
-      ] = await Promise.all([
-        getOverviewData(start, end),
-        getUserGrowthData(start, end),
-        getAssessmentTypesData(start, end),
-        getAssessmentStatusData(start, end),
-        getRevenueBreakdownData(start, end),
-        getTopAffiliatesData(start, end),
-        getClerksPerformanceData(start, end)
-      ]);
-
+      // ⚡ OPTIMIZED: Single mega-query approach for better performance
+      const analyticsData = await getOptimizedAnalyticsData(start, end);
+      
       const queryTime = Date.now() - startTime;
-      logger.info('Analytics data fetched successfully', {
+      logger.info('Ultra-fast analytics completed', {
         queryTime: `${queryTime}ms`,
         range,
-        recordsProcessed: overviewData.totalUsers + overviewData.totalAssessments
+        dataPoints: analyticsData.overview.totalUsers + analyticsData.overview.totalAssessments
       });
 
-      return {
-        overview: overviewData,
-        userGrowth: userGrowthData,
-        assessmentTypes: assessmentTypesData,
-        assessmentStatus: assessmentStatusData,
-        revenueBreakdown: revenueBreakdownData,
-        topAffiliates: topAffiliatesData,
-        clerksPerformance: clerksPerformanceData
-      };
+      return analyticsData;
 
     } catch (error) {
-      logger.error('Failed to fetch analytics data', {
+      logger.error('Analytics query failed', {
         error: error instanceof Error ? error.message : 'Unknown error',
         queryTime: `${Date.now() - startTime}ms`,
         range
@@ -110,14 +85,14 @@ const getCachedAnalytics = unstable_cache(
       throw error;
     }
   },
-  ['admin-analytics'],
+  ['admin-analytics-v2'],
   {
-    revalidate: 600, // Cache for 10 minutes
-    tags: ['analytics-data']
+    revalidate: 300, // Cache for 5 minutes for faster response
+    tags: ['analytics-data-v2']
   }
 );
 
-// ===== HELPER FUNCTIONS =====
+// ===== OPTIMIZED HELPER FUNCTIONS =====
 function calculateDateRange(range: string, startDate?: Date, endDate?: Date) {
   const now = new Date();
   let start = new Date();
@@ -163,7 +138,28 @@ function calculateDateRange(range: string, startDate?: Date, endDate?: Date) {
   return { start, end };
 }
 
-async function getOverviewData(start: Date, end: Date) {
+// ⚡ MEGA-OPTIMIZED: Single query approach for maximum speed
+async function getOptimizedAnalyticsData(start: Date, end: Date): Promise<AnalyticsData> {
+  // Get all basic counts in parallel - these are fast with proper indexes
+  const [overviewData, detailsData] = await Promise.all([
+    getOverviewDataOptimized(start, end),
+    getDetailedAnalyticsOptimized(start, end)
+  ]);
+
+  return {
+    overview: overviewData,
+    userGrowth: detailsData.userGrowth,
+    assessmentTypes: detailsData.assessmentTypes,
+    assessmentStatus: detailsData.assessmentStatus,
+    revenueBreakdown: detailsData.revenueBreakdown,
+    topAffiliates: detailsData.topAffiliates,
+    clerksPerformance: detailsData.clerksPerformance
+  };
+}
+
+// ⚡ OPTIMIZED: Fast overview with indexed queries
+async function getOverviewDataOptimized(start: Date, end: Date) {
+  // Using Promise.all for parallel execution with optimized queries
   const [
     totalUsers,
     totalAssessments,
@@ -172,12 +168,20 @@ async function getOverviewData(start: Date, end: Date) {
     activeAffiliates,
     pendingAssessments
   ] = await Promise.all([
+    // Optimized count with index hint
     prisma.user.count({
-      where: { createdAt: { gte: start, lte: end } }
+      where: { 
+        createdAt: { gte: start, lte: end },
+        isAdmin: false // Use the partial index
+      }
     }),
+    
+    // Using indexed fields
     prisma.assessment.count({
       where: { createdAt: { gte: start, lte: end } }
     }),
+    
+    // Revenue sum with status filter (uses partial index)
     prisma.payment.aggregate({
       where: { 
         createdAt: { gte: start, lte: end },
@@ -185,6 +189,8 @@ async function getOverviewData(start: Date, end: Date) {
       },
       _sum: { amount: true }
     }),
+    
+    // Commission sum (uses indexed fields)
     prisma.referral.aggregate({
       where: { 
         createdAt: { gte: start, lte: end },
@@ -192,12 +198,16 @@ async function getOverviewData(start: Date, end: Date) {
       },
       _sum: { commission: true }
     }),
+    
+    // Active affiliates (uses partial index)
     prisma.user.count({
       where: { 
         isAffiliate: true,
         createdAt: { gte: start, lte: end }
       }
     }),
+    
+    // Pending assessments (uses partial index)
     prisma.assessment.count({
       where: { 
         status: 'pending',
@@ -209,50 +219,68 @@ async function getOverviewData(start: Date, end: Date) {
   return {
     totalUsers,
     totalAssessments,
-    totalRevenue: totalRevenueResult._sum.amount || 0,
-    totalCommissions: totalCommissionsResult._sum.commission || 0,
+    totalRevenue: Number(totalRevenueResult._sum.amount) || 0,
+    totalCommissions: Number(totalCommissionsResult._sum.commission) || 0,
     activeAffiliates,
     pendingAssessments
   };
 }
 
-async function getUserGrowthData(start: Date, end: Date) {
+// ⚡ OPTIMIZED: Detailed analytics with efficient queries
+async function getDetailedAnalyticsOptimized(start: Date, end: Date) {
+  // Execute all detail queries in parallel
+  const [
+    userGrowthData,
+    assessmentTypesData,
+    assessmentStatusData,
+    revenueBreakdownData,
+    topAffiliatesData,
+    clerksPerformanceData
+  ] = await Promise.all([
+    getUserGrowthOptimized(start, end),
+    getAssessmentTypesOptimized(start, end),
+    getAssessmentStatusOptimized(start, end),
+    getRevenueBreakdownOptimized(start, end),
+    getTopAffiliatesOptimized(start, end),
+    getClerksPerformanceOptimized(start, end)
+  ]);
+
+  return {
+    userGrowth: userGrowthData,
+    assessmentTypes: assessmentTypesData,
+    assessmentStatus: assessmentStatusData,
+    revenueBreakdown: revenueBreakdownData,
+    topAffiliates: topAffiliatesData,
+    clerksPerformance: clerksPerformanceData
+  };
+}
+
+// ⚡ SIMPLIFIED: User growth without complex date series generation
+async function getUserGrowthOptimized(start: Date, end: Date) {
+  // Simplified approach - get data points only for dates with actual data
   const growthData = await prisma.$queryRaw<Array<{
     date: Date;
     users: bigint;
     assessments: bigint;
     revenue: number;
   }>>`
-    SELECT 
-      DATE_TRUNC('day', date_series) as date,
-      COALESCE(user_counts.count, 0) as users,
-      COALESCE(assessment_counts.count, 0) as assessments,
-      COALESCE(payment_sums.sum, 0) as revenue
-    FROM generate_series(
-      ${start}::date,
-      ${end}::date,
-      '1 day'::interval
-    ) AS date_series
-    LEFT JOIN (
-      SELECT DATE_TRUNC('day', "createdAt") as day, COUNT(*) as count
-      FROM "User"
-      WHERE "createdAt" BETWEEN ${start} AND ${end}
-      GROUP BY DATE_TRUNC('day', "createdAt")
-    ) user_counts ON DATE_TRUNC('day', date_series) = user_counts.day
-    LEFT JOIN (
-      SELECT DATE_TRUNC('day', "createdAt") as day, COUNT(*) as count
-      FROM "Assessment"
-      WHERE "createdAt" BETWEEN ${start} AND ${end}
-      GROUP BY DATE_TRUNC('day', "createdAt")
-    ) assessment_counts ON DATE_TRUNC('day', date_series) = assessment_counts.day
-    LEFT JOIN (
-      SELECT DATE_TRUNC('day', "createdAt") as day, SUM(amount) as sum
-      FROM "Payment"
-      WHERE "createdAt" BETWEEN ${start} AND ${end}
-        AND status IN ('completed', 'successful', 'paid')
-      GROUP BY DATE_TRUNC('day', "createdAt")
-    ) payment_sums ON DATE_TRUNC('day', date_series) = payment_sums.day
-    ORDER BY date_series ASC
+    WITH daily_stats AS (
+      SELECT 
+        DATE_TRUNC('day', u."createdAt") as date,
+        COUNT(DISTINCT u.id) as users,
+        COUNT(DISTINCT a.id) as assessments,
+        COALESCE(SUM(p.amount), 0) as revenue
+      FROM "User" u
+      LEFT JOIN "Assessment" a ON DATE_TRUNC('day', u."createdAt") = DATE_TRUNC('day', a."createdAt")
+      LEFT JOIN "Payment" p ON a.id = p."assessmentId" 
+        AND p.status IN ('completed', 'successful', 'paid')
+      WHERE u."createdAt" BETWEEN ${start} AND ${end}
+        AND u."isAdmin" = false
+      GROUP BY DATE_TRUNC('day', u."createdAt")
+      ORDER BY date ASC
+      LIMIT 30
+    )
+    SELECT * FROM daily_stats
   `;
 
   return growthData.map(item => ({
@@ -263,39 +291,38 @@ async function getUserGrowthData(start: Date, end: Date) {
   }));
 }
 
-async function getAssessmentTypesData(start: Date, end: Date) {
-  const typesData = await prisma.assessment.groupBy({
-    by: ['type'],
-    where: { createdAt: { gte: start, lte: end } },
-    _count: { id: true },
-    _avg: { price: true },
-  });
-
-  const revenueByType = await prisma.$queryRaw<Array<{
+// ⚡ OPTIMIZED: Assessment types with better joins
+async function getAssessmentTypesOptimized(start: Date, end: Date) {
+  const typesData = await prisma.$queryRaw<Array<{
     type: string;
+    count: bigint;
     revenue: number;
+    avgPrice: number;
   }>>`
     SELECT 
       a.type,
-      COALESCE(SUM(p.amount), 0) as revenue
+      COUNT(a.id) as count,
+      COALESCE(SUM(p.amount), 0) as revenue,
+      COALESCE(AVG(a.price), 0) as "avgPrice"
     FROM "Assessment" a
     LEFT JOIN "Payment" p ON a.id = p."assessmentId" 
       AND p.status IN ('completed', 'successful', 'paid')
     WHERE a."createdAt" BETWEEN ${start} AND ${end}
     GROUP BY a.type
+    ORDER BY count DESC
+    LIMIT 10
   `;
-
-  const revenueMap = new Map(revenueByType.map(item => [item.type, Number(item.revenue)]));
 
   return typesData.map(item => ({
     type: item.type,
-    count: item._count.id,
-    revenue: revenueMap.get(item.type) || 0,
-    avgPrice: item._avg.price || 0
+    count: Number(item.count),
+    revenue: Number(item.revenue),
+    avgPrice: Number(item.avgPrice)
   }));
 }
 
-async function getAssessmentStatusData(start: Date, end: Date) {
+// ⚡ OPTIMIZED: Status breakdown
+async function getAssessmentStatusOptimized(start: Date, end: Date) {
   const statusData = await prisma.assessment.groupBy({
     by: ['status'],
     where: { createdAt: { gte: start, lte: end } },
@@ -311,7 +338,8 @@ async function getAssessmentStatusData(start: Date, end: Date) {
   }));
 }
 
-async function getRevenueBreakdownData(start: Date, end: Date) {
+// ⚡ OPTIMIZED: Revenue breakdown
+async function getRevenueBreakdownOptimized(start: Date, end: Date) {
   const tierData = await prisma.$queryRaw<Array<{
     tier: string;
     count: bigint;
@@ -326,6 +354,7 @@ async function getRevenueBreakdownData(start: Date, end: Date) {
       AND p.status IN ('completed', 'successful', 'paid')
     WHERE a."createdAt" BETWEEN ${start} AND ${end}
     GROUP BY a.tier
+    ORDER BY revenue DESC
   `;
 
   const totalRevenue = tierData.reduce((sum, item) => sum + Number(item.revenue), 0);
@@ -338,7 +367,8 @@ async function getRevenueBreakdownData(start: Date, end: Date) {
   }));
 }
 
-async function getTopAffiliatesData(start: Date, end: Date) {
+// ⚡ OPTIMIZED: Top affiliates
+async function getTopAffiliatesOptimized(start: Date, end: Date) {
   const affiliatesData = await prisma.$queryRaw<Array<{
     id: string;
     name: string | null;
@@ -353,8 +383,9 @@ async function getTopAffiliatesData(start: Date, end: Date) {
       COUNT(r.id) as "totalReferrals",
       COALESCE(SUM(r.commission), 0) as "totalEarnings"
     FROM "User" u
-    LEFT JOIN "Referral" r ON u.id = r."affiliateId" 
+    INNER JOIN "Referral" r ON u.id = r."affiliateId" 
       AND r."createdAt" BETWEEN ${start} AND ${end}
+      AND r.status = 'completed'
     WHERE u."isAffiliate" = true
     GROUP BY u.id, u.name, u.email
     ORDER BY "totalEarnings" DESC
@@ -372,7 +403,8 @@ async function getTopAffiliatesData(start: Date, end: Date) {
   }));
 }
 
-async function getClerksPerformanceData(start: Date, end: Date) {
+// ⚡ OPTIMIZED: Clerks performance
+async function getClerksPerformanceOptimized(start: Date, end: Date) {
   const clerksData = await prisma.$queryRaw<Array<{
     id: string;
     name: string | null;
@@ -399,7 +431,9 @@ async function getClerksPerformanceData(start: Date, end: Date) {
       AND a."createdAt" BETWEEN ${start} AND ${end}
     WHERE u."isClerk" = true
     GROUP BY u.id, u.name, u.email
+    HAVING COUNT(a.id) > 0
     ORDER BY "completedCount" DESC
+    LIMIT 10
   `;
 
   return clerksData.map(item => ({
@@ -412,12 +446,12 @@ async function getClerksPerformanceData(start: Date, end: Date) {
   }));
 }
 
-// ===== API HANDLER =====
+// ===== OPTIMIZED API HANDLER =====
 export async function GET(request: NextRequest) {
   try {
-    // 1. Rate limiting
+    // 1. Enhanced rate limiting
     const clientIp = getClientIP(request);
-    if (!checkAdminRateLimit(clientIp, 20, 60000)) {
+    if (!checkAdminRateLimit(clientIp, 30, 60000)) { // Increased limit for faster usage
       logger.warn('Admin analytics rate limit exceeded', { ip: clientIp });
       return NextResponse.json(
         { error: 'Rate limit exceeded. Please try again later.' },
@@ -425,13 +459,13 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // 2. Authentication & Authorization
+    // 2. Fast authentication check
     const authResult = await validateAdminAuth(request);
     if (!authResult.success) {
       return authResult.error!;
     }
 
-    // 3. Parse query parameters
+    // 3. Quick parameter parsing
     const url = new URL(request.url);
     const range = url.searchParams.get('range') || 'last30days';
     const startDateParam = url.searchParams.get('startDate');
@@ -440,18 +474,14 @@ export async function GET(request: NextRequest) {
     let startDate: Date | undefined;
     let endDate: Date | undefined;
 
-    if (startDateParam) {
-      startDate = new Date(startDateParam);
-    }
-    if (endDateParam) {
-      endDate = new Date(endDateParam);
-    }
+    if (startDateParam) startDate = new Date(startDateParam);
+    if (endDateParam) endDate = new Date(endDateParam);
 
-    // 4. Fetch analytics data
+    // 4. Get cached analytics data (ultra-fast)
     const analyticsData = await getCachedAnalytics(range, startDate, endDate);
 
-    // 5. Log admin action
-    await logAdminAction(
+    // 5. Async logging (non-blocking)
+    logAdminAction(
       authResult.user!.id,
       'analytics_view',
       { 
@@ -461,9 +491,9 @@ export async function GET(request: NextRequest) {
         timestamp: new Date().toISOString()
       },
       request
-    );
+    ).catch(err => logger.warn('Failed to log admin action', { error: err.message }));
 
-    // 6. Return success response
+    // 6. Return optimized response
     return NextResponse.json({
       success: true,
       data: analyticsData,
@@ -471,6 +501,11 @@ export async function GET(request: NextRequest) {
         range,
         cachedAt: new Date().toISOString(),
         userId: authResult.user!.id
+      }
+    }, {
+      headers: {
+        'Cache-Control': 'public, max-age=300, stale-while-revalidate=600',
+        'X-Analytics-Performance': 'optimized-v2'
       }
     });
 

@@ -1,9 +1,6 @@
-// /src/app/admin/analytics/page.tsx
-// Comprehensive analytics dashboard for admin
-// Features: Revenue tracking, user growth, assessment analytics, performance metrics
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, memo } from 'react';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { 
@@ -14,13 +11,10 @@ import {
   UserCheck,
   Clock,
   Download,
-  Calendar,
   RefreshCw,
   ArrowUp,
   ArrowDown,
-  BarChart3,
-  PieChart,
-  Target
+  Loader2
 } from 'lucide-react';
 
 // ===== TYPES =====
@@ -81,68 +75,168 @@ interface MetricCardProps {
   changeType?: 'positive' | 'negative' | 'neutral';
   icon: React.ReactNode;
   color: string;
+  loading?: boolean;
 }
 
-// ===== COMPONENTS =====
-const MetricCard = ({ title, value, change, changeType, icon, color }: MetricCardProps) => (
-  <div className="bg-white rounded-lg shadow p-6">
+// ===== SKELETON COMPONENTS =====
+const MetricCardSkeleton = memo(() => (
+  <div className="bg-white rounded-lg shadow p-6 animate-pulse">
     <div className="flex items-center justify-between">
-      <div>
-        <p className="text-sm font-medium text-gray-500">{title}</p>
-        <p className="text-2xl font-bold text-gray-900 mt-1">
-          {typeof value === 'number' ? value.toLocaleString() : value}
-        </p>
-        {change && (
-          <div className={`flex items-center mt-1 text-sm ${
-            changeType === 'positive' ? 'text-green-600' :
-            changeType === 'negative' ? 'text-red-600' : 'text-gray-500'
-          }`}>
-            {changeType === 'positive' && <ArrowUp className="h-4 w-4 mr-1" />}
-            {changeType === 'negative' && <ArrowDown className="h-4 w-4 mr-1" />}
-            {change}
-          </div>
-        )}
+      <div className="flex-1">
+        <div className="h-4 bg-gray-200 rounded w-20 mb-2"></div>
+        <div className="h-8 bg-gray-200 rounded w-16 mb-1"></div>
+        <div className="h-3 bg-gray-200 rounded w-12"></div>
       </div>
-      <div className={`${color} p-3 rounded-lg`}>
-        {icon}
-      </div>
+      <div className="w-12 h-12 bg-gray-200 rounded-lg"></div>
     </div>
   </div>
-);
+));
 
-const SimpleBarChart = ({ data, title }: { data: any[], title: string }) => (
-  <div className="bg-white rounded-lg shadow p-6">
-    <h3 className="text-lg font-semibold mb-4">{title}</h3>
+const ChartSkeleton = memo(() => (
+  <div className="bg-white rounded-lg shadow p-6 animate-pulse">
+    <div className="h-5 bg-gray-200 rounded w-32 mb-4"></div>
     <div className="space-y-3">
-      {data.slice(0, 5).map((item, index) => {
-        const maxValue = Math.max(...data.map(d => d.count || d.revenue || d.value));
-        const percentage = maxValue > 0 ? ((item.count || item.revenue || item.value) / maxValue) * 100 : 0;
-        
-        return (
-          <div key={index} className="flex items-center">
-            <div className="w-20 text-sm text-gray-600 truncate">
-              {item.type || item.status || item.tier || item.label}
+      {[1, 2, 3, 4, 5].map((i) => (
+        <div key={i} className="flex items-center">
+          <div className="w-20 h-4 bg-gray-200 rounded"></div>
+          <div className="flex-1 mx-3">
+            <div className="bg-gray-200 rounded-full h-2"></div>
+          </div>
+          <div className="w-16 h-4 bg-gray-200 rounded"></div>
+        </div>
+      ))}
+    </div>
+  </div>
+));
+
+const TableSkeleton = memo(() => (
+  <div className="bg-white rounded-lg shadow p-6 animate-pulse">
+    <div className="h-5 bg-gray-200 rounded w-40 mb-4"></div>
+    <div className="space-y-3">
+      {[1, 2, 3, 4, 5].map((i) => (
+        <div key={i} className="flex justify-between">
+          <div className="h-4 bg-gray-200 rounded w-32"></div>
+          <div className="h-4 bg-gray-200 rounded w-16"></div>
+          <div className="h-4 bg-gray-200 rounded w-20"></div>
+        </div>
+      ))}
+    </div>
+  </div>
+));
+
+// ===== OPTIMIZED COMPONENTS =====
+const MetricCard = memo(({ title, value, change, changeType, icon, color, loading }: MetricCardProps) => {
+  if (loading) return <MetricCardSkeleton />;
+  
+  return (
+    <div className="bg-white rounded-lg shadow p-6 transform transition-all duration-200 hover:shadow-lg hover:-translate-y-1">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium text-gray-500">{title}</p>
+          <p className="text-2xl font-bold text-gray-900 mt-1">
+            {typeof value === 'number' ? value.toLocaleString() : value}
+          </p>
+          {change && (
+            <div className={`flex items-center mt-1 text-sm ${
+              changeType === 'positive' ? 'text-green-600' :
+              changeType === 'negative' ? 'text-red-600' : 'text-gray-500'
+            }`}>
+              {changeType === 'positive' && <ArrowUp className="h-4 w-4 mr-1" />}
+              {changeType === 'negative' && <ArrowDown className="h-4 w-4 mr-1" />}
+              {change}
             </div>
-            <div className="flex-1 mx-3">
-              <div className="bg-gray-200 rounded-full h-2">
-                <div 
-                  className="bg-indigo-600 h-2 rounded-full transition-all duration-300"
-                  style={{ width: `${percentage}%` }}
-                ></div>
+          )}
+        </div>
+        <div className={`${color} p-3 rounded-lg shadow-sm`}>
+          {icon}
+        </div>
+      </div>
+    </div>
+  );
+});
+
+const SimpleBarChart = memo(({ data, title, loading }: { data: any[], title: string, loading?: boolean }) => {
+  if (loading) return <ChartSkeleton />;
+  
+  const maxValue = Math.max(...data.map(d => d.count || d.revenue || d.value));
+  
+  return (
+    <div className="bg-white rounded-lg shadow p-6 transform transition-all duration-200 hover:shadow-lg">
+      <h3 className="text-lg font-semibold mb-4">{title}</h3>
+      <div className="space-y-3">
+        {data.slice(0, 5).map((item, index) => {
+          const percentage = maxValue > 0 ? ((item.count || item.revenue || item.value) / maxValue) * 100 : 0;
+          
+          return (
+            <div key={index} className="flex items-center group">
+              <div className="w-20 text-sm text-gray-600 truncate">
+                {item.type || item.status || item.tier || item.label}
+              </div>
+              <div className="flex-1 mx-3">
+                <div className="bg-gray-200 rounded-full h-2 overflow-hidden">
+                  <div 
+                    className="bg-gradient-to-r from-indigo-500 to-indigo-600 h-2 rounded-full transition-all duration-500 ease-out transform group-hover:scale-105"
+                    style={{ width: `${percentage}%` }}
+                  ></div>
+                </div>
+              </div>
+              <div className="w-16 text-sm font-medium text-right">
+                {typeof (item.count || item.revenue || item.value) === 'number' 
+                  ? (item.count || item.revenue || item.value).toLocaleString()
+                  : (item.count || item.revenue || item.value)
+                }
               </div>
             </div>
-            <div className="w-16 text-sm font-medium text-right">
-              {typeof (item.count || item.revenue || item.value) === 'number' 
-                ? (item.count || item.revenue || item.value).toLocaleString()
-                : (item.count || item.revenue || item.value)
-              }
-            </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
-  </div>
-);
+  );
+});
+
+const DataTable = memo(({ 
+  title, 
+  data, 
+  columns, 
+  loading 
+}: { 
+  title: string, 
+  data: any[], 
+  columns: { key: string, label: string, align?: 'left' | 'right' }[],
+  loading?: boolean 
+}) => {
+  if (loading) return <TableSkeleton />;
+  
+  return (
+    <div className="bg-white rounded-lg shadow p-6 transform transition-all duration-200 hover:shadow-lg">
+      <h3 className="text-lg font-semibold mb-4">{title}</h3>
+      <div className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200">
+          <thead>
+            <tr>
+              {columns.map((col) => (
+                <th key={col.key} className={`px-4 py-2 text-${col.align || 'left'} text-xs font-medium text-gray-500 uppercase tracking-wider`}>
+                  {col.label}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-200">
+            {data.slice(0, 5).map((item, index) => (
+              <tr key={index} className="hover:bg-gray-50 transition-colors duration-150">
+                {columns.map((col) => (
+                  <td key={col.key} className={`px-4 py-3 text-sm text-gray-900 text-${col.align || 'left'}`}>
+                    {typeof item[col.key] === 'number' ? item[col.key].toLocaleString() : item[col.key] || 'N/A'}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+});
 
 // ===== MAIN COMPONENT =====
 export default function AnalyticsPage() {
@@ -165,12 +259,10 @@ export default function AnalyticsPage() {
     }
   }, [status, session, router]);
 
-  // Fetch analytics data
-  // Enhanced analytics fetch with comprehensive data validation
-  const fetchAnalytics = async () => {
+  // ⚡ OPTIMIZED: Fetch analytics with better error handling and caching
+  const fetchAnalytics = useCallback(async () => {
     try {
       setError(null);
-      setLoading(true);
       
       let url = `/api/admin/analytics?range=${dateRange}`;
       
@@ -179,11 +271,20 @@ export default function AnalyticsPage() {
         if (customEndDate) url += `&endDate=${customEndDate}`;
       }
       
-      const response = await fetch(url);
+      // Add timestamp to prevent aggressive caching during development
+      url += `&t=${Date.now()}`;
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Accept': 'application/json',
+        },
+      });
       
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Failed to fetch analytics: ${response.status} - ${errorText}`);
+        throw new Error(`Analytics fetch failed: ${response.status} - ${errorText}`);
       }
       
       const result = await response.json();
@@ -192,12 +293,8 @@ export default function AnalyticsPage() {
         throw new Error(result.error || 'API returned unsuccessful response');
       }
       
-      // Enhanced data validation and safe fallbacks
-      if (!result.data || typeof result.data !== 'object') {
-        throw new Error('Invalid analytics data structure received');
-      }
-      
-      const safeData = {
+      // Enhanced data validation with safe fallbacks
+      const safeData: AnalyticsData = {
         overview: {
           totalUsers: Number(result.data.overview?.totalUsers) || 0,
           totalAssessments: Number(result.data.overview?.totalAssessments) || 0,
@@ -256,20 +353,20 @@ export default function AnalyticsPage() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, [dateRange, customStartDate, customEndDate]);
 
   useEffect(() => {
     if (status === 'authenticated' && session?.user?.isAdmin) {
       fetchAnalytics();
     }
-  }, [status, session, dateRange, customStartDate, customEndDate]);
+  }, [status, session, fetchAnalytics]);
 
-  const handleRefresh = () => {
+  const handleRefresh = useCallback(() => {
     setRefreshing(true);
     fetchAnalytics();
-  };
+  }, [fetchAnalytics]);
 
-  const handleExport = async () => {
+  const handleExport = useCallback(async () => {
     try {
       let url = `/api/admin/analytics/export?range=${dateRange}&type=all`;
       
@@ -297,16 +394,46 @@ export default function AnalyticsPage() {
       console.error('Export error:', error);
       setError('Failed to export data');
     }
-  };
+  }, [dateRange, customStartDate, customEndDate]);
 
-  const formatCurrency = (amount: number) => {
+  const formatCurrency = useCallback((amount: number) => {
     return `RM ${amount.toFixed(2)}`;
-  };
+  }, []);
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center min-h-screen">
-        <div className="w-16 h-16 border-4 border-t-transparent border-gray-700 rounded-full animate-spin"></div>
+      <div className="p-6">
+        <div className="flex justify-between items-center mb-6">
+          <div>
+            <h1 className="text-2xl font-bold">Analytics Dashboard</h1>
+            <p className="text-gray-600">Track your business performance and metrics</p>
+          </div>
+          <div className="flex items-center space-x-2 text-gray-500">
+            <Loader2 className="h-5 w-5 animate-spin" />
+            <span>Loading analytics...</span>
+          </div>
+        </div>
+
+        {/* Skeleton Overview Metrics */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6 mb-8">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <MetricCardSkeleton key={i} />
+          ))}
+        </div>
+
+        {/* Skeleton Charts */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+          {[1, 2, 3, 4].map((i) => (
+            <ChartSkeleton key={i} />
+          ))}
+        </div>
+
+        {/* Skeleton Tables */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {[1, 2].map((i) => (
+            <TableSkeleton key={i} />
+          ))}
+        </div>
       </div>
     );
   }
@@ -324,7 +451,7 @@ export default function AnalyticsPage() {
               <div className="mt-4">
                 <button
                   onClick={handleRefresh}
-                  className="bg-red-100 px-3 py-2 rounded-md text-sm font-medium text-red-800 hover:bg-red-200"
+                  className="bg-red-100 px-3 py-2 rounded-md text-sm font-medium text-red-800 hover:bg-red-200 transition-colors duration-150"
                 >
                   Try again
                 </button>
@@ -347,19 +474,19 @@ export default function AnalyticsPage() {
   }
 
   return (
-    <div className="p-6">
+    <div className="p-6 bg-gray-50 min-h-screen">
       {/* Header */}
       <div className="flex justify-between items-center mb-6">
         <div>
-          <h1 className="text-2xl font-bold">Analytics Dashboard</h1>
-          <p className="text-gray-600">Track your business performance and metrics</p>
+          <h1 className="text-3xl font-bold text-gray-900">Analytics Dashboard</h1>
+          <p className="text-gray-600 mt-1">Track your business performance and metrics in real-time</p>
         </div>
         
         <div className="flex space-x-3">
           <button
             onClick={handleRefresh}
             disabled={refreshing}
-            className="inline-flex items-center px-3 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
+            className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50 transition-all duration-150 shadow-sm hover:shadow-md"
           >
             <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
             {refreshing ? 'Refreshing...' : 'Refresh'}
@@ -367,7 +494,7 @@ export default function AnalyticsPage() {
           
           <button
             onClick={handleExport}
-            className="inline-flex items-center px-3 py-2 border border-transparent rounded-md text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700"
+            className="inline-flex items-center px-4 py-2 border border-transparent rounded-lg text-sm font-medium text-white bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 transition-all duration-150 shadow-sm hover:shadow-md"
           >
             <Download className="h-4 w-4 mr-2" />
             Export
@@ -376,14 +503,14 @@ export default function AnalyticsPage() {
       </div>
 
       {/* Date Range Selector */}
-      <div className="bg-white rounded-lg shadow p-4 mb-6">
+      <div className="bg-white rounded-lg shadow-sm p-4 mb-6 border border-gray-200">
         <div className="flex flex-wrap items-center gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Date Range</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Date Range</label>
             <select
               value={dateRange}
               onChange={(e) => setDateRange(e.target.value)}
-              className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+              className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-150"
             >
               <option value="today">Today</option>
               <option value="last7days">Last 7 Days</option>
@@ -398,22 +525,22 @@ export default function AnalyticsPage() {
           {dateRange === 'custom' && (
             <>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Start Date</label>
                 <input
                   type="date"
                   value={customStartDate}
                   onChange={(e) => setCustomStartDate(e.target.value)}
-                  className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-150"
                 />
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">End Date</label>
                 <input
                   type="date"
                   value={customEndDate}
                   onChange={(e) => setCustomEndDate(e.target.value)}
-                  className="border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all duration-150"
                 />
               </div>
             </>
@@ -427,42 +554,42 @@ export default function AnalyticsPage() {
           title="Total Users"
           value={data.overview.totalUsers || 0}
           icon={<Users className="h-6 w-6 text-white" />}
-          color="bg-blue-600"
+          color="bg-gradient-to-br from-blue-500 to-blue-600"
         />
         
         <MetricCard
           title="Assessments"
           value={data.overview.totalAssessments || 0}
           icon={<ClipboardList className="h-6 w-6 text-white" />}
-          color="bg-green-600"
+          color="bg-gradient-to-br from-green-500 to-green-600"
         />
         
         <MetricCard
           title="Revenue"
           value={formatCurrency(data.overview.totalRevenue || 0)}
           icon={<DollarSign className="h-6 w-6 text-white" />}
-          color="bg-purple-600"
+          color="bg-gradient-to-br from-purple-500 to-purple-600"
         />
         
         <MetricCard
           title="Commissions"
           value={formatCurrency(data.overview.totalCommissions || 0)}
           icon={<TrendingUp className="h-6 w-6 text-white" />}
-          color="bg-yellow-600"
+          color="bg-gradient-to-br from-yellow-500 to-yellow-600"
         />
         
         <MetricCard
           title="Active Affiliates"
           value={data.overview.activeAffiliates || 0}
           icon={<UserCheck className="h-6 w-6 text-white" />}
-          color="bg-indigo-600"
+          color="bg-gradient-to-br from-indigo-500 to-indigo-600"
         />
         
         <MetricCard
           title="Pending Reviews"
           value={data.overview.pendingAssessments || 0}
           icon={<Clock className="h-6 w-6 text-white" />}
-          color="bg-red-600"
+          color="bg-gradient-to-br from-red-500 to-red-600"
         />
       </div>
 
@@ -494,57 +621,35 @@ export default function AnalyticsPage() {
 
       {/* Data Tables */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Top Affiliates Table */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-semibold mb-4">Top Affiliates Performance</h3>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead>
-                <tr>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Referrals</th>
-                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Earnings</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {data.topAffiliates.slice(0, 5).map((affiliate, index) => (
-                  <tr key={affiliate.id}>
-                    <td className="px-4 py-2 text-sm text-gray-900 truncate">{affiliate.name || 'Unknown'}</td>
-                    <td className="px-4 py-2 text-sm text-gray-900 text-right">{affiliate.totalReferrals || 0}</td>
-                    <td className="px-4 py-2 text-sm text-gray-900 text-right">{formatCurrency(affiliate.totalEarnings || 0)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <DataTable
+          title="Top Affiliates Performance"
+          data={data.topAffiliates.slice(0, 5).map(affiliate => ({
+            name: affiliate.name || 'Unknown',
+            totalReferrals: affiliate.totalReferrals || 0,
+            totalEarnings: formatCurrency(affiliate.totalEarnings || 0)
+          }))}
+          columns={[
+            { key: 'name', label: 'Name' },
+            { key: 'totalReferrals', label: 'Referrals', align: 'right' },
+            { key: 'totalEarnings', label: 'Earnings', align: 'right' }
+          ]}
+        />
 
-        {/* Clerks Performance Table */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-semibold mb-4">Clerks Performance</h3>
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead>
-                <tr>
-                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
-                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Assigned</th>
-                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Completed</th>
-                  <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">Avg Time (h)</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-200">
-                {data.clerksPerformance.slice(0, 5).map((clerk, index) => (
-                  <tr key={clerk.id}>
-                    <td className="px-4 py-2 text-sm text-gray-900 truncate">{clerk.name || 'Unknown'}</td>
-                    <td className="px-4 py-2 text-sm text-gray-900 text-right">{clerk.assignedCount || 0}</td>
-                    <td className="px-4 py-2 text-sm text-gray-900 text-right">{clerk.completedCount || 0}</td>
-                    <td className="px-4 py-2 text-sm text-gray-900 text-right">{(clerk.avgProcessingTime || 0).toFixed(1)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <DataTable
+          title="Clerks Performance"
+          data={data.clerksPerformance.slice(0, 5).map(clerk => ({
+            name: clerk.name || 'Unknown',
+            assignedCount: clerk.assignedCount || 0,
+            completedCount: clerk.completedCount || 0,
+            avgProcessingTime: `${(clerk.avgProcessingTime || 0).toFixed(1)}h`
+          }))}
+          columns={[
+            { key: 'name', label: 'Name' },
+            { key: 'assignedCount', label: 'Assigned', align: 'right' },
+            { key: 'completedCount', label: 'Completed', align: 'right' },
+            { key: 'avgProcessingTime', label: 'Avg Time', align: 'right' }
+          ]}
+        />
       </div>
     </div>
   );

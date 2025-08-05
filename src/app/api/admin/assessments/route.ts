@@ -1,10 +1,10 @@
-// /src/app/api/admin/assessments/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { validateAdminAuth, logAdminAction, checkAdminRateLimit } from '@/lib/middleware/adminAuth';
 import { prisma } from '@/lib/db';
 import { logger } from '@/lib/logger';
 import { getClientIP } from '@/lib/utils/ip';
 import { Prisma } from '@prisma/client';
+import { unstable_cache } from 'next/cache';
 
 // ===== TYPES =====
 interface Assessment {
@@ -50,16 +50,6 @@ interface AssessmentStats {
   conversionRate: number;
 }
 
-interface AssessmentTypeBreakdown {
-  type: string;
-  count: number;
-  completed: number;
-  pending: number;
-  revenue: number;
-  avgPrice: number;
-  completionRate: number;
-}
-
 interface BulkUpdateData {
   assessmentIds: string[];
   action: 'assign_clerk' | 'update_status' | 'bulk_process';
@@ -68,12 +58,265 @@ interface BulkUpdateData {
   notes?: string;
 }
 
-// ===== GET - LIST ASSESSMENTS =====
+// ===== OPTIMIZED CACHED FUNCTIONS =====
+const getCachedClerks = unstable_cache(
+  async () => {
+    try {
+      const clerks = await prisma.user.findMany({
+        where: { isClerk: true },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          _count: {
+            select: {
+              assignedAssessments: {
+                where: { 
+                  status: { in: ['pending', 'in_progress'] } 
+                }
+              }
+            }
+          }
+        },
+        orderBy: { name: 'asc' }
+      });
+
+      return clerks.map(clerk => ({
+        ...clerk,
+        currentWorkload: clerk._count.assignedAssessments
+      }));
+    } catch (error) {
+      logger.error('Error fetching clerks', { error: error instanceof Error ? error.message : 'Unknown' });
+      return [];
+    }
+  },
+  ['available-clerks'],
+  { revalidate: 300, tags: ['clerk-workload'] }
+);
+
+// ===== OPTIMIZED STATS CALCULATION =====
+async function getOptimizedStats(whereClause: Prisma.AssessmentWhereInput): Promise<AssessmentStats> {
+  try {
+    // 🚀 FIXED: Use Prisma native groupBy instead of raw SQL
+    const [statusStats, manualCount, completionTimeResult, revenueResult] = await Promise.all([
+      // Get status breakdown with Prisma groupBy
+      prisma.assessment.groupBy({
+        by: ['status'],
+        where: whereClause,
+        _count: { status: true }
+      }),
+      
+      // Manual processing count
+      prisma.assessment.count({
+        where: { ...whereClause, manualProcessing: true }
+      }),
+      
+      // Average completion time (only completed assessments)
+      prisma.assessment.aggregate({
+        where: {
+          ...whereClause,
+          status: 'completed',
+          reviewedAt: { not: null },
+        },
+        _avg: {
+          // We'll calculate this differently since Prisma doesn't support EXTRACT
+        }
+      }),
+      
+      // Total revenue from successful payments
+      prisma.payment.aggregate({
+        where: {
+          assessment: whereClause,
+          status: { in: ['completed', 'successful', 'paid'] }
+        },
+        _sum: { amount: true }
+      })
+    ]);
+
+    // Map status counts
+    const statusMap = new Map();
+    statusStats.forEach(item => {
+      statusMap.set(item.status, item._count.status);
+    });
+
+    const totalAssessments = statusStats.reduce((sum, item) => sum + item._count.status, 0);
+    const completedCount = statusMap.get('completed') || 0;
+
+    // Calculate average completion time separately if needed
+    let avgCompletionTime = 0;
+    if (completedCount > 0) {
+      try {
+        // Use a simpler approach for completion time
+        const completedAssessments = await prisma.assessment.findMany({
+          where: {
+            ...whereClause,
+            status: 'completed',
+            reviewedAt: { not: null }
+          },
+          select: {
+            createdAt: true,
+            reviewedAt: true
+          },
+          take: 100 // Sample for performance
+        });
+
+        if (completedAssessments.length > 0) {
+          const totalHours = completedAssessments.reduce((sum, assessment) => {
+            if (assessment.reviewedAt && assessment.createdAt) {
+              const diff = assessment.reviewedAt.getTime() - assessment.createdAt.getTime();
+              return sum + (diff / (1000 * 60 * 60)); // Convert to hours
+            }
+            return sum;
+          }, 0);
+          
+          avgCompletionTime = totalHours / completedAssessments.length;
+        }
+      } catch (err) {
+        logger.warn('Failed to calculate completion time', { error: err instanceof Error ? err.message : 'Unknown' });
+      }
+    }
+
+    return {
+      totalAssessments,
+      completedAssessments: completedCount,
+      pendingAssessments: statusMap.get('pending') || 0,
+      inProgressAssessments: statusMap.get('in_progress') || 0,
+      cancelledAssessments: statusMap.get('cancelled') || 0,
+      manualProcessingCount: manualCount,
+      averageCompletionTime: Number(avgCompletionTime.toFixed(2)),
+      totalRevenue: Number(revenueResult._sum.amount) || 0,
+      conversionRate: totalAssessments > 0 ? Number(((completedCount / totalAssessments) * 100).toFixed(2)) : 0
+    };
+
+  } catch (error) {
+    logger.error('Error calculating stats', { 
+      error: error instanceof Error ? error.message : 'Unknown',
+      whereClause: JSON.stringify(whereClause)
+    });
+    
+    // Return default stats on error
+    return {
+      totalAssessments: 0,
+      completedAssessments: 0,
+      pendingAssessments: 0,
+      inProgressAssessments: 0,
+      cancelledAssessments: 0,
+      manualProcessingCount: 0,
+      averageCompletionTime: 0,
+      totalRevenue: 0,
+      conversionRate: 0
+    };
+  }
+}
+
+// ===== SAFE WHERE CLAUSE BUILDER =====
+function buildSafeWhereClause(searchParams: URLSearchParams): Prisma.AssessmentWhereInput {
+  const whereClause: Prisma.AssessmentWhereInput = {};
+  
+  try {
+    const search = searchParams.get('search')?.trim();
+    const status = searchParams.get('status');
+    const type = searchParams.get('type');
+    const tier = searchParams.get('tier');
+    const assignedClerk = searchParams.get('assignedClerk');
+    const manualProcessing = searchParams.get('manualProcessing');
+    const dateFrom = searchParams.get('dateFrom');
+    const dateTo = searchParams.get('dateTo');
+
+    // Search filter - optimized for index usage
+    if (search && search.length > 0) {
+      whereClause.OR = [
+        { id: { contains: search, mode: 'insensitive' } },
+        { type: { contains: search, mode: 'insensitive' } },
+        { user: { 
+          OR: [
+            { name: { contains: search, mode: 'insensitive' } },
+            { email: { contains: search, mode: 'insensitive' } }
+          ]
+        }}
+      ];
+    }
+
+    // Status filter
+    if (status && status !== 'all') {
+      const validStatuses = ['pending', 'in_progress', 'completed', 'cancelled'];
+      if (validStatuses.includes(status)) {
+        whereClause.status = status;
+      }
+    }
+
+    // Type filter
+    if (type && type !== 'all') {
+      const validTypes = ['ccrl', 'cdrl', 'ctrl', 'fjrl', 'ijrl', 'irl', 'rrl'];
+      if (validTypes.includes(type.toLowerCase())) {
+        whereClause.type = type.toLowerCase();
+      }
+    }
+
+    // Tier filter
+    if (tier && tier !== 'all') {
+      const validTiers = ['basic', 'standard', 'premium'];
+      if (validTiers.includes(tier)) {
+        whereClause.tier = tier;
+      }
+    }
+
+    // Clerk filter
+    if (assignedClerk && assignedClerk !== 'all') {
+      if (assignedClerk === 'unassigned') {
+        whereClause.assignedClerkId = null;
+      } else {
+        // Validate clerk ID format (cuid)
+        if (assignedClerk.match(/^[a-z0-9]{25}$/)) {
+          whereClause.assignedClerkId = assignedClerk;
+        }
+      }
+    }
+
+    // Manual processing filter
+    if (manualProcessing === 'true') {
+      whereClause.manualProcessing = true;
+    } else if (manualProcessing === 'false') {
+      whereClause.manualProcessing = false;
+    }
+
+    // Date range filter with validation
+    if (dateFrom || dateTo) {
+      whereClause.createdAt = {};
+      
+      if (dateFrom) {
+        const fromDate = new Date(dateFrom);
+        if (!isNaN(fromDate.getTime())) {
+          whereClause.createdAt.gte = fromDate;
+        }
+      }
+      
+      if (dateTo) {
+        const toDate = new Date(dateTo + 'T23:59:59.999Z');
+        if (!isNaN(toDate.getTime())) {
+          whereClause.createdAt.lte = toDate;
+        }
+      }
+    }
+
+  } catch (error) {
+    logger.warn('Error building where clause', { 
+      error: error instanceof Error ? error.message : 'Unknown',
+      searchParams: Object.fromEntries(searchParams.entries())
+    });
+  }
+
+  return whereClause;
+}
+
+// ===== GET - OPTIMIZED LIST ASSESSMENTS =====
 export async function GET(request: NextRequest) {
+  const startTime = Date.now();
+  
   try {
     // 1. Rate limiting
     const clientIp = getClientIP(request);
-    if (!checkAdminRateLimit(clientIp, 30, 60000)) {
+    if (!checkAdminRateLimit(clientIp, 50, 60000)) {
       logger.warn('Admin assessments list rate limit exceeded', { ip: clientIp });
       return NextResponse.json(
         { error: 'Rate limit exceeded. Please try again later.' },
@@ -87,303 +330,187 @@ export async function GET(request: NextRequest) {
       return authResult.error!;
     }
 
-    // 3. Parse query parameters
+    // 3. Parse and validate query parameters
     const url = new URL(request.url);
-    const page = parseInt(url.searchParams.get('page') || '1');
-    const limit = Math.min(parseInt(url.searchParams.get('limit') || '10'), 100);
-    const search = url.searchParams.get('search') || '';
-    const status = url.searchParams.get('status') || 'all';
-    const type = url.searchParams.get('type') || 'all';
-    const tier = url.searchParams.get('tier') || 'all';
-    const assignedClerk = url.searchParams.get('assignedClerk') || 'all';
-    const manualProcessing = url.searchParams.get('manualProcessing');
-    const dateFrom = url.searchParams.get('dateFrom');
-    const dateTo = url.searchParams.get('dateTo');
+    const page = Math.max(1, parseInt(url.searchParams.get('page') || '1'));
+    const limit = Math.min(Math.max(1, parseInt(url.searchParams.get('limit') || '10')), 100);
     const sortBy = url.searchParams.get('sortBy') || 'createdAt';
-    const sortOrder = url.searchParams.get('sortOrder') || 'desc';
+    const sortOrder = url.searchParams.get('sortOrder') === 'asc' ? 'asc' : 'desc';
+    const includeStats = url.searchParams.get('includeStats') === 'true';
 
-    const validPage = Math.max(1, page);
-    const offset = (validPage - 1) * limit;
+    const offset = (page - 1) * limit;
 
-    // DEBUG: Log query parameters
-    logger.info('Assessment query parameters', {
-      page: validPage,
-      limit,
-      search,
-      status,
-      type,
-      sortBy,
-      sortOrder,
-      offset
-    });
-
-    // 4. Build where clause
-    const whereClause: Prisma.AssessmentWhereInput = {};
-
-    // Search filter
-    if (search) {
-      whereClause.OR = [
-        { id: { contains: search, mode: 'insensitive' } },
-        { type: { contains: search, mode: 'insensitive' } },
-        { user: { 
-          OR: [
-            { name: { contains: search, mode: 'insensitive' } },
-            { email: { contains: search, mode: 'insensitive' } }
-          ]
-        }},
-        { assignedClerk: {
-          OR: [
-            { name: { contains: search, mode: 'insensitive' } },
-            { email: { contains: search, mode: 'insensitive' } }
-          ]
-        }}
-      ];
-    }
-
-    // Status filter - DEBUG: Log if filtering
-    if (status !== 'all') {
-      whereClause.status = status;
-      logger.info('Filtering by status', { status });
-    }
-
-    // Type filter
-    if (type !== 'all') {
-      whereClause.type = type;
-      logger.info('Filtering by type', { type });
-    }
-
-    // Tier filter
-    if (tier !== 'all') {
-      whereClause.tier = tier;
-      logger.info('Filtering by tier', { tier });
-    }
-
-    // Assigned clerk filter
-    if (assignedClerk !== 'all') {
-      if (assignedClerk === 'unassigned') {
-        whereClause.assignedClerkId = null;
-      } else {
-        whereClause.assignedClerkId = assignedClerk;
-      }
-      logger.info('Filtering by clerk', { assignedClerk });
-    }
-
-    // Manual processing filter
-    if (manualProcessing === 'true') {
-      whereClause.manualProcessing = true;
-    } else if (manualProcessing === 'false') {
-      whereClause.manualProcessing = false;
-    }
-
-    // Date range filter - DEBUG: Check if this blocks new assessments
-    if (dateFrom || dateTo) {
-      whereClause.createdAt = {};
-      if (dateFrom) {
-        const fromDate = new Date(dateFrom);
-        whereClause.createdAt.gte = fromDate;
-        logger.info('Date from filter', { dateFrom, fromDate });
-      }
-      if (dateTo) {
-        const toDate = new Date(dateTo + 'T23:59:59.999Z');
-        whereClause.createdAt.lte = toDate;
-        logger.info('Date to filter', { dateTo, toDate });
-      }
-    }
-
-    // DEBUG: Log final where clause
-    logger.info('Final where clause', { whereClause: JSON.stringify(whereClause, null, 2) });
+    // 4. Build safe where clause
+    const whereClause = buildSafeWhereClause(url.searchParams);
 
     // 5. Build order by clause
     const validSortFields = ['createdAt', 'updatedAt', 'status', 'type', 'tier', 'price'];
     const safeSortBy = validSortFields.includes(sortBy) ? sortBy : 'createdAt';
-    const safeSortOrder = sortOrder === 'asc' ? 'asc' : 'desc';
 
     const orderBy: Prisma.AssessmentOrderByWithRelationInput = {
-      [safeSortBy]: safeSortOrder
+      [safeSortBy]: sortOrder
     };
 
-    logger.info('Order by clause', { orderBy });
-
-    // DEBUG: First, get total count without pagination
-    const totalCount = await prisma.assessment.count({ where: whereClause });
-    logger.info('Total assessments matching filters', { totalCount });
-
-    // DEBUG: Get latest 5 assessments without any filters to verify they exist
-    const latestAssessments = await prisma.assessment.findMany({
-      take: 5,
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        type: true,
-        status: true,
-        createdAt: true,
-        user: {
-          select: {
-            email: true
+    // 6. 🚀 OPTIMIZED: Core queries with graceful degradation
+    const [assessments, totalCount] = await Promise.all([
+      prisma.assessment.findMany({
+        where: whereClause,
+        orderBy,
+        skip: offset,
+        take: limit,
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true
+            }
+          },
+          assignedClerk: {
+            select: {
+              id: true,
+              name: true,
+              email: true
+            }
+          },
+          payment: {
+            select: {
+              id: true,
+              amount: true,
+              status: true,
+              method: true
+            }
+          },
+          _count: {
+            select: {
+              referrals: true
+            }
           }
         }
+      }),
+      
+      prisma.assessment.count({ where: whereClause })
+    ]);
+
+    // 7. Optional data - don't fail if these fail
+    let availableClerks: any[] = [];
+    let statsData: AssessmentStats | null = null;
+
+    try {
+      availableClerks = await getCachedClerks();
+    } catch (err) {
+      logger.warn('Failed to load clerks', { error: err instanceof Error ? err.message : 'Unknown' });
+    }
+
+    try {
+      if (includeStats) {
+        statsData = await getOptimizedStats(whereClause);
       }
-    });
+    } catch (err) {
+      logger.warn('Failed to load stats', { error: err instanceof Error ? err.message : 'Unknown' });
+    }
 
-    logger.info('Latest 5 assessments in database', { 
-      assessments: latestAssessments.map(a => ({
-        id: a.id,
-        type: a.type,
-        status: a.status,
-        createdAt: a.createdAt.toISOString(),
-        userEmail: a.user.email
-      }))
-    });
-
-    // 6. Fetch assessments with pagination
-    const assessments = await prisma.assessment.findMany({
-      where: whereClause,
-      orderBy,
-      skip: offset,
-      take: limit,
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            email: true
-          }
-        },
-        assignedClerk: {
-          select: {
-            id: true,
-            name: true,
-            email: true
-          }
-        },
-        payment: {
-          select: {
-            id: true,
-            amount: true,
-            status: true,
-            method: true
-          }
-        },
-        _count: {
-          select: {
-            referrals: true
-          }
-        }
-      }
-    });
-
-    logger.info('Query results', { 
-      found: assessments.length,
-      totalCount,
-      page: validPage,
-      limit,
-      firstResult: assessments[0] ? {
-        id: assessments[0].id,
-        type: assessments[0].type,
-        status: assessments[0].status,
-        createdAt: assessments[0].createdAt.toISOString()
-      } : null
-    });
-
-    // 7. Format response
+    // 8. Format response
     const formattedAssessments: Assessment[] = assessments.map(assessment => ({
       ...assessment,
+      price: Number(assessment.price) || 0,
       createdAt: assessment.createdAt.toISOString(),
       updatedAt: assessment.updatedAt.toISOString(),
       reviewedAt: assessment.reviewedAt?.toISOString() || null
     }));
 
-    // 8. Get additional stats if requested
-    let stats: AssessmentStats | null = null;
-    let typeBreakdown: AssessmentTypeBreakdown[] = [];
-
-    if (url.searchParams.get('includeStats') === 'true') {
-      stats = await getAssessmentStats(whereClause);
-      typeBreakdown = await getAssessmentTypeBreakdown(whereClause);
-    }
-
     const totalPages = Math.ceil(totalCount / limit);
+    const queryTime = Date.now() - startTime;
 
-    // 9. Get available clerks for assignment
-    const availableClerks = await prisma.user.findMany({
-      where: { isClerk: true },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        _count: {
-          select: {
-            assignedAssessments: {
-              where: { status: { in: ['pending', 'in_progress'] } }
-            }
-          }
-        }
-      },
-      orderBy: { name: 'asc' }
+    // 9. Log performance
+    logger.info('Assessment list query completed', {
+      queryTime: `${queryTime}ms`,
+      totalCount,
+      page,
+      limit,
+      hasFilters: Object.keys(whereClause).length > 0
     });
 
-    // 10. Log admin action
-    await logAdminAction(
+    // 10. Async logging (non-blocking)
+    logAdminAction(
       authResult.user!.id,
       'assessments_list_view',
       { 
-        page: validPage,
+        page,
         limit,
-        search,
-        filters: { status, type, tier, assignedClerk, manualProcessing },
         totalResults: totalCount,
+        queryTime: `${queryTime}ms`,
         timestamp: new Date().toISOString()
       },
       request
-    );
+    ).catch(err => logger.warn('Failed to log admin action', { error: err instanceof Error ? err.message : 'Unknown' }));
 
-    // 11. Return success response
+    // 11. Return response with performance headers
     return NextResponse.json({
       success: true,
       assessments: formattedAssessments,
       pagination: {
-        currentPage: validPage,
+        currentPage: page,
         totalPages,
         totalCount,
         limit,
-        hasNext: validPage < totalPages,
-        hasPrev: validPage > 1
+        hasNext: page < totalPages,
+        hasPrev: page > 1
       },
-      stats,
-      typeBreakdown,
-      availableClerks: availableClerks.map(clerk => ({
-        ...clerk,
-        currentWorkload: clerk._count.assignedAssessments
-      })),
+      stats: statsData,
+      availableClerks,
       metadata: {
-        filters: { status, type, tier, assignedClerk, manualProcessing },
-        sortBy: safeSortBy,
-        sortOrder: safeSortOrder,
-        dateRange: { from: dateFrom, to: dateTo }
+        queryTime: `${queryTime}ms`,
+        cached: {
+          clerks: true,
+          stats: !!statsData
+        }
+      }
+    }, {
+      headers: {
+        'Cache-Control': 'public, max-age=30, stale-while-revalidate=60',
+        'X-Query-Performance': `${queryTime}ms`
       }
     });
 
   } catch (error) {
-    logger.error('Assessments list API error', {
+    const queryTime = Date.now() - startTime;
+    
+    logger.error('Assessment list API error', {
       error: error instanceof Error ? error.message : 'Unknown error',
       stack: error instanceof Error ? error.stack : undefined,
-      url: request.url
+      queryTime: `${queryTime}ms`,
+      url: request.url,
+      searchParams: Object.fromEntries(new URL(request.url).searchParams.entries())
     });
 
-    return NextResponse.json(
-      { error: 'Failed to fetch assessments. Please try again later.' },
-      { status: 500 }
-    );
+    // Return specific error information for debugging
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      return NextResponse.json({
+        error: 'Database query failed',
+        code: error.code,
+        details: error.meta,
+        queryTime: `${queryTime}ms`
+      }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      error: 'Failed to fetch assessments',
+      details: error instanceof Error ? error.message : 'Unknown error',
+      queryTime: `${queryTime}ms`
+    }, { status: 500 });
   }
 }
 
-// ===== PUT - BULK UPDATE ASSESSMENTS =====
+// ===== PUT - OPTIMIZED BULK UPDATE =====
 export async function PUT(request: NextRequest) {
+  const startTime = Date.now();
+  
   try {
     // 1. Rate limiting
     const clientIp = getClientIP(request);
-    if (!checkAdminRateLimit(clientIp, 10, 60000)) {
-      logger.warn('Admin assessments bulk update rate limit exceeded', { ip: clientIp });
+    if (!checkAdminRateLimit(clientIp, 20, 60000)) {
+      logger.warn('Bulk update rate limit exceeded', { ip: clientIp });
       return NextResponse.json(
         { error: 'Rate limit exceeded. Please try again later.' },
         { status: 429 }
@@ -414,11 +541,29 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // 4. Validate assessments exist
-    const existingAssessments = await prisma.assessment.findMany({
-      where: { id: { in: assessmentIds } },
-      select: { id: true, status: true, assignedClerkId: true }
-    });
+    // Validate all IDs are valid cuid format
+    const validIds = assessmentIds.filter(id => id.match(/^[a-z0-9]{25}$/));
+    if (validIds.length !== assessmentIds.length) {
+      return NextResponse.json(
+        { error: 'Invalid assessment ID format' },
+        { status: 400 }
+      );
+    }
+
+    // 4. Validate assessments exist and clerk if needed
+    const [existingAssessments, clerk] = await Promise.all([
+      prisma.assessment.findMany({
+        where: { id: { in: assessmentIds } },
+        select: { id: true, status: true, assignedClerkId: true }
+      }),
+      
+      action === 'assign_clerk' && clerkId ? 
+        prisma.user.findFirst({
+          where: { id: clerkId, isClerk: true },
+          select: { id: true, name: true }
+        }) : 
+        Promise.resolve(null)
+    ]);
 
     if (existingAssessments.length !== assessmentIds.length) {
       return NextResponse.json(
@@ -427,86 +572,49 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    // 5. Perform bulk update based on action
-    let updateData: Prisma.AssessmentUpdateManyArgs['data'] = {};
-    let results: any = {};
+    if (action === 'assign_clerk' && clerkId && !clerk) {
+      return NextResponse.json(
+        { error: 'Clerk not found or inactive' },
+        { status: 404 }
+      );
+    }
+
+    // 5. Build update data
+    const updateData: Prisma.AssessmentUpdateManyArgs['data'] = {
+      updatedAt: new Date()
+    };
 
     switch (action) {
       case 'assign_clerk':
-        if (!clerkId) {
-          return NextResponse.json(
-            { error: 'Clerk ID is required for assignment' },
-            { status: 400 }
-          );
-        }
-
-        // Verify clerk exists and is active
-        const clerk = await prisma.user.findFirst({
-          where: { id: clerkId, isClerk: true }
-        });
-
-        if (!clerk) {
-          return NextResponse.json(
-            { error: 'Clerk not found or inactive' },
-            { status: 404 }
-          );
-        }
-
-        updateData = {
-          assignedClerkId: clerkId,
-          status: 'in_progress',
-          updatedAt: new Date()
-        };
+        updateData.assignedClerkId = clerkId;
+        updateData.status = 'in_progress';
         break;
-
+        
       case 'update_status':
-        if (!status) {
-          return NextResponse.json(
-            { error: 'Status is required for status update' },
-            { status: 400 }
-          );
-        }
-
         const validStatuses = ['pending', 'in_progress', 'completed', 'cancelled'];
-        if (!validStatuses.includes(status)) {
-          return NextResponse.json(
-            { error: 'Invalid status' },
-            { status: 400 }
-          );
+        if (!status || !validStatuses.includes(status)) {
+          return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
         }
-
-        updateData = {
-          status,
-          updatedAt: new Date()
-        };
-
+        updateData.status = status;
         if (status === 'completed') {
           updateData.reviewedAt = new Date();
         }
-
         if (notes) {
           updateData.reviewNotes = notes;
         }
         break;
-
+        
       case 'bulk_process':
-        updateData = {
-          manualProcessing: false,
-          status: 'completed',
-          reviewedAt: new Date(),
-          updatedAt: new Date()
-        };
-
+        updateData.manualProcessing = false;
+        updateData.status = 'completed';
+        updateData.reviewedAt = new Date();
         if (notes) {
           updateData.reviewNotes = notes;
         }
         break;
-
+        
       default:
-        return NextResponse.json(
-          { error: 'Invalid action' },
-          { status: 400 }
-        );
+        return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
     }
 
     // 6. Execute bulk update
@@ -515,164 +623,47 @@ export async function PUT(request: NextRequest) {
       data: updateData
     });
 
-    results = {
-      updated: updateResult.count,
-      action,
-      assessmentIds
-    };
+    const queryTime = Date.now() - startTime;
 
-    // 7. Log admin action
-    await logAdminAction(
+    // 7. Log admin action (async)
+    logAdminAction(
       authResult.user!.id,
       'assessments_bulk_update',
       { 
         action,
         assessmentIds,
-        clerkId,
-        status,
-        notes,
         updatedCount: updateResult.count,
+        queryTime: `${queryTime}ms`,
         timestamp: new Date().toISOString()
       },
       request
-    );
+    ).catch(err => logger.warn('Failed to log bulk action', { error: err instanceof Error ? err.message : 'Unknown' }));
 
     // 8. Return success response
     return NextResponse.json({
       success: true,
       message: `Successfully updated ${updateResult.count} assessments`,
-      results
+      results: {
+        updated: updateResult.count,
+        action,
+        queryTime: `${queryTime}ms`
+      }
     });
 
   } catch (error) {
-    logger.error('Assessments bulk update API error', {
+    const queryTime = Date.now() - startTime;
+    
+    logger.error('Bulk update API error', {
       error: error instanceof Error ? error.message : 'Unknown error',
       stack: error instanceof Error ? error.stack : undefined,
+      queryTime: `${queryTime}ms`,
       url: request.url
     });
 
-    return NextResponse.json(
-      { error: 'Failed to update assessments. Please try again later.' },
-      { status: 500 }
-    );
+    return NextResponse.json({
+      error: 'Failed to update assessments',
+      details: error instanceof Error ? error.message : 'Unknown error',
+      queryTime: `${queryTime}ms`
+    }, { status: 500 });
   }
-}
-
-// ===== HELPER FUNCTIONS =====
-async function getAssessmentStats(whereClause: Prisma.AssessmentWhereInput): Promise<AssessmentStats> {
-  const [
-    totalAssessments,
-    statusCounts,
-    completionTimes,
-    revenue
-  ] = await Promise.all([
-    prisma.assessment.count({ where: whereClause }),
-    prisma.assessment.groupBy({
-      by: ['status'],
-      where: whereClause,
-      _count: { id: true }
-    }),
-    // Enhanced completion time query with better null safety
-    prisma.$queryRaw<Array<{ avgHours: number | null }>>`
-      SELECT COALESCE(
-        AVG(EXTRACT(EPOCH FROM ("reviewedAt" - "createdAt")) / 3600), 
-        0
-      ) as "avgHours"
-      FROM "Assessment"
-      WHERE "reviewedAt" IS NOT NULL 
-        AND status = 'completed' 
-        AND "createdAt" IS NOT NULL
-    `,
-    prisma.payment.aggregate({
-      where: {
-        assessment: whereClause,
-        status: { in: ['completed', 'successful', 'paid'] }
-      },
-      _sum: { amount: true }
-    })
-  ]);
-
-  // Map status counts for easy access
-  const statusMap = new Map(statusCounts.map(item => [item.status, item._count.id]));
-
-  // Calculate stats with enhanced null safety
-  const completedCount = statusMap.get('completed') || 0;
-  const pendingCount = statusMap.get('pending') || 0;
-  const inProgressCount = statusMap.get('in_progress') || 0;
-  const cancelledCount = statusMap.get('cancelled') || 0;
-
-  const manualProcessingCount = await prisma.assessment.count({
-    where: { ...whereClause, manualProcessing: true }
-  });
-
-  // Enhanced completion time calculation with multiple fallbacks
-  const avgCompletionTime = completionTimes?.[0]?.avgHours;
-  let safeAvgCompletionTime = 0;
-  
-  if (avgCompletionTime !== null && avgCompletionTime !== undefined && !isNaN(Number(avgCompletionTime))) {
-    safeAvgCompletionTime = Math.max(0, Number(avgCompletionTime));
-  }
-
-  return {
-    totalAssessments,
-    completedAssessments: completedCount,
-    pendingAssessments: pendingCount,
-    inProgressAssessments: inProgressCount,
-    cancelledAssessments: cancelledCount,
-    manualProcessingCount,
-    averageCompletionTime: safeAvgCompletionTime,
-    totalRevenue: Number(revenue._sum.amount) || 0,
-    conversionRate: totalAssessments > 0 ? Number(((completedCount / totalAssessments) * 100).toFixed(2)) : 0
-  };
-}
-
-async function getAssessmentTypeBreakdown(whereClause: Prisma.AssessmentWhereInput): Promise<AssessmentTypeBreakdown[]> {
-  const typeStats = await prisma.assessment.groupBy({
-    by: ['type'],
-    where: whereClause,
-    _count: { id: true },
-    _avg: { price: true }
-  });
-
-  const typeRevenue = await prisma.$queryRaw<Array<{
-    type: string;
-    revenue: number;
-    completed: bigint;
-    pending: bigint;
-  }>>`
-    SELECT 
-      a.type,
-      COALESCE(SUM(p.amount), 0) as revenue,
-      SUM(CASE WHEN a.status = 'completed' THEN 1 ELSE 0 END) as completed,
-      SUM(CASE WHEN a.status = 'pending' THEN 1 ELSE 0 END) as pending
-    FROM "Assessment" a
-    LEFT JOIN "Payment" p ON a.id = p."assessmentId" 
-      AND p.status IN ('completed', 'successful', 'paid')
-    WHERE a.id IS NOT NULL
-    GROUP BY a.type
-  `;
-
-  const revenueMap = new Map(typeRevenue.map(item => [
-    item.type, 
-    { 
-      revenue: Number(item.revenue), 
-      completed: Number(item.completed),
-      pending: Number(item.pending)
-    }
-  ]));
-
-  return typeStats.map(item => {
-    const revenueData = revenueMap.get(item.type) || { revenue: 0, completed: 0, pending: 0 };
-    const total = item._count.id;
-    
-    return {
-      type: item.type,
-      count: total,
-      completed: revenueData.completed,
-      pending: revenueData.pending,
-      revenue: revenueData.revenue,
-      avgPrice: item._avg.price || 0,
-      completionRate: total > 0 ? (revenueData.completed / total) * 100 : 0
-    };
-  });
 }
