@@ -266,22 +266,25 @@ export default function AffiliateJoinClient() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
                     <label htmlFor="website" className="block text-sm font-medium text-gray-700 mb-1">
-                      Website URL (Optional)
+                      Website or Blog (Optional)
                     </label>
                     <input
-                      type="url"
+                      type="text"
                       id="website"
                       name="website"
                       value={formData.website}
                       onChange={handleChange}
-                      placeholder="https://yourdomain.com"
+                      placeholder="yoursite.com, myblog.wordpress.com"
                       className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-[#7e43f1] focus:border-[#7e43f1] focus:outline-none"
                     />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Enter any website or blog URL in any format
+                    </p>
                   </div>
                   
                   <div>
                     <label htmlFor="socialMedia" className="block text-sm font-medium text-gray-700 mb-1">
-                      Social Media Handles (Optional)
+                      Social Media or Professional Profile (Optional)
                     </label>
                     <input
                       type="text"
@@ -289,9 +292,12 @@ export default function AffiliateJoinClient() {
                       name="socialMedia"
                       value={formData.socialMedia}
                       onChange={handleChange}
-                      placeholder="@username"
+                      placeholder="@username, linkedin.com/in/yourname, youtube.com/c/yourchannel"
                       className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:ring-[#7e43f1] focus:border-[#7e43f1] focus:outline-none"
                     />
+                    <p className="mt-1 text-xs text-gray-500">
+                      Any social media or professional profile link
+                    </p>
                   </div>
                 </div>
                 
