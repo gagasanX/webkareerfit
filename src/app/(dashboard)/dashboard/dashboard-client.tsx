@@ -290,11 +290,14 @@ const getAssessmentStatus = (status: string) => {
         text: 'Submitted',
         color: 'bg-blue-100 text-blue-800'
       };
+    // --- DI SINI ---
+    case 'text_extracted': // <--status ini sebagai "Under Review"
     case 'pending_review':
       return {
         text: 'Under Review',
         color: 'bg-blue-100 text-blue-800'
       };
+    // --- AKHIR PERUBAHAN ---
     case 'processing':
       return {
         text: 'Processing',
@@ -341,8 +344,12 @@ const getAssessmentActions = (assessment: any, confirmCancel: (id: string, type:
     );
   }
   
-  // Submitted/Under Review assessments - show view status
-  if (status === 'submitted' || status === 'pending_review' || status === 'processing') {
+  // --- PERUBAHAN DI SINI ---
+  // Submitted/Under Review/Processing assessments - show view status
+  // Ditambah 'text_extracted' ke dalam senarai ini
+  if (status === 'submitted' || status === 'pending_review' || status === 'processing' || status === 'text_extracted') {
+    // --- AKHIR PERUBAHAN ---
+    
     // Determine the correct status page based on tier/price
     let statusUrl = `/assessment/${type}/results/${id}`; // fallback
     
