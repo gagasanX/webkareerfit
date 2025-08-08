@@ -289,10 +289,7 @@ export default function AssessmentInstanceClient() {
   const submitAssessment = async () => {
     setSubmitting(true);
     try {
-      // Create FormData object for file upload
       const formData = new FormData();
-      
-      // Add answers as JSON string
       const formDataPayload = {
         personalInfo: {
           name: session?.user?.name || '',
@@ -302,74 +299,43 @@ export default function AssessmentInstanceClient() {
       };
       
       console.log(`Submitting assessment ${id} with formData:`, formDataPayload);
-      setDebugInfo(`Preparing to submit assessment ${id} - Tier: ${assessment?.tier}, Price: RM${assessment?.price}`);
-      
       formData.append('formData', JSON.stringify(formDataPayload));
       
-      // Add resume file if available
       if (resumeFile) {
         formData.append('resume', resumeFile);
         console.log(`Including resume: ${resumeFile.name}`);
-        setDebugInfo(`Including resume: ${resumeFile.name}`);
       }
       
-      // Submit to the submit endpoint
       console.log(`Submitting to endpoint: /api/assessment/${type}/${id}/submit-with-google-vision`);
       const response = await fetch(`/api/assessment/${type}/${id}/submit-with-google-vision`, {
         method: 'POST',
         body: formData
-        // Don't set Content-Type header for multipart/form-data
       });
-
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         console.error('Submission error response:', errorData);
         throw new Error(errorData.error || `Failed to submit assessment: ${response.status}`);
       }
       
-      // Get response data
-      let result;
-      try {
-        result = await response.json();
-        console.log('Submission response:', result);
-      } catch (e) {
-        console.error('Error parsing response JSON:', e);
-        throw new Error('Invalid response from server');
-      }
+      const result = await response.json();
+      console.log('Submission response from server:', result);
       
-      // CRITICAL FIX: Always respect the redirectUrl from the server response
-      if (result.redirectUrl) {
-        console.log(`REDIRECTING TO: ${result.redirectUrl}`);
-        setDebugInfo(`Redirecting to: ${result.redirectUrl}`);
+      // =======================================================
+      //  LOGIK YANG TELAH DIBAIKI DAN DIPERCAYAI
+      // =======================================================
+      if (result && result.redirectUrl && typeof result.redirectUrl === 'string') {
+        // Gunakan URL yang diberikan oleh backend secara terus. Tiada lagi tekaan.
+        console.log(`Backend instructed to redirect to: ${result.redirectUrl}. Executing now.`);
         router.push(result.redirectUrl);
       } else {
-        // Only as fallback if server didn't provide a redirect URL
-        console.log(`NO REDIRECT URL PROVIDED - Using default path`);
-        setDebugInfo(`No redirect URL - Using default`);
-        
-        // Get up-to-date assessment data directly from API
-        const assessmentData = await fetch(`/api/assessment/${type}/${id}`).then(res => res.json());
-        const tier = assessmentData.tier || 'basic';
-        const price = assessmentData.price || 0;
-        
-        // CRITICAL FIX: Determine redirect based on tier with explicit checks
-        let defaultPath;
-        
-        // Check tier first
-        if (tier === 'premium' || price >= 250) {
-          defaultPath = `/assessment/${type}/premium-results/${id}`;
-          console.log(`Premium tier/price detected for fallback redirect: ${defaultPath}`);
-        } else if (tier === 'standard' || price >= 100) {
-          defaultPath = `/assessment/${type}/standard-results/${id}`;
-          console.log(`Standard tier/price detected for fallback redirect: ${defaultPath}`);
-        } else {
-          defaultPath = `/assessment/${type}/processing/${id}`;
-          console.log(`Basic tier detected for fallback redirect: ${defaultPath}`);
-        }
-        
-        console.log(`Fallback redirect to: ${defaultPath}`);
-        router.push(defaultPath);
+        // Jika backend GAGAL memberikan arahan, barulah kita tunjukkan ralat.
+        // Ini adalah langkah keselamatan yang lebih baik daripada cuba meneka.
+        console.error('Submission successful, but server did not provide a redirect URL. This should not happen.', result);
+        setError('Submission complete, but there was an error navigating to the next page. Please go to your dashboard to check the status.');
+        setSubmitting(false); // Hentikan animasi loading supaya pengguna boleh bertindak.
       }
+      // =======================================================
+      
     } catch (error) {
       console.error('Error submitting assessment:', error);
       setError(error instanceof Error ? error.message : 'Error submitting assessment. Please try again.');
