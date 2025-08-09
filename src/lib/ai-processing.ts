@@ -174,59 +174,46 @@ export async function processSingleComprehensiveAnalysis(
   
   try {
     const prompt = `
-You are a COMPREHENSIVE and BRUTALLY HONEST career assessment expert.
+You are a COMPREHENSIVE career assessment expert analyzing a ${assessmentType.toUpperCase()} assessment.
 
-**IMPORTANT CONTEXT:** All analysis must be performed from the perspective of the job market in **Malaysia**. Consider local industry norms, expectations for career progression, and the value of local educational institutions and companies.
-
-**ASSESSMENT CONTEXT:**
+ASSESSMENT CONTEXT:
 - Target Role: ${targetRole}
 - Assessment Type: ${assessmentType.toUpperCase()}
 - Resume Available: ${resumeText ? 'YES' : 'NO'}
 
-**ASSESSMENT RESPONSES:**
+ASSESSMENT RESPONSES:
 ${JSON.stringify(responses)}
 
 ${resumeText ? `
-**RESUME CONTENT FOR VALIDATION:**
+RESUME CONTENT FOR VALIDATION:
 ${resumeText}
+
+VALIDATION INSTRUCTIONS:
+- Compare claimed skills in responses with actual evidence in resume
+- If resume shows strong experience but responses are weak → investigate inconsistency
+- If resume lacks relevant experience but responses claim expertise → be skeptical
+- If resume supports responses with specific examples → give appropriate credit
+- Look for quantifiable achievements, leadership roles, relevant technologies
 ` : `
-**WARNING:** No resume provided - assessment accuracy is limited without evidence validation.
-Scoring must be more conservative. The "evidenceLevel" must be "INSUFFICIENT".
+WARNING: No resume provided - assessment accuracy is limited without evidence validation.
+Scoring will be more conservative due to lack of supporting documentation.
 `}
 
-// --- BAHAGIAN BARU YANG PALING PENTING ---
-**CRITICAL SCENARIO ANALYSIS:**
-You MUST identify and address any major mismatch between the candidate's inferred 'experienceLevel' (from their resume) and their 'targetRole'.
+COMPREHENSIVE ANALYSIS REQUIREMENTS:
 
-1.  **If the candidate is SEVERELY UNDERQUALIFIED** (e.g., a JUNIOR with 1-2 years experience applying for a VICE PRESIDENT or DIRECTOR role):
-    - The "fitLevel" MUST be "POOR_FIT".
-    - The "fitPercentage" MUST be low (e.g., below 30%).
-    - The "timeToReadiness" MUST be long (e.g., "2 years" or "4+ years").
-    - The "honestAssessment" and "realityCheck" must be brutally honest, explaining that this is a huge and unrealistic leap at their current stage. Example: "Becoming a Vice President requires extensive experience in strategic planning, P&L management, and team leadership across multiple departments, which is not yet evidenced in your technical-focused resume."
-    - The "recommendations" MUST focus on building foundational experience and bridging the massive gap, NOT on how to apply for the senior role now. Suggest intermediate roles as stepping stones.
+1. REALISTIC SCORING (Be strict and honest):
+- Most people are NOT exceptional (scores 85-100 should be rare)
+- Entry level: expect 40-65% typically
+- Mid-level: expect 55-75% typically  
+- Senior level: expect 65-85% typically
 
-2.  **If the candidate is SEVERELY OVERQUALIFIED** (e.g., a SENIOR or EXECUTIVE with 10+ years experience applying for an ENTRY or JUNIOR role):
-    - The "fitLevel" MUST be "PARTIAL_FIT" or "POOR_FIT", NOT "EXCELLENT_FIT". While they are technically capable, they are not a good long-term organizational fit.
-    - The "honestAssessment" must directly question the motive. Example: "While you are highly capable of performing this junior role, this position represents a significant step back in your career. Hiring managers will be very concerned about your long-term satisfaction and motivation, seeing you as a potential 'flight risk'."
-    - The "realityCheck" should warn about potential boredom, lack of growth, and salary misalignment.
-    - The "recommendations" should prompt self-reflection. Example: "If this is a planned career change into a new field, your resume and cover letter must explicitly state this and tell a compelling story about your transition. Otherwise, you should target roles that match your experience level."
-
-**COMPREHENSIVE ANALYSIS REQUIREMENTS:**
-
-1.  **REALISTIC SCORING (Based on Malaysian context):**
-    - Be strict and honest. Most candidates have areas for improvement.
-    - Entry level: expect 40-65%
-    - Mid-level: expect 55-75%
-    - Senior level: expect 65-85%
-    - Only give 85-100% for truly exceptional evidence and a perfect fit.
-
-2.  **COMPLETE ASSESSMENT OUTPUT:**
-    - Individual category scores: ${categories.join(', ')}
-    - Overall assessment and readiness level.
-    - 3 specific, evidence-based strengths.
-    - 3 specific, evidence-based areas for improvement.
-    - **Provide AT LEAST 3 and AT MOST 5 actionable recommendations.** Prioritize the most impactful ones.
-    - Honest career fit evaluation, incorporating the Critical Scenario Analysis above.
+2. COMPLETE ASSESSMENT OUTPUT:
+- Individual category scores: ${categories.join(', ')}
+- Overall assessment and readiness level
+- Specific strengths and improvement areas
+// --- PERUBAHAN DI SINI ---
+- **Provide AT LEAST 3 and AT MOST 5 actionable recommendations.** Prioritize the most impactful ones.
+- Honest career fit evaluation
 
 Return ONLY valid JSON with this COMPLETE structure:
 {
@@ -236,9 +223,9 @@ Return ONLY valid JSON with this COMPLETE structure:
     "resumeConsistency": number,
     "evidenceLevel": "STRONG" | "MODERATE" | "WEAK" | "INSUFFICIENT"
   },
-  "summary": "Honest 2-3 sentence assessment of overall readiness and key insights, with a Malaysian perspective.",
+  "summary": "Honest 2-3 sentence assessment of overall readiness and key insights",
   "strengths": [
-    "Evidence-based strength 1 with specific examples from resume or responses",
+    "Evidence-based strength 1 with specific examples",
     "Evidence-based strength 2 with specific examples", 
     "Evidence-based strength 3 with specific examples"
   ],
@@ -250,31 +237,32 @@ Return ONLY valid JSON with this COMPLETE structure:
   "recommendations": [
     {
       "title": "Specific actionable recommendation title",
-      "explanation": "Why this recommendation matters for their career goals in Malaysia",
+      "explanation": "Why this recommendation matters for career goals",
       "steps": ["Step 1", "Step 2", "Step 3"],
       "timeframe": "1-3 months",
       "priority": "HIGH"
     }
-    // AI will generate more recommendations as instructed. This is just a format example.
+    // Note: The AI will generate more recommendations based on the instruction above.
+    // We only need one example here to show the format.
   ],
   ${resumeText ? `
   "resumeAnalysis": {
-    "analysis": "Honest assessment of resume quality and its effectiveness in the Malaysian job market",
+    "analysis": "Honest assessment of resume quality and career readiness",
     "keyFindings": ["Key finding 1", "Key finding 2", "Key finding 3"],
     "experienceLevel": "ENTRY" | "JUNIOR" | "MID" | "SENIOR" | "EXECUTIVE",
     "credibilityScore": number,
     "recommendations": ["Resume improvement 1", "Resume improvement 2"]
   },` : ''}
   "careerFit": {
-    "fitLevel": "EXCELLENT_FIT" | "GOOD_FIT" | "PARTIAL_FIT" | "POOR_FIT" | "WRONG_CAREER_PATH",
+    "fitLevel": "EXCELLENT_FIT" | "GOOD_FIT" | "PARTIAL_FIT" | "POOR_FIT",
     "fitPercentage": number,
-    "honestAssessment": "Realistic assessment of suitability for the target role in the Malaysian market",
+    "honestAssessment": "Realistic assessment of suitability for target role",
     "timeToReadiness": "Realistic timeline to become competitive",
-    "criticalGaps": ["Most important gap 1", "Most important gap 2"]
+    "criticalGaps": ["Gap 1", "Gap 2", "Gap 3"]
   }
 }
 
-IMPORTANT: Be brutally honest. Most people need significant development. Base all analysis on ACTUAL EVIDENCE from the resume and responses. Do not give false hope, but provide clear, actionable guidance.
+IMPORTANT: Be brutally honest. Most people need significant development. Don't give false hope, but provide actionable guidance.
 `;
     
     const completion = await openai.chat.completions.create({
