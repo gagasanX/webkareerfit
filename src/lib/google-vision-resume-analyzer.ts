@@ -495,6 +495,8 @@ function generateResumeAnalysisPrompt(extractedText: string, context: Assessment
   return `
 COMPREHENSIVE RESUME ANALYSIS
 
+**IMPORTANT CONTEXT:** All analysis must be performed from the perspective of the job market in **Malaysia**. Consider local industry norms, expectations for career progression, and the value of local educational institutions and companies.
+
 **ASSESSMENT CONTEXT:**
 - Assessment Type: ${context.assessmentType.toUpperCase()}
 - Target Role: ${context.targetRole}
@@ -510,30 +512,30 @@ ${extractedText}
 **ANALYSIS REQUIREMENTS:**
 
 1. **RESUME QUALITY ASSESSMENT (0-100 scoring)**:
-   - Professional presentation and formatting quality
-   - Clarity of achievements and impact metrics  
-   - Industry-relevant keywords and terminology
-   - Overall document credibility and completeness
+   - Professional presentation and formatting quality, considering Malaysian standards.
+   - Clarity of achievements and impact metrics.
+   - Use of industry-relevant keywords and terminology specific to the region.
+   - Overall document credibility and completeness.
 
 2. **EXPERIENCE RELEVANCE ANALYSIS**:
-   - Direct relevance to target role: ${context.targetRole}
-   - Career progression and growth trajectory
-   - Leadership and responsibility evolution
-   - Quantifiable achievements and impact
+   - Direct relevance to target role: ${context.targetRole}.
+   - Career progression and growth trajectory, evaluated against Malaysian industry benchmarks.
+   - Leadership and responsibility evolution.
+   - Quantifiable achievements and impact.
 
 3. **SKILLS VALIDATION**:
-   - Technical skills mentioned vs demonstrated
-   - Soft skills evidenced through achievements
-   - Skills claimed in assessment vs proven in resume
-   - Industry certifications and education relevance
+   - Technical skills mentioned vs demonstrated.
+   - Soft skills evidenced through achievements.
+   - Skills claimed in assessment vs proven in resume.
+   - Relevance of local certifications and education.
 
 4. **CAREER FIT ASSESSMENT**:
-   - Realistic suitability for target role
-   - Market competitiveness evaluation
-   - Time to readiness estimation
-   - Critical gaps identification
+   - Realistic suitability for the target role within the Malaysian job market.
+   - Market competitiveness evaluation against other potential Malaysian candidates.
+   - Time to readiness estimation.
+   - Critical gaps identification.
 
-5. **HONEST SCORING** (be realistic):
+5. **HONEST SCORING** (be realistic, based on Malaysian context):
    - Entry level: typically 40-65%
    - Mid-level: typically 55-75%
    - Senior level: typically 65-85%
@@ -550,7 +552,7 @@ ${extractedText}
     "evidenceLevel": "STRONG" | "MODERATE" | "WEAK" | "INSUFFICIENT"
   },
   "resumeAnalysis": {
-    "analysis": "2-3 sentence honest assessment of resume quality and career readiness",
+    "analysis": "2-3 sentence honest assessment of resume quality and career readiness, from a Malaysian perspective.",
     "keyFindings": ["Finding 1", "Finding 2", "Finding 3", "Finding 4"],
     "experienceLevel": "ENTRY" | "JUNIOR" | "MID" | "SENIOR" | "EXECUTIVE",
     "skillsValidation": {
@@ -565,16 +567,16 @@ ${extractedText}
   "careerFit": {
     "fitLevel": "EXCELLENT_FIT" | "GOOD_FIT" | "PARTIAL_FIT" | "POOR_FIT" | "WRONG_CAREER_PATH",
     "fitPercentage": number (0-100),
-    "honestAssessment": "Brutally honest assessment of suitability for target role",
-    "realityCheck": "What they ACTUALLY need to know about their readiness",
-    "marketCompetitiveness": "How they compare to other candidates realistically",
+    "honestAssessment": "Brutally honest assessment of suitability for target role in the Malaysian market.",
+    "realityCheck": "What they ACTUALLY need to know about their readiness in Malaysia.",
+    "marketCompetitiveness": "How they compare to other candidates realistically in the Malaysian job market.",
     "timeToReadiness": "6-12 weeks" | "3-6 months" | "6-12 months" | "1-2 years" | "2+ years",
     "criticalGaps": ["Most important gap 1", "Most important gap 2", "Most important gap 3"],
     "competitiveAdvantages": ["Advantage 1", "Advantage 2"] or []
   }
 }
 
-**IMPORTANT**: Base all analysis on ACTUAL EVIDENCE from the extracted resume text. Be honest about gaps and realistic about readiness levels.
+**IMPORTANT**: Base all analysis on ACTUAL EVIDENCE from the extracted resume text. Be honest about gaps and realistic about readiness levels, always within the **Malaysian context**.
 `;
 }
 
