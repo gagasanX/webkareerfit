@@ -115,6 +115,16 @@ const Question = ({ question, answer, onAnswer }: QuestionProps) => {
   return null;
 };
 
+// LoadingScreen component
+const LoadingScreen = ({ message }: { message: string }) => (
+  <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-gray-900 bg-opacity-75 backdrop-blur-sm">
+    <div className="text-center">
+      <div className="w-16 h-16 border-4 border-t-transparent border-white rounded-full animate-spin mx-auto"></div>
+      <p className="mt-4 text-white text-lg font-medium">{message}</p>
+    </div>
+  </div>
+);
+
 export default function AssessmentInstanceClient() {
   const { data: session, status } = useSession();
   const router = useRouter();
@@ -128,10 +138,13 @@ export default function AssessmentInstanceClient() {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentStep, setCurrentStep] = useState(1);
   const [answers, setAnswers] = useState<Record<string | number, any>>({});
-  const [submitting, setSubmitting] = useState(false);
   const [resumeFile, setResumeFile] = useState<File | null>(null);
   const [fileError, setFileError] = useState('');
   const [debugInfo, setDebugInfo] = useState<string | null>(null);
+  
+  // State untuk mengawal proses penghantaran
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showManualLoadingScreen, setShowManualLoadingScreen] = useState(false);
   
   // Assessment type labels
   const assessmentTypeLabels: Record<AssessmentType, string> = {
@@ -287,7 +300,14 @@ export default function AssessmentInstanceClient() {
   };
 
   const submitAssessment = async () => {
-    setSubmitting(true);
+    // Tetapkan state umum 'isSubmitting' untuk disable butang
+    setIsSubmitting(true);
+    
+    // Logik bersyarat untuk loading screen
+    if (assessment?.tier === 'standard' || assessment?.tier === 'premium') {
+      setShowManualLoadingScreen(true);
+    }
+    
     try {
       const formData = new FormData();
       const formDataPayload = {
@@ -309,51 +329,34 @@ export default function AssessmentInstanceClient() {
       console.log(`Submitting to endpoint: /api/assessment/${type}/${id}/submit-with-google-vision`);
       const response = await fetch(`/api/assessment/${type}/${id}/submit-with-google-vision`, {
         method: 'POST',
-        body: formData
+        body: formData,
       });
+
+      const result = await response.json();
+      
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        console.error('Submission error response:', errorData);
-        throw new Error(errorData.error || `Failed to submit assessment: ${response.status}`);
+        throw new Error(result.error || `Server responded with status: ${response.status}`);
       }
       
-      const result = await response.json();
-      console.log('Submission response from server:', result);
-      
-      // =======================================================
-      //  LOGIK YANG TELAH DIBAIKI DAN DIPERCAYAI
-      // =======================================================
       if (result && result.redirectUrl && typeof result.redirectUrl === 'string') {
-        // Gunakan URL yang diberikan oleh backend secara terus. Tiada lagi tekaan.
         console.log(`Backend instructed to redirect to: ${result.redirectUrl}. Executing now.`);
         router.push(result.redirectUrl);
       } else {
-        // Jika backend GAGAL memberikan arahan, barulah kita tunjukkan ralat.
-        // Ini adalah langkah keselamatan yang lebih baik daripada cuba meneka.
-        console.error('Submission successful, but server did not provide a redirect URL. This should not happen.', result);
-        setError('Submission complete, but there was an error navigating to the next page. Please go to your dashboard to check the status.');
-        setSubmitting(false); // Hentikan animasi loading supaya pengguna boleh bertindak.
+        throw new Error('Navigation error after submission.');
       }
-      // =======================================================
       
     } catch (error) {
-      console.error('Error submitting assessment:', error);
-      setError(error instanceof Error ? error.message : 'Error submitting assessment. Please try again.');
-      setDebugInfo(`Submission error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      setSubmitting(false);
+      console.error('An error occurred during the submission process:', error);
+      setError(error instanceof Error ? error.message : 'An unknown error occurred.');
+      // Matikan semua state loading jika ada ralat
+      setIsSubmitting(false);
+      setShowManualLoadingScreen(false);
     }
   };
 
   // Show loading state
   if (loading || status === 'loading') {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="w-16 h-16 border-4 border-t-transparent border-[#7e43f1] rounded-full animate-spin mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading assessment...</p>
-        </div>
-      </div>
-    );
+    return <LoadingScreen message="Loading assessment..." />;
   }
 
   // Show error state
@@ -387,6 +390,11 @@ export default function AssessmentInstanceClient() {
         </div>
       </div>
     );
+  }
+
+  // Show manual loading screen for standard/premium tiers
+  if (showManualLoadingScreen) {
+    return <LoadingScreen message="Finalizing your submission..." />;
   }
 
   // Get questions for current step
@@ -480,9 +488,9 @@ export default function AssessmentInstanceClient() {
             <div className="flex justify-between mt-8">
               <button
                 onClick={handlePrevious}
-                disabled={currentStep === 1}
+                disabled={currentStep === 1 || isSubmitting}
                 className={`px-4 py-2 rounded-lg ${
-                  currentStep === 1
+                  currentStep === 1 || isSubmitting
                     ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
@@ -492,14 +500,14 @@ export default function AssessmentInstanceClient() {
               
               <button
                 onClick={handleNext}
-                disabled={submitting}
-                className="bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] hover:from-[#7e43f1] hover:to-[#38b6ff] text-white px-4 py-2 rounded-lg transition-colors"
+                disabled={isSubmitting}
+                className="bg-gradient-to-r from-[#38b6ff] to-[#7e43f1] hover:from-[#7e43f1] hover:to-[#38b6ff] text-white px-4 py-2 rounded-lg transition-colors disabled:opacity-75"
               >
-                {submitting 
+                {isSubmitting
                   ? 'Processing...' 
-                  : assessment && currentStep < assessment.totalSteps 
-                    ? 'Next' 
-                    : 'Submit'
+                  : isFinalStep 
+                    ? 'Submit' 
+                    : 'Next'
                 }
               </button>
             </div>
