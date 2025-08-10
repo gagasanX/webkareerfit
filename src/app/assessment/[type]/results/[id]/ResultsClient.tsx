@@ -100,7 +100,7 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
   const router = useRouter();
   
   // --- State ---
-  const [pageState, setPageState] = useState<'initial_loading' | 'redirecting' | 'ai_processing' | 'showing_results' | 'error'>('initial_loading');
+  const [pageState, setPageState] = useState<'initial_loading' | 'redirecting' | 'ai_processing' | 'showing_results' | 'error' | null>(null);
   const [error, setError] = useState('');
   const [assessmentData, setAssessmentData] = useState<AssessmentData | null>(null);
   const [pollingCount, setPollingCount] = useState(0);
@@ -802,7 +802,8 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
   };
 
   // --- LOGIK PAPARAN (RENDER LOGIC) BARU BERDASARKAN pageState ---
-  if (pageState === 'initial_loading' || pageState === 'redirecting' || status === 'loading') {
+  // Paparkan skrin memuatkan HANYA jika diperlukan atau jika tiada state lain.
+  if (status === 'loading' || pageState === 'initial_loading') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="text-center">
@@ -811,6 +812,11 @@ export function ResultsClient({ assessmentType, assessmentId }: ResultsClientPro
         </div>
       </div>
     );
+  }
+
+  // Jika tiada state lagi, jangan paparkan apa-apa untuk mengelakkan kelipan.
+  if (!pageState) {
+    return null; 
   }
 
   if (pageState === 'error') {
