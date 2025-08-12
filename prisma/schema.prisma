@@ -1,3 +1,6 @@
+// =================================================================
+// PRISMA SCHEMA – COMPLETE & FINAL
+// =================================================================
 generator client {
   provider = "prisma-client-js"
 }
@@ -8,6 +11,9 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+// =================================================================
+// USERS & ROLES
+// =================================================================
 model User {
   id                    String                 @id @default(cuid())
   name                  String?
@@ -18,47 +24,59 @@ model User {
   skills                String?
   education             String?
   experience            String?
-  createdAt             DateTime               @default(now())
-  updatedAt             DateTime               @updatedAt
+  phone                 String?
   role                  String                 @default("USER")
   isAdmin               Boolean                @default(false)
   isAffiliate           Boolean                @default(false)
   isClerk               Boolean                @default(false)
-  phone                 String?
   affiliateCode         String?                @unique
   affiliateType         String?                @default("individual")
-  referredBy            String?
+  referredBy            String?                // affiliate code who referred this user
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+
+  // relations
   affiliateApplications AffiliateApplication[]
   affiliateStats        AffiliateStats?
   AffiliateTransaction  AffiliateTransaction[]
-  assignedAssessments   Assessment[]           @relation("ClerkAssessments")
   assessments           Assessment[]
+  assignedAssessments   Assessment[]           @relation("ClerkAssessments")
   payments              Payment[]
   referrals             Referral[]
 }
 
+// =================================================================
+// ASSESSMENTS (career tests)
+// =================================================================
 model Assessment {
   id               String     @id @default(cuid())
-  type             String
+  type             String     // ccrl, cdrl, ctrl, etc.
   tier             String     @default("basic")
   status           String     @default("pending")
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
   data             Json?
   price            Float
-  userId           String
-  assignedClerkId  String?
+  manualProcessing Boolean    @default(false)
   reviewNotes      String?
   reviewedAt       DateTime?
-  manualProcessing Boolean    @default(false)
-  assignedClerk    User?      @relation("ClerkAssessments", fields: [assignedClerkId], references: [id])
-  user             User       @relation(fields: [userId], references: [id])
-  payment          Payment?
-  referrals        Referral[]
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
 
+  userId          String
+  assignedClerkId String?
+
+  user          User           @relation(fields: [userId], references: [id])
+  assignedClerk User?          @relation("ClerkAssessments", fields: [assignedClerkId], references: [id])
+  payment       Payment?
+  referrals     Referral[]
+
+  @@index([userId])
   @@index([assignedClerkId])
+  @@index([status])
 }
 
+// =================================================================
+// PAYMENTS & COUPONS
+// =================================================================
 model Payment {
   id                   String                 @id @default(cuid())
   amount               Float
@@ -67,13 +85,18 @@ model Payment {
   gatewayPaymentId     String?
   createdAt            DateTime               @default(now())
   updatedAt            DateTime               @updatedAt
+
   userId               String
   assessmentId         String                 @unique
   couponId             String?
-  AffiliateTransaction AffiliateTransaction[]
+
+  // ✅ add the back-relation
+  referrals            Referral[]
+
   assessment           Assessment             @relation(fields: [assessmentId], references: [id])
   coupon               Coupon?                @relation(fields: [couponId], references: [id])
   user                 User                   @relation(fields: [userId], references: [id])
+  AffiliateTransaction AffiliateTransaction[]
 }
 
 model Coupon {
@@ -89,6 +112,9 @@ model Coupon {
   payments           Payment[]
 }
 
+// =================================================================
+// AFFILIATE SYSTEM
+// =================================================================
 model AffiliateStats {
   id             String   @id @default(cuid())
   totalReferrals Int      @default(0)
@@ -102,9 +128,6 @@ model AffiliateStats {
 
 model Referral {
   id             String      @id @default(cuid())
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
-  affiliateId    String
   userName       String?
   email          String?
   assessmentId   String?
@@ -112,19 +135,65 @@ model Referral {
   status         String
   commission     Float       @default(0)
   paidOut        Boolean     @default(false)
-  affiliate      User        @relation(fields: [affiliateId], references: [id])
-  assessment     Assessment? @relation(fields: [assessmentId], references: [id])
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  affiliateId String
+  paymentId   String?   // <-- NEW: resolves webhook build error
+
+  affiliate  User        @relation(fields: [affiliateId], references: [id])
+  assessment Assessment? @relation(fields: [assessmentId], references: [id])
+  payment    Payment?    @relation(fields: [paymentId], references: [id])
 
   @@index([affiliateId])
   @@index([assessmentId])
+  @@index([paymentId])
 }
 
+model AffiliateApplication {
+  id          String   @id @default(cuid())
+  fullName    String
+  email       String
+  phone       String
+  website     String?
+  socialMedia String?
+  howPromote  String
+  status      String   @default("pending")
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+}
+
+model AffiliateTransaction {
+  id        String    @id @default(cuid())
+  amount    Float
+  status    String    @default("pending")
+  paidAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  userId    String
+  paymentId String
+
+  user    User    @relation(fields: [userId], references: [id])
+  payment Payment @relation(fields: [paymentId], references: [id])
+}
+
+// =================================================================
+// CAREER SUGGESTER (lead-gen)
+// =================================================================
 model CareerSuggestion {
   id               String  @id @default(cuid()) @db.VarChar(255)
   superpowercode   String? @db.VarChar(10)
   jobtitle         String? @db.VarChar(255)
   shortdescription String?
   level            String? @default("mid") @db.VarChar(10)
+
+  @@index([superpowercode, level])
 }
 
 model FreeSuggestionSubmission {
@@ -137,6 +206,25 @@ model FreeSuggestionSubmission {
   superpowercode String?   @db.VarChar(10)
 }
 
+// =================================================================
+// AUDIT LOG (used by admin routes)
+// =================================================================
+model AuditLog {
+  id        String   @id @default(cuid())
+  eventType String
+  userId    String?
+  details   Json
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([eventType])
+  @@index([userId])
+}
+
+// =================================================================
+// SYSTEM CONFIGS
+// =================================================================
 model SystemSetting {
   key       String   @id
   value     String
@@ -155,35 +243,4 @@ model EmailTemplate {
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-}
-
-model AffiliateApplication {
-  id          String   @id @default(cuid())
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  userId      String
-  fullName    String
-  email       String
-  phone       String
-  website     String?
-  socialMedia String?
-  howPromote  String
-  status      String
-  notes       String?
-  user        User     @relation(fields: [userId], references: [id])
-
-  @@index([userId])
-}
-
-model AffiliateTransaction {
-  id        String    @id
-  amount    Float
-  status    String    @default("pending")
-  paidAt    DateTime?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime
-  userId    String
-  paymentId String
-  Payment   Payment   @relation(fields: [paymentId], references: [id])
-  User      User      @relation(fields: [userId], references: [id])
 }
