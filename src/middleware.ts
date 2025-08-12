@@ -25,6 +25,7 @@ export async function middleware(request: NextRequest) {
     '/clerk-auth/login',
     '/clerk-auth/register',
     '/terms-of-service',
+    '/career-suggester',
     '/privacy-policy'
   ];
 

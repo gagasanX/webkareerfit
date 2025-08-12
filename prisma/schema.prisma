@@ -4,8 +4,8 @@ generator client {
 
 datasource db {
   provider  = "postgresql"
-  url       = env("DATABASE_URL")      // Transaction pooler (port 6543) for production queries
-  directUrl = env("DIRECT_URL")        // Direct connection (port 5432) for migrations
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
@@ -23,77 +23,57 @@ model User {
   role                  String                 @default("USER")
   isAdmin               Boolean                @default(false)
   isAffiliate           Boolean                @default(false)
-  isClerk               Boolean                @default(false)  
+  isClerk               Boolean                @default(false)
   phone                 String?
   affiliateCode         String?                @unique
   affiliateType         String?                @default("individual")
-  referredBy            String?                // Stores affiliate code who referred this user
-  
-  // Relations
+  referredBy            String?
   affiliateApplications AffiliateApplication[]
   affiliateStats        AffiliateStats?
+  AffiliateTransaction  AffiliateTransaction[]
+  assignedAssessments   Assessment[]           @relation("ClerkAssessments")
   assessments           Assessment[]
   payments              Payment[]
-  referrals             Referral[]             // Referrals this user generated as affiliate
-  
-  // Assessments assigned to clerk for review
-  assignedAssessments   Assessment[]           @relation("ClerkAssessments") 
+  referrals             Referral[]
 }
 
 model Assessment {
-  id        String     @id @default(cuid())
-  type      String     // 'ccrl', 'cdrl', 'ctrl', etc.
-  tier      String     @default("basic")      // 'basic', 'standard', 'premium'
-  status    String     @default("pending")    // 'pending', 'in_progress', 'completed', 'cancelled'
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-  data      Json?      // Assessment responses and results
-  price     Float      // Package price (50, 100, 250)
-  userId    String
-  
-  // Relations
-  user      User       @relation(fields: [userId], references: [id])
-  payment   Payment?
-  referrals Referral[] // Can have referral records
-  
-  // Manual processing fields
-  assignedClerkId   String?
-  assignedClerk     User?      @relation("ClerkAssessments", fields: [assignedClerkId], references: [id])
-  reviewNotes       String?
-  reviewedAt        DateTime?
-  manualProcessing  Boolean    @default(false)
+  id               String     @id @default(cuid())
+  type             String
+  tier             String     @default("basic")
+  status           String     @default("pending")
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+  data             Json?
+  price            Float
+  userId           String
+  assignedClerkId  String?
+  reviewNotes      String?
+  reviewedAt       DateTime?
+  manualProcessing Boolean    @default(false)
+  assignedClerk    User?      @relation("ClerkAssessments", fields: [assignedClerkId], references: [id])
+  user             User       @relation(fields: [userId], references: [id])
+  payment          Payment?
+  referrals        Referral[]
 
   @@index([assignedClerkId])
-  @@index([userId])
-  @@index([status])
-  @@index([type])
 }
 
 model Payment {
-  id               String   @id @default(cuid())
-  amount           Float    // Payment amount
-  method           String   // 'billplz', 'toyyibpay', 'free'
-  status           String   @default("pending") // 'pending', 'completed', 'failed', 'cancelled'
-  gatewayPaymentId String?  // Payment gateway reference
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
-  userId           String
-  assessmentId     String   @unique
-  couponId         String?
-  
-  // 🔐 SECURITY ADDITIONS
-  idempotencyKey   String?  @unique  // Prevent duplicate payments - CRITICAL ADD
-  clientIpAddress  String?           // Track payment origin for fraud detection
-  
-  // Relations
-  coupon           Coupon?     @relation(fields: [couponId], references: [id])
-  assessment       Assessment  @relation(fields: [assessmentId], references: [id])
-  user             User        @relation(fields: [userId], references: [id])
-  
-  @@index([userId])
-  @@index([status])
-  @@index([gatewayPaymentId])
-  @@index([idempotencyKey])  // Index for fast idempotency lookup
+  id                   String                 @id @default(cuid())
+  amount               Float
+  method               String
+  status               String                 @default("pending")
+  gatewayPaymentId     String?
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
+  userId               String
+  assessmentId         String                 @unique
+  couponId             String?
+  AffiliateTransaction AffiliateTransaction[]
+  assessment           Assessment             @relation(fields: [assessmentId], references: [id])
+  coupon               Coupon?                @relation(fields: [couponId], references: [id])
+  user                 User                   @relation(fields: [userId], references: [id])
 }
 
 model Coupon {
@@ -106,74 +86,55 @@ model Coupon {
   currentUses        Int       @default(0)
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
-  
-  // Relations
   payments           Payment[]
 }
 
 model AffiliateStats {
   id             String   @id @default(cuid())
-  totalReferrals Int      @default(0)    // Total number of referrals
-  totalEarnings  Float    @default(0)    // Total commission earned
-  totalPaid      Float    @default(0)    // Total commission paid out
+  totalReferrals Int      @default(0)
+  totalEarnings  Float    @default(0)
+  totalPaid      Float    @default(0)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
   userId         String   @unique
-  
-  // Relations
   user           User     @relation(fields: [userId], references: [id])
 }
 
-// SINGLE TABLE FOR AFFILIATE TRACKING - SIMPLIFIED APPROACH
 model Referral {
   id             String      @id @default(cuid())
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
-  
-  // Core referral data
-  affiliateId    String      // The affiliate who made the referral
-  userName       String?     // Name of referred user
-  email          String?     // Email of referred user
-  
-  // Assessment & payment tracking
-  assessmentId   String?     // Which assessment was purchased
-  assessmentType String?     // Type of assessment (ccrl, cdrl, etc.)
-  paymentId      String?     // Payment ID for this referral
-  
-  // Commission tracking
-  status         String      // 'pending', 'completed', 'cancelled'
-  commission     Float       @default(0)  // Commission amount in RM
-  paidOut        Boolean     @default(false)  // Has commission been paid?
-  paidAt         DateTime?   // When commission was paid
-  
-  // Relations
-  assessment     Assessment? @relation(fields: [assessmentId], references: [id])
+  affiliateId    String
+  userName       String?
+  email          String?
+  assessmentId   String?
+  assessmentType String?
+  status         String
+  commission     Float       @default(0)
+  paidOut        Boolean     @default(false)
   affiliate      User        @relation(fields: [affiliateId], references: [id])
+  assessment     Assessment? @relation(fields: [assessmentId], references: [id])
 
-  // Indexes for performance
   @@index([affiliateId])
   @@index([assessmentId])
-  @@index([paymentId])
-  @@index([status])
-  @@index([paidOut])
-  
-  // Unique constraint to prevent duplicate referrals for same payment
-  @@unique([affiliateId, paymentId], name: "unique_affiliate_payment")
 }
 
-// 🔐 SECURITY ADDITION: Audit Log for compliance & fraud detection
-model AuditLog {
-  id        String   @id @default(cuid())
-  eventType String   // 'payment_created', 'coupon_applied', 'fraud_attempt', etc.
-  userId    String?  // User who performed action
-  details   Json     // Event details (payment amounts, coupon codes, etc.)
-  ipAddress String?  // Client IP for fraud tracking
-  userAgent String?  // Browser info
-  createdAt DateTime @default(now())
+model CareerSuggestion {
+  id               String  @id @default(cuid()) @db.VarChar(255)
+  superpowercode   String? @db.VarChar(10)
+  jobtitle         String? @db.VarChar(255)
+  shortdescription String?
+  level            String? @default("mid") @db.VarChar(10)
+}
 
-  @@index([eventType])
-  @@index([userId])
-  @@index([createdAt])
+model FreeSuggestionSubmission {
+  id             String    @id @default(cuid()) @db.VarChar(255)
+  email          String?   @db.VarChar(255)
+  userip         String?   @db.VarChar(255)
+  createdat      DateTime? @default(now()) @db.Timestamp(6)
+  usertype       String?   @db.VarChar(20)
+  userinput      String?   @db.VarChar(255)
+  superpowercode String?   @db.VarChar(10)
 }
 
 model SystemSetting {
@@ -190,7 +151,7 @@ model EmailTemplate {
   id          String   @id @default(cuid())
   name        String   @unique
   subject     String
-  htmlContent String   @db.Text  // Use TEXT for long content
+  htmlContent String
   active      Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -206,13 +167,23 @@ model AffiliateApplication {
   phone       String
   website     String?
   socialMedia String?
-  howPromote  String   @db.Text  // Use TEXT for long content
-  status      String   @default("pending")  // 'pending', 'approved', 'rejected'
-  notes       String?  @db.Text  // Admin notes
-  
-  // Relations
+  howPromote  String
+  status      String
+  notes       String?
   user        User     @relation(fields: [userId], references: [id])
 
   @@index([userId])
-  @@index([status])
+}
+
+model AffiliateTransaction {
+  id        String    @id
+  amount    Float
+  status    String    @default("pending")
+  paidAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime
+  userId    String
+  paymentId String
+  Payment   Payment   @relation(fields: [paymentId], references: [id])
+  User      User      @relation(fields: [userId], references: [id])
 }
