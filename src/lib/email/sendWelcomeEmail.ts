@@ -1,4 +1,5 @@
-import { engineMailer } from './enginemailerService';
+import { sendWelcomeEmail as sendEmail } from '@/lib/email';
+import type { WelcomeEmailData } from './brevoService';
 
 interface SendWelcomeEmailParams {
   userName: string;
@@ -10,11 +11,13 @@ export async function sendWelcomeEmail(params: SendWelcomeEmailParams): Promise<
   try {
     console.log(`Sending welcome email to: ${params.userEmail}`);
     
-    const sent = await engineMailer.sendWelcomeEmail({
+    const emailData: WelcomeEmailData = {
       userName: params.userName,
       email: params.userEmail,
       hasReferral: params.hasReferral
-    });
+    };
+    
+    const sent = await sendEmail(emailData);
     
     if (sent) {
       console.log(`Welcome email sent successfully to: ${params.userEmail}`);

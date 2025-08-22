@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { calculateCommission, getCommissionRate } from '@/lib/utils/commissionCalculation';
 import { verifyBillplzPayment, verifyBillplzSignature } from '@/lib/payment/billplz';
-import { sendPaymentReceipt } from '@/lib/email/sendReceipt';
+import { sendReceiptEmail } from '@/lib/email/brevoService';
 import { getTierPrice } from '@/lib/utils/priceCalculation';
 
 interface WebhookPayload {
@@ -173,9 +173,23 @@ export async function POST(
       }
       
       // Send receipt email (async)
-      sendPaymentReceipt(paymentId).catch(err => {
-        console.error('⚠️ Receipt email failed:', err);
-      });
+      if (payment.user?.name) {
+        const receiptData = {
+          userName: payment.user.name,
+          email: payment.user.email,
+          receiptNumber: `KF${new Date().getTime()}`,
+          assessmentType: payment.assessment.type,
+          assessmentName: `${payment.assessment.type.toUpperCase()} Assessment`,
+          date: payment.createdAt,
+          amount: payment.amount,
+          gateway: payment.method,
+          paymentId: payment.gatewayPaymentId || webhookData.id,
+        };
+        
+        sendReceiptEmail(receiptData).catch((err: Error) => {
+          console.error('⚠️ Receipt email failed:', err);
+        });
+      }
     }
     
     return NextResponse.json({ 

@@ -3,7 +3,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { verifyBillplzSignature } from '@/lib/payment/billplz';
-import { sendPaymentReceipt } from '@/lib/email/sendReceipt';
+import { sendReceiptEmail } from '@/lib/email/brevoService';
 
 interface VerifyRedirectRequest {
   gateway: string;
@@ -153,9 +153,24 @@ async function handleBillplzRedirect(params: any) {
     wasUpdated = true;
     
     if (isSuccessful) {
-      sendPaymentReceipt(payment.id).catch(err => {
-        console.error('⚠️ Receipt email failed:', err);
-      });
+      // Send receipt email
+      if (payment.user?.name) {  // Only send if we have user name
+        const receiptData = {
+          userName: payment.user.name,
+          email: payment.user.email,
+          receiptNumber: `KF${new Date().getTime()}`,
+          assessmentType: payment.assessment.type,
+          assessmentName: `${payment.assessment.type.toUpperCase()} Assessment`,
+          date: payment.createdAt,
+          amount: payment.amount,
+          gateway: payment.method,
+          paymentId: payment.gatewayPaymentId || id,
+        };
+        
+        sendReceiptEmail(receiptData).catch(err => {
+          console.error('⚠️ Receipt email failed:', err);
+        });
+      }
     }
   } else {
     console.log(`ℹ️ Payment already processed (${payment.status})`);

@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/db';
-import { engineMailer } from './enginemailerService';
+import { sendAssessmentEmail as sendEmail } from './brevoService';
+import type { AssessmentEmailData } from './brevoService';
 
 // Assessment type labels
 const assessmentTypeLabels: Record<string, string> = {
@@ -35,13 +36,15 @@ export async function sendAssessmentEmail(params: SendAssessmentEmailParams): Pr
     
     const assessmentName = assessmentTypeLabels[params.assessmentType] || params.assessmentType;
     
-    const sent = await engineMailer.sendAssessmentEmail({
+    const emailData: AssessmentEmailData = {
       userName: user.name || 'Valued User',
       email: user.email,
       assessmentType: params.assessmentType,
       assessmentId: params.assessmentId,
       assessmentName
-    });
+    };
+    
+    const sent = await sendEmail(emailData);
     
     if (sent) {
       console.log(`Assessment email sent successfully for: ${params.assessmentId}`);
@@ -65,11 +68,13 @@ export async function sendAssessmentCompletionEmail(
 ): Promise<boolean> {
   const assessmentName = assessmentTypeLabels[assessmentType] || assessmentType;
   
-  return engineMailer.sendAssessmentEmail({
+  const emailData: AssessmentEmailData = {
     userName,
     email: userEmail,
     assessmentType,
     assessmentId,
     assessmentName
-  });
+  };
+  
+  return sendEmail(emailData);
 }
