@@ -111,11 +111,13 @@ const nextConfig = {
     ];
   },
 
-  // 🔥 OUTPUT SETTINGS FOR CLOUDFLARE PAGES
+  // 🔥 OUTPUT SETTINGS FOR CLOUDFLARE WORKERS
   output: 'standalone',
+  outputFileTracing: true,
   images: {
     domains: ['localhost', 'res.cloudinary.com'],
     formats: ['image/webp', 'image/avif'],
+    unoptimized: true, // For Cloudflare Workers
   },
   poweredByHeader: false,
   generateEtags: false,

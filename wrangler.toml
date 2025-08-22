@@ -1,11 +1,15 @@
-[pages]
-workers_dev = true
+name = "webkareerfit"
+main = ".next/standalone/server.js"
 compatibility_date = "2025-08-22"
 compatibility_flags = ["nodejs_compat"]
 
-[pages.build]
+[build]
 command = "npm run build"
-output_dir = ".next"
 
-[pages.preview]
-host = "my.kareerfit.com"
+[[routes]]
+pattern = "my.kareerfit.com"
+custom_domain = true
+
+[env.production]
+name = "webkareerfit-prod"
+route = "my.kareerfit.com/*"
