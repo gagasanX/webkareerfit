@@ -1,15 +1,30 @@
 name = "webkareerfit"
-main = ".next/standalone/server.js"
+main = "worker.js"
 compatibility_date = "2025-08-22"
 compatibility_flags = ["nodejs_compat"]
 
+# Build settings
 [build]
 command = "npm run build"
 
+# Asset settings
+[site]
+bucket = ".next/standalone"
+
+# Routes configuration
 [[routes]]
 pattern = "my.kareerfit.com"
 custom_domain = true
 
+# Production environment
 [env.production]
 name = "webkareerfit-prod"
-route = "my.kareerfit.com/*"
+zone_id = "84c86be399ce513025d4adc2f24bc7fd" # Your Cloudflare account ID
+routes = [
+  { pattern = "my.kareerfit.com/*", zone_name = "my.kareerfit.com" }
+]
+
+# KV Namespace (if you need it)
+# kv_namespaces = [
+#   { binding = "MY_KV", id = "xxx" }
+# ]

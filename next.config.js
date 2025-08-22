@@ -113,7 +113,6 @@ const nextConfig = {
 
   // 🔥 OUTPUT SETTINGS FOR CLOUDFLARE WORKERS
   output: 'standalone',
-  outputFileTracing: true,
   images: {
     domains: ['localhost', 'res.cloudinary.com'],
     formats: ['image/webp', 'image/avif'],
