@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@cloudflare/kv-asset-handler": "^0.4.0",
+    "@getbrevo/brevo": "^3.0.1",
     "@google-cloud/vision": "^4.3.2",
     "@heroicons/react": "^2.1.5",
     "@prisma/client": "^5.22.0",
