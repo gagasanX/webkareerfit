@@ -1,13 +1,15 @@
 // Central export file for all email services
-export { engineMailer, sendEmail } from './enginemailerService';
-export { sendPaymentReceipt } from './sendReceipt';
-export { sendAssessmentEmail } from './sendAssessmentEmail';
-export { sendWelcomeEmail } from './sendWelcomeEmail';
-export { generateReceiptNumber } from './enginemailerService';
+export {
+  brevoMailer,
+  sendAssessmentEmail,
+  sendReceiptEmail,
+  sendWelcomeEmail,
+  generateReceiptNumber,
+} from './brevoService';
 
-// 🚀 FIXED: Export types that are now properly exported from enginemailerService
 export type {
-  ReceiptEmailData,
+  EmailData,
   AssessmentEmailData,
-  WelcomeEmailData
-} from './enginemailerService';
+  ReceiptEmailData,
+  WelcomeEmailData,
+} from './brevoService';
