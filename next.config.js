@@ -106,8 +106,12 @@ const nextConfig = {
     ];
   },
 
-  // 🔥 OUTPUT SETTINGS
+  // 🔥 OUTPUT SETTINGS FOR CLOUDFLARE PAGES
   output: 'standalone',
+  images: {
+    domains: ['localhost', 'res.cloudinary.com'],
+    formats: ['image/webp', 'image/avif'],
+  },
   poweredByHeader: false,
   generateEtags: false,
 };

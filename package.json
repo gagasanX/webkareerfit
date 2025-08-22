@@ -9,9 +9,13 @@
     "lint": "next lint",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio",
+    "pages:build": "npm run build",
+    "pages:deploy": "wrangler pages deploy ./out",
+    "worker:deploy": "wrangler deploy"
   },
   "dependencies": {
+    "@cloudflare/kv-asset-handler": "^0.4.0",
     "@google-cloud/vision": "^4.3.2",
     "@heroicons/react": "^2.1.5",
     "@prisma/client": "^5.22.0",
@@ -59,6 +63,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250822.0",
     "@eslint/eslintrc": "^3.1.0",
     "@tailwindcss/forms": "^0.5.9",
     "@types/bcryptjs": "^2.4.6",

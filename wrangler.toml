@@ -1,0 +1,10 @@
+name = "webkareerfit"
+compatibility_date = "2025-08-22"
+
+# Cloudflare Pages config
+pages_build_output_dir = ".next/standalone"
+compatibility_flags = ["nodejs_compat"]
+
+[[routes]]
+pattern = "my.kareerfit.com"
+custom_domain = true
